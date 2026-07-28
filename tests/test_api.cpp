@@ -78,6 +78,10 @@ TEST(API, StatusString_AllCodes) {
     EXPECT_STREQ(ms_status_string(MS_OK), "success");
     EXPECT_STREQ(ms_status_string(MS_ERR_INVALID_ARGS), "invalid arguments");
     EXPECT_STREQ(ms_status_string(MS_ERR_FILE_NOT_FOUND), "file not found");
+    EXPECT_STREQ(ms_status_string(MS_ERR_UNSUPPORTED_FORMAT),
+                 "unsupported video format");
+    EXPECT_STREQ(ms_status_string(MS_ERR_CORRUPT),
+                 "corrupted Fast Local data");
     EXPECT_STREQ(ms_status_string(MS_ERR_IO), "I/O error");
     EXPECT_STREQ(ms_status_string(MS_ERR_ENCODE_FAILED), "encoding failed");
     EXPECT_STREQ(ms_status_string(MS_ERR_DECODE_FAILED), "decoding failed");

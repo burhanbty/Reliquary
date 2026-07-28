@@ -63,23 +63,38 @@ static void print_encoding_estimate(
     const ms_encoding_estimate_t &estimate,
     const std::string &reliability_profile) {
     std::cout << "\nPreflight estimate:\n"
+              << "  Encoding mode: "
+              << (estimate.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
+                      ? "Fast Local" : "Resilient / Platform")
+              << "\n"
               << "  Input size: "
               << format_size(estimate.input_size_bytes)
-              << " (" << estimate.input_size_bytes << " bytes)\n"
-              << "  Reliability profile: "
-              << reliability_profile << "\n"
-              << std::fixed << std::setprecision(2)
-              << "  Repair percentage: "
-              << estimate.repair_percentage << "%\n"
-              << std::setprecision(6)
-              << "  Repair ratio: " << estimate.repair_ratio << "\n"
-              << "  Source packets: "
-              << estimate.source_packet_count << "\n"
-              << "  Repair packets: "
-              << estimate.repair_packet_count << "\n"
-              << "  Total packets: "
-              << estimate.total_packet_count << "\n"
-              << "  Estimated frames: "
+              << " (" << estimate.input_size_bytes << " bytes)\n";
+    if (estimate.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL) {
+        std::cout << "  Header bytes: "
+                  << estimate.header_bytes << "\n"
+                  << "  Frame payload capacity: "
+                  << estimate.frame_payload_capacity << "\n"
+                  << "  Stored payload bytes: "
+                  << estimate.payload_bytes << "\n"
+                  << "  Raw-frame padding bytes: "
+                  << estimate.padding_bytes << "\n";
+    } else {
+        std::cout << "  Reliability profile: "
+                  << reliability_profile << "\n"
+                  << std::fixed << std::setprecision(2)
+                  << "  Repair percentage: "
+                  << estimate.repair_percentage << "%\n"
+                  << std::setprecision(6)
+                  << "  Repair ratio: " << estimate.repair_ratio << "\n"
+                  << "  Source packets: "
+                  << estimate.source_packet_count << "\n"
+                  << "  Repair packets: "
+                  << estimate.repair_packet_count << "\n"
+                  << "  Total packets: "
+                  << estimate.total_packet_count << "\n";
+    }
+    std::cout << "  Estimated frames: "
               << estimate.estimated_frame_count << "\n"
               << std::setprecision(2)
               << "  Estimated video duration: "
@@ -222,6 +237,7 @@ static void print_usage(const char *program) {
     std::cerr << "Usage:\n"
             << "  " << program <<
             " encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>]\n"
+            << "    [--mode <resilient|fast-local>]\n"
             << "    [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>]\n"
             << "    [--estimate-only] [--estimate-json <estimate.json>] [--no-probe] [--allow-low-disk]\n"
             << "    [--benchmark-json <report.json>]\n"
@@ -241,7 +257,8 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
                      const bool estimate_only,
                      const bool enable_probe,
                      const bool allow_low_disk,
-                     const std::string &reliability_profile) {
+                     const std::string &reliability_profile,
+                     const ms_encoding_mode_t encoding_mode) {
     std::cout << "Input: " << input_path << "\n";
     std::cout << "Output: " << output_path << "\n";
 
@@ -256,6 +273,7 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
     opts.progress_user = nullptr;
     opts.repair_ratio = reliability.repair_ratio;
     opts.repair_ratio_is_set = 1;
+    opts.encoding_mode = encoding_mode;
 
     ms_encoding_estimate_t estimate{};
     if (const ms_status_t status =
@@ -472,6 +490,8 @@ int main(const int argc, char *argv[]) {
     bool allow_low_disk = false;
     std::optional<ReliabilityProfile> reliability_profile;
     std::optional<double> repair_percentage;
+    ms_encoding_mode_t encoding_mode = MS_ENCODING_MODE_RESILIENT;
+    bool mode_was_set = false;
 
     for (int i = 2; i < argc; ++i) {
         if (const std::string arg = argv[i]; (arg == "--input" || arg == "-i") && i + 1 < argc) {
@@ -511,6 +531,18 @@ int main(const int argc, char *argv[]) {
             enable_probe = false;
         } else if (arg == "--allow-low-disk") {
             allow_low_disk = true;
+        } else if (arg == "--mode" && i + 1 < argc) {
+            const std::string value = argv[++i];
+            mode_was_set = true;
+            if (value == "resilient") {
+                encoding_mode = MS_ENCODING_MODE_RESILIENT;
+            } else if (value == "fast-local") {
+                encoding_mode = MS_ENCODING_MODE_FAST_LOCAL;
+            } else {
+                std::cerr << "Error: invalid --mode '" << value
+                          << "' (use resilient or fast-local)\n";
+                return 1;
+            }
         } else if (arg == "--repair-percent" && i + 1 < argc) {
             try {
                 repair_percentage = parse_repair_percentage(argv[++i]);
@@ -550,6 +582,19 @@ int main(const int argc, char *argv[]) {
         (reliability_profile.has_value() ||
          repair_percentage.has_value())) {
         std::cerr << "Error: repair options apply only to encode operations\n";
+        return 1;
+    }
+    if (command != "encode" && mode_was_set) {
+        std::cerr << "Error: --mode applies only to file encode; "
+                     "decode detects the format automatically\n";
+        return 1;
+    }
+    if (encoding_mode == MS_ENCODING_MODE_FAST_LOCAL &&
+        (reliability_profile.has_value() ||
+         repair_percentage.has_value())) {
+        std::cerr
+            << "Error: reliability and repair options are not applicable "
+               "in Fast Local mode\n";
         return 1;
     }
     if (command != "encode" &&
@@ -593,7 +638,7 @@ int main(const int argc, char *argv[]) {
                          reliability,
                          benchmark_json, estimate_json, estimate_only,
                          enable_probe, allow_low_disk,
-                         reliability_label);
+                         reliability_label, encoding_mode);
     } else if (command == "decode") {
         if (input_path.empty() || output_path.empty()) {
             std::cerr << "Error: both --input and --output must be specified\n";

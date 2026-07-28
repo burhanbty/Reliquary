@@ -106,6 +106,7 @@ struct GuiPreflightJob {
     bool encrypted = false;
     QString password;
     double repairRatio = DEFAULT_REPAIR_RATIO;
+    ms_encoding_mode_t encodingMode = MS_ENCODING_MODE_RESILIENT;
 };
 
 class PreflightEstimateThread : public QThread {
@@ -172,6 +173,8 @@ slots:
     void onResolutionChanged(int index) const;
 
     void onReliabilityProfileChanged(int index);
+
+    void onEncodingModeChanged(int index);
 
     void onPreflightInputChanged();
 
@@ -265,6 +268,8 @@ private:
     QComboBox *reliabilityProfileCombo;
     QDoubleSpinBox *repairPercentSpinBox;
     QLabel *reliabilityHelpLabel;
+    QComboBox *encodingModeCombo;
+    QLabel *encodingModeHelpLabel;
     QPushButton *encodeButton;
     QPushButton *decodeButton;
 
@@ -292,6 +297,8 @@ private:
     QLabel *preflightProbeFramesValue;
     QLabel *preflightProbeDurationValue;
     QLabel *preflightMethodValue;
+    QLabel *preflightHeaderValue;
+    QLabel *preflightFrameCapacityValue;
     QCheckBox *lowDiskOverrideCheckBox;
 
     // Batch operations

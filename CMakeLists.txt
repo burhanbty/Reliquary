@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 cmake_minimum_required(VERSION 3.22)
-project(media_storage VERSION 1.2.0 LANGUAGES CXX)
+project(media_storage VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,7 +78,7 @@ target_include_directories(media_storage_lib PUBLIC
 set_target_properties(media_storage_lib PROPERTIES
         OUTPUT_NAME media_storage
         VERSION ${PROJECT_VERSION}
-        SOVERSION 2
+        SOVERSION 3
 )
 
 target_link_libraries(media_storage PRIVATE media_storage_lib media_storage_core)

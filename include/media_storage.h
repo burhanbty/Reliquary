@@ -53,12 +53,19 @@ typedef enum {
     MS_ERR_INCOMPLETE = 7,
     MS_ERR_INSUFFICIENT_DISK = 8,
     MS_ERR_PREFLIGHT_STALE = 9,
+    MS_ERR_UNSUPPORTED_FORMAT = 10,
+    MS_ERR_CORRUPT = 11,
 } ms_status_t;
 
 typedef enum {
     MS_HASH_CRC32 = 0,
     MS_HASH_XXHASH32 = 1,
 } ms_hash_algorithm_t;
+
+typedef enum {
+    MS_ENCODING_MODE_RESILIENT = 0,
+    MS_ENCODING_MODE_FAST_LOCAL = 1,
+} ms_encoding_mode_t;
 
 typedef enum {
     MS_OPERATION_UNKNOWN = 0,
@@ -103,7 +110,7 @@ typedef int (*ms_progress_fn)(uint64_t current, uint64_t total, void *user);
 
 #define MS_ESTIMATION_METHOD_CAPACITY 256
 #define MS_ESTIMATION_MESSAGE_CAPACITY 512
-#define MS_ENCODING_ESTIMATE_VERSION 1
+#define MS_ENCODING_ESTIMATE_VERSION 2
 
 typedef struct {
     uint32_t struct_size;
@@ -143,6 +150,12 @@ typedef struct {
     double preflight_duration_seconds;
     char warning[MS_ESTIMATION_MESSAGE_CAPACITY];
     char error[MS_ESTIMATION_MESSAGE_CAPACITY];
+
+    ms_encoding_mode_t encoding_mode;
+    uint64_t header_bytes;
+    uint64_t frame_payload_capacity;
+    uint64_t payload_bytes;
+    uint64_t padding_bytes;
 } ms_encoding_estimate_t;
 
 typedef struct {
@@ -179,6 +192,11 @@ typedef struct {
      * stale metadata, invalid paths, overflow, or invalid options.
      */
     int allow_low_disk;
+
+    /**
+     * Zero-initialized options preserve the legacy resilient mode.
+     */
+    ms_encoding_mode_t encoding_mode;
 } ms_encode_options_t;
 
 typedef struct {
@@ -260,6 +278,12 @@ typedef struct {
     double actual_encode_duration_seconds;
 
     ms_stage_timing_t stage_timings[MS_PERF_STAGE_COUNT];
+
+    ms_encoding_mode_t encoding_mode;
+    uint64_t frame_payload_capacity;
+    uint64_t header_bytes;
+    uint64_t payload_bytes;
+    uint64_t padding_bytes;
 } ms_result_t;
 
 /**

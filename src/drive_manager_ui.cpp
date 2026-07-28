@@ -155,6 +155,9 @@ void WorkerThread::run() {
                 ? preflightEstimate->preflight_duration_seconds
                 : 0.0;
         opts.allow_low_disk = allowLowDisk ? 1 : 0;
+        opts.encoding_mode = preflightEstimate
+            ? preflightEstimate->encoding_mode
+            : MS_ENCODING_MODE_RESILIENT;
 
         ms_result_t result{};
 
@@ -303,6 +306,7 @@ void PreflightEstimateThread::run() {
     options.hash_algorithm = MS_HASH_CRC32;
     options.repair_ratio = job_.repairRatio;
     options.repair_ratio_is_set = 1;
+    options.encoding_mode = job_.encodingMode;
 
     emit phaseChanged(
         job_.generation, "Calculating packets and frames");
@@ -395,13 +399,31 @@ void DriveManagerUI::setupUI() {
     passwordVisibilityButton->setFixedWidth(selectInputButton->sizeHint().width());
     fileOpsLayout->addWidget(passwordVisibilityButton, 3, 2);
 
-    fileOpsLayout->addWidget(new QLabel("Reliability:"), 4, 0);
+    fileOpsLayout->addWidget(new QLabel("Encoding mode:"), 4, 0);
+    encodingModeCombo = new QComboBox();
+    encodingModeCombo->setObjectName("encodingModeCombo");
+    encodingModeCombo->addItem(
+        "Resilient / Platform", MS_ENCODING_MODE_RESILIENT);
+    encodingModeCombo->addItem(
+        "Fast Local", MS_ENCODING_MODE_FAST_LOCAL);
+    fileOpsLayout->addWidget(encodingModeCombo, 4, 1, 1, 2);
+
+    encodingModeHelpLabel = new QLabel(
+        "Resilient / Platform tolerates re-encoding and supports FEC. "
+        "Fast Local is much smaller and faster, but is only for lossless "
+        "local storage; lossy uploads or re-encoding may destroy the data.");
+    encodingModeHelpLabel->setWordWrap(true);
+    encodingModeHelpLabel->setStyleSheet(
+        "color: palette(mid); font-size: 9pt;");
+    fileOpsLayout->addWidget(encodingModeHelpLabel, 5, 0, 1, 3);
+
+    fileOpsLayout->addWidget(new QLabel("Reliability:"), 6, 0);
     reliabilityProfileCombo = new QComboBox();
     reliabilityProfileCombo->addItem("Local / Fast (5%)", 5.0);
     reliabilityProfileCombo->addItem("Balanced (20%)", 20.0);
     reliabilityProfileCombo->addItem("Durable (50%)", 50.0);
     reliabilityProfileCombo->addItem("Custom", -1.0);
-    fileOpsLayout->addWidget(reliabilityProfileCombo, 4, 1);
+    fileOpsLayout->addWidget(reliabilityProfileCombo, 6, 1);
 
     repairPercentSpinBox = new QDoubleSpinBox();
     repairPercentSpinBox->setObjectName("repairPercentSpinBox");
@@ -411,22 +433,22 @@ void DriveManagerUI::setupUI() {
     repairPercentSpinBox->setValue(DEFAULT_REPAIR_PERCENTAGE);
     repairPercentSpinBox->setSuffix("%");
     repairPercentSpinBox->setEnabled(false);
-    fileOpsLayout->addWidget(repairPercentSpinBox, 4, 2);
+    fileOpsLayout->addWidget(repairPercentSpinBox, 6, 2);
 
     reliabilityHelpLabel = new QLabel(
         "Higher repair improves damage tolerance, but increases frames, time, and output size.");
     reliabilityHelpLabel->setWordWrap(true);
     reliabilityHelpLabel->setStyleSheet("color: palette(mid); font-size: 9pt;");
-    fileOpsLayout->addWidget(reliabilityHelpLabel, 5, 0, 1, 3);
+    fileOpsLayout->addWidget(reliabilityHelpLabel, 7, 0, 1, 3);
 
     encodeButton = new QPushButton("Encode to Video");
     encodeButton->setObjectName("encodeButton");
     encodeButton->setIcon(QIcon::fromTheme("media-record"));
-    fileOpsLayout->addWidget(encodeButton, 6, 0, 1, 3);
+    fileOpsLayout->addWidget(encodeButton, 8, 0, 1, 3);
 
     decodeButton = new QPushButton("Decode from Video");
     decodeButton->setIcon(QIcon::fromTheme("media-playback-start"));
-    fileOpsLayout->addWidget(decodeButton, 7, 0, 1, 3);
+    fileOpsLayout->addWidget(decodeButton, 9, 0, 1, 3);
 
     leftLayout->addWidget(fileOperationsGroup);
 
@@ -610,6 +632,8 @@ void DriveManagerUI::setupUI() {
     preflightProbeFramesValue = new QLabel("-");
     preflightProbeDurationValue = new QLabel("-");
     preflightMethodValue = new QLabel("-");
+    preflightHeaderValue = new QLabel("-");
+    preflightFrameCapacityValue = new QLabel("-");
     preflightMethodValue->setWordWrap(true);
     detailsForm->addRow("Source packets:",
                         preflightSourcePacketsValue);
@@ -629,6 +653,10 @@ void DriveManagerUI::setupUI() {
                         preflightProbeDurationValue);
     detailsForm->addRow("Estimation method:",
                         preflightMethodValue);
+    detailsForm->addRow("Header bytes:",
+                        preflightHeaderValue);
+    detailsForm->addRow("Frame payload capacity:",
+                        preflightFrameCapacityValue);
     preflightDetailsWidget->hide();
     preflightLayout->addWidget(preflightDetailsWidget);
 
@@ -715,6 +743,9 @@ void DriveManagerUI::connectSignals() {
     connect(reliabilityProfileCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DriveManagerUI::onReliabilityProfileChanged);
+    connect(encodingModeCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DriveManagerUI::onEncodingModeChanged);
     connect(inputFileEdit, &QLineEdit::textChanged,
             this, &DriveManagerUI::onPreflightInputChanged);
     connect(outputFileEdit, &QLineEdit::textChanged,
@@ -995,11 +1026,39 @@ void DriveManagerUI::onResolutionChanged(const int index) const {
 void DriveManagerUI::onReliabilityProfileChanged(const int index) {
     const double percentage =
         reliabilityProfileCombo->itemData(index).toDouble();
-    const bool custom = percentage < 0.0;
+    const bool fastLocal =
+        encodingModeCombo->currentData().toInt() ==
+        MS_ENCODING_MODE_FAST_LOCAL;
+    const bool custom = percentage < 0.0 && !fastLocal;
     repairPercentSpinBox->setEnabled(custom);
     if (!custom) {
         repairPercentSpinBox->setValue(percentage);
     }
+    onPreflightInputChanged();
+}
+
+void DriveManagerUI::onEncodingModeChanged(const int) {
+    const bool fastLocal =
+        encodingModeCombo->currentData().toInt() ==
+        MS_ENCODING_MODE_FAST_LOCAL;
+    reliabilityProfileCombo->setEnabled(!fastLocal);
+    repairPercentSpinBox->setEnabled(
+        !fastLocal &&
+        reliabilityProfileCombo->currentData().toDouble() < 0.0);
+    reliabilityHelpLabel->setText(
+        fastLocal
+            ? "Not applicable in Fast Local Mode. No repair/FEC packets "
+              "are generated."
+            : "Higher repair improves damage tolerance, but increases "
+              "frames, time, and output size.");
+    encodingModeHelpLabel->setText(
+        fastLocal
+            ? "Fast Local is optimized for lossless local storage and "
+              "requires an .mkv output. Re-encoding or uploading the "
+              "video to lossy platforms may destroy the data."
+            : "Resilient / Platform produces larger output, but is more "
+              "tolerant of re-encoding and supports reliability/FEC "
+              "profiles.");
     onPreflightInputChanged();
 }
 
@@ -1012,6 +1071,8 @@ void DriveManagerUI::onPreflightInputChanged() {
 
 void DriveManagerUI::onCustomRepairChanged() {
     if (shuttingDown ||
+        encodingModeCombo->currentData().toInt() ==
+            MS_ENCODING_MODE_FAST_LOCAL ||
         reliabilityProfileCombo->currentData().toDouble() >= 0.0) {
         return;
     }
@@ -1079,10 +1140,18 @@ DriveManagerUI::currentPreflightFingerprint(
     fingerprint.normalized_output_path =
         normalizedOutput.toStdString();
     fingerprint.reliability_profile =
-        reliabilityProfileCombo->currentIndex();
+        encodingModeCombo->currentData().toInt() ==
+                MS_ENCODING_MODE_FAST_LOCAL
+            ? -1
+            : reliabilityProfileCombo->currentIndex();
     fingerprint.repair_ratio =
-        selectedReliabilityOptions().repair_ratio;
+        encodingModeCombo->currentData().toInt() ==
+                MS_ENCODING_MODE_FAST_LOCAL
+            ? 0.0
+            : selectedReliabilityOptions().repair_ratio;
     fingerprint.encrypted = encryptCheckBox->isChecked();
+    fingerprint.encoding_mode =
+        encodingModeCombo->currentData().toInt();
     return fingerprint;
 }
 
@@ -1124,6 +1193,8 @@ void DriveManagerUI::requestPreflight(const bool force) {
     job.encrypted = encryptCheckBox->isChecked();
     job.password = passwordEdit->text();
     job.repairRatio = fingerprint->repair_ratio;
+    job.encodingMode = static_cast<ms_encoding_mode_t>(
+        fingerprint->encoding_mode);
     clearPreflightValues();
     updatePreflightPanel();
 
@@ -1265,6 +1336,8 @@ void DriveManagerUI::clearPreflightValues() {
         preflightProbeFramesValue,
         preflightProbeDurationValue,
         preflightMethodValue,
+        preflightHeaderValue,
+        preflightFrameCapacityValue,
     };
     for (QLabel *label : values) label->setText("-");
 }
@@ -1299,16 +1372,24 @@ void DriveManagerUI::updatePreflightPanel() {
         const auto &e = *acceptedPreflightEstimate;
         preflightInputSizeValue->setText(
             format_bytes(e.input_size_bytes));
+        const bool fastLocal =
+            e.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL;
         preflightReliabilityValue->setText(
-            reliabilityProfileCombo->currentText());
+            fastLocal ? "Not applicable"
+                      : reliabilityProfileCombo->currentText());
         preflightRepairValue->setText(
-            QString("%1%").arg(e.repair_percentage, 0, 'f', 2));
+            fastLocal ? "Not applicable"
+                      : QString("%1%").arg(
+                            e.repair_percentage, 0, 'f', 2));
         preflightSourcePacketsValue->setText(
-            format_count(e.source_packet_count));
+            fastLocal ? "Not applicable"
+                      : format_count(e.source_packet_count));
         preflightRepairPacketsValue->setText(
-            format_count(e.repair_packet_count));
+            fastLocal ? "Not applicable"
+                      : format_count(e.repair_packet_count));
         preflightTotalPacketsValue->setText(
-            format_count(e.total_packet_count));
+            fastLocal ? "Not applicable"
+                      : format_count(e.total_packet_count));
         preflightFramesValue->setText(
             format_count(e.estimated_frame_count));
         preflightVideoDurationValue->setText(
@@ -1353,6 +1434,12 @@ void DriveManagerUI::updatePreflightPanel() {
                 e.probe_duration_seconds, 0, 'f', 3));
         preflightMethodValue->setText(
             QString::fromUtf8(e.estimation_method));
+        preflightHeaderValue->setText(
+            fastLocal ? format_bytes(e.header_bytes) : "Not applicable");
+        preflightFrameCapacityValue->setText(
+            fastLocal
+                ? format_bytes(e.frame_payload_capacity)
+                : "Not applicable");
     }
 
     const bool lowDisk =
@@ -1426,16 +1513,27 @@ void DriveManagerUI::logPreflightEstimate() const {
     lines << "Preflight estimate:"
           << QString("  Input: %1")
                  .arg(format_bytes(e.input_size_bytes))
-          << QString("  Reliability: %1 (%2%)")
-                 .arg(reliabilityProfileCombo->currentText())
-                 .arg(e.repair_percentage, 0, 'f', 2)
-          << QString("  Packets: %1 source + %2 repair")
-                 .arg(format_count(e.source_packet_count),
-                      format_count(e.repair_packet_count))
+          << QString("  Mode: %1")
+                 .arg(e.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
+                          ? "Fast Local"
+                          : "Resilient / Platform")
           << QString("  Frames: %1")
                  .arg(format_count(e.estimated_frame_count))
           << QString("  Video duration: %1 s")
                  .arg(e.estimated_video_duration_seconds, 0, 'f', 2);
+    if (e.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL) {
+        lines << QString("  Header: %1")
+                     .arg(format_bytes(e.header_bytes))
+              << QString("  Frame payload capacity: %1")
+                     .arg(format_bytes(e.frame_payload_capacity));
+    } else {
+        lines << QString("  Reliability: %1 (%2%)")
+                     .arg(reliabilityProfileCombo->currentText())
+                     .arg(e.repair_percentage, 0, 'f', 2)
+              << QString("  Packets: %1 source + %2 repair")
+                     .arg(format_count(e.source_packet_count),
+                          format_count(e.repair_packet_count));
+    }
     if (e.output_size_estimate_available) {
         lines << QString("  Estimated output: %1")
                      .arg(format_bytes(e.estimated_output_bytes))
@@ -1700,6 +1798,18 @@ bool DriveManagerUI::validatePaths() {
 
     if (!QFile::exists(inputFileEdit->text())) {
         QMessageBox::warning(this, "Warning", "Input file does not exist");
+        return false;
+    }
+
+    if (encodingModeCombo->currentData().toInt() ==
+            MS_ENCODING_MODE_FAST_LOCAL &&
+        QFileInfo(outputFileEdit->text()).suffix().compare(
+            "mkv", Qt::CaseInsensitive) != 0) {
+        QMessageBox::warning(
+            this, "Fast Local requires MKV",
+            "Fast Local uses FFV1/GRAY8 in Matroska. Choose an output "
+            "file ending in .mkv; an MP4-named Matroska file will not "
+            "be created.");
         return false;
     }
 

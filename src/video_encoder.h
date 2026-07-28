@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <span>
 #include <vector>
 
 extern "C" {
@@ -65,11 +66,17 @@ public:
 
     void encode_packets(const std::vector<Packet> &packets);
 
+    void encode_gray8_frame(std::span<const std::byte> pixels);
+
     void finalize();
 
     [[nodiscard]] int64_t frames_written() const { return frame_index; }
 
     [[nodiscard]] static int packets_per_frame();
+
+    [[nodiscard]] static constexpr std::size_t gray8_frame_bytes() {
+        return static_cast<std::size_t>(FRAME_WIDTH) * FRAME_HEIGHT;
+    }
 
     [[nodiscard]] const VideoEncoderStatistics &statistics() const {
         return statistics_;
@@ -90,6 +97,8 @@ private:
     VideoEncoderStatistics statistics_;
 
     void init_encoder(const std::string &output_path);
+
+    void cleanup() noexcept;
 
     void embed_data_in_frame(const std::vector<std::byte> &data) const;
 

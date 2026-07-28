@@ -12,7 +12,7 @@ an efficient, general-purpose archive or backup tool.
 
 - Tested on Windows 10/11
 - Release configuration builds successfully
-- **214/214 automated tests passing**
+- **229/229 automated tests passing**
 - Successful encode/decode roundtrip with SHA-256 verification
 - Both GUI and CLI applications are available
 
@@ -30,6 +30,47 @@ an efficient, general-purpose archive or backup tool.
 - Machine-readable JSON benchmark output
 - Configurable reliability profiles
 - Encode preflight estimation and target-disk safety checks
+- Separate Resilient / Platform and Fast Local encoding modes
+
+## Encoding Modes
+
+VidStoreX has two explicitly different storage modes. Decode does not require
+a mode selection: the first decoded frame is inspected for the versioned Fast
+Local magic, and videos without it continue through the legacy resilient
+decoder.
+
+| Mode | Advantages | Trade-offs | Intended use |
+|---|---|---|---|
+| Resilient / Platform | Existing 8x8-block signal embedding, selectable FEC repair data, more tolerant of transcoding damage | Much larger output and more frames | Experiments involving transfers or platform re-encoding |
+| Fast Local | Roughly one payload byte per lossless `GRAY8` pixel, far fewer frames, streaming encode/decode, SHA-256 verification | No FEC and no protection from lossy conversion | Lossless local storage in FFV1/Matroska |
+
+Fast Local requires an `.mkv` output and uses FFV1 with `GRAY8` at the
+project's 3840x2160/30 fps settings. It must not be renamed to `.mp4`.
+Uploading a Fast Local video to YouTube or another service, transcoding it to
+H.264/H.265, resizing it, or otherwise applying a lossy pixel conversion may
+destroy the stored data.
+
+### Fast Local format version 1
+
+The first frame begins with an explicitly serialized 128-byte file header.
+It contains the `VSXFAST1` magic, format/header versions, mode and encryption
+flags, geometry, frame rate, original size, total frames, stored/plain frame
+capacities, a 16-byte encryption salt/file ID, the original SHA-256 digest,
+and a header checksum. Every frame has a 32-byte header containing its index,
+total count, stored and plain lengths, flags, payload checksum, and header
+checksum. Integer fields use a fixed little-endian representation; C/C++
+structure memory and padding are never written directly.
+
+At 3840x2160, a raw frame has 8,294,400 bytes. Reserving the fixed header
+region leaves 8,294,240 stored bytes per frame. Encryption reuses the existing
+XChaCha20-Poly1305/Argon2id implementation and its 20-byte per-record
+overhead, leaving 8,294,220 original bytes per encrypted frame.
+
+The encoder makes a streaming SHA-256 pass, then reads and encodes one frame
+payload at a time. The decoder validates headers, ordering, CRCs, lengths,
+decryption authentication, total size, and SHA-256 while writing to a unique
+same-directory partial file. Only a completely verified output is atomically
+committed.
 
 ## Improvements Introduced in VidStoreX
 
@@ -166,6 +207,34 @@ Output size varies with the input data and how effectively FFV1 can compress
 the generated frames. These results describe this test case and should not be
 treated as universal performance guarantees.
 
+### Resilient 5% versus Fast Local
+
+These measurements were produced by the Windows Release build on the same
+machine on 2026-07-28. Each row includes a complete encode/decode and a
+matching SHA-256. Highly compressible zero-filled inputs can produce video
+smaller than the source; random data is the more representative worst case
+for local archival density.
+
+| Input | Mode | Frames | Output bytes | Expansion | Encode | Decode |
+|---|---|---:|---:|---:|---:|---:|
+| 1 MiB compressible | Resilient 5% | 83 | 96,648,600 | 92.171x | 0.992 s | 0.777 s |
+| 1 MiB compressible | Fast Local | 1 | 5,271 | 0.005x | 0.081 s | 0.044 s |
+| 1 MiB random | Resilient 5% | 83 | 154,975,108 | 147.796x | 1.071 s | 0.836 s |
+| 1 MiB random | Fast Local | 1 | 1,130,985 | 1.079x | 0.084 s | 0.051 s |
+| 10 MiB compressible | Resilient 5% | 828 | 967,243,052 | 92.243x | 9.429 s | 8.146 s |
+| 10 MiB compressible | Fast Local | 2 | 9,820 | 0.001x | 0.313 s | 0.262 s |
+| 10 MiB random | Resilient 5% | 828 | 1,549,991,631 | 147.819x | 10.588 s | 9.017 s |
+| 10 MiB random | Fast Local | 2 | 11,210,756 | 1.069x | 0.347 s | 0.305 s |
+| Office Tool Plus.rar (68,185,385 B) | Resilient 5% | 5,379 | 10,076,545,011 | 147.782x | 69.926 s | 62.608 s |
+| Office Tool Plus.rar (68,185,385 B) | Fast Local | 9 | 72,528,938 | 1.064x | 1.877 s | 1.756 s |
+
+For the random 10 MiB case, Fast Local used 99.76% fewer frames, reduced the
+output by 99.28%, encoded about 30.5x faster, and decoded about 29.5x faster.
+For the Office archive it used 99.83% fewer frames, reduced output by 99.28%,
+encoded about 37.3x faster, and decoded about 35.7x faster. Encryption creates
+high-entropy payloads, so encrypted output should be expected to behave more
+like random data than the compressible rows.
+
 ## Performance Report Example
 
 Every successful encode or decode prints a stage-level report. The following
@@ -272,6 +341,12 @@ margin, probe frame count/duration, and estimation method. Details are
 collapsible so the existing scrollable controls and decode workflow remain
 easy to reach.
 
+The encode section also exposes **Resilient / Platform** and **Fast Local**.
+Selecting Fast Local disables reliability and repair controls, shows the
+lossy-re-encoding warning, includes the mode in the asynchronous estimate
+fingerprint, and reports header/frame-capacity fields in preflight. Returning
+to Resilient re-enables the existing Local/Balanced/Durable/Custom controls.
+
 A known insufficient-disk result disables Encode by default and exposes the
 explicit **Proceed despite insufficient disk space** option. The option
 requires confirmation, is reset by relevant setting changes, and is passed
@@ -300,6 +375,9 @@ by the current implementation:
 
 ```powershell
 build\Release\media_storage.exe encode input.rar output.mkv
+build\Release\media_storage.exe encode input.rar output.mkv --mode fast-local
+build\Release\media_storage.exe encode input.rar output.mkv --mode fast-local --benchmark-json fast-report.json
+build\Release\media_storage.exe encode input.rar output.mkv --mode resilient --repair-percent 5
 build\Release\media_storage.exe encode input.rar output.mkv --reliability-profile balanced
 build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 7.5
 build\Release\media_storage.exe decode output.mkv restored.rar
@@ -310,6 +388,12 @@ build\Release\media_storage.exe encode input.rar output.mkv --estimate-only --be
 build\Release\media_storage.exe encode input.rar output.mkv --allow-low-disk
 build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 5 --allow-low-disk
 ```
+
+The default for a zero-initialized API option or omitted CLI `--mode` is
+`resilient`. Fast Local rejects non-`.mkv` outputs. Supplying
+`--repair-percent` or `--reliability-profile` together with
+`--mode fast-local` is an error rather than a silently ignored option.
+Decode detects the format automatically and rejects `--mode`.
 
 Use `--no-probe` when only deterministic packet/frame counts are wanted.
 This intentionally leaves output-size and required-space values unavailable
@@ -341,13 +425,16 @@ Avoid exposing sensitive passwords in shared terminal history or logs.
 explicit availability flags for output estimates and disk values. A caller
 can pass that estimate to `ms_encode`; the implementation rejects unsupported
 structure versions, stale input metadata, and newly insufficient disk.
-Zero-initialized options retain the default 5% Local reliability behavior.
+Zero-initialized options retain Resilient mode and the default 5% Local
+reliability behavior.
 
-The API reports version `1.2.0`. The additions to `ms_encode_options_t`,
-`ms_encoding_estimate_t`, and `ms_result_t` change their binary layouts, so
-applications built against an older header must be recompiled. The encoded
-file and packet formats are unchanged, and existing videos remain decodable.
-The shared-library `SOVERSION` is therefore `2`.
+The API reports version `1.3.0`. `ms_encoding_mode_t` and Fast Local layout
+fields were appended to `ms_encode_options_t`, `ms_encoding_estimate_t`, and
+`ms_result_t`; `MS_ENCODING_ESTIMATE_VERSION` is now 2. These changes alter
+binary layouts, so applications built against an older header must be
+recompiled. The legacy packet format is unchanged, existing videos remain
+decodable, and zero initialization selects the old encode path. The
+shared-library `SOVERSION` is therefore `3`.
 
 ## Project Structure
 
@@ -362,7 +449,7 @@ VidStoreX/
 
 ## Testing
 
-The current Windows Release build passes **214/214 tests**:
+The current Windows Release build passes **229/229 tests**:
 
 ```powershell
 ctest --test-dir build -C Release --output-on-failure
@@ -388,10 +475,23 @@ Coverage includes:
 - GUI preflight generation acceptance, fingerprint staleness, state
   transitions, encode eligibility, low-disk override reset, warning states,
   and shutdown-result rejection
+- Fast Local endian-safe header serialization, checksums, boundary frame
+  counts, padding, real FFV1 `GRAY8` roundtrips for empty/1-byte/text,
+  compressible/random 1 MiB and 10 MiB inputs, encryption, wrong-password
+  safety, corruption/truncation, automatic detection, preflight, JSON, CLI,
+  and mode-fingerprint behavior
 
 ## Known Limitations
 
-- Video output can still be substantially larger than the source file.
+- Fast Local is not resilient to lossy transcoding, resizing, chroma/pixel
+  conversion, or social-platform processing.
+- Fast Local currently requires FFV1, `GRAY8`, Matroska `.mkv`, 3840x2160,
+  and 30 fps.
+- Fast Local makes two sequential input passes (one for SHA-256 and one for
+  encoding) while keeping only frame-sized buffers in memory.
+- Random or encrypted Fast Local output is typically around 1.06-1.08x in
+  the measured cases; tiny files still pay container/frame overhead.
+- Video output in Resilient mode can still be substantially larger than the source file.
 - FFmpeg encoding and decoding are the main performance bottlenecks.
 - Output size depends on the input content and FFV1 compressibility.
 - A bounded 95% Student-t interval is not a guarantee and can be narrower than
@@ -407,8 +507,6 @@ Coverage includes:
 
 ## Roadmap
 
-- Increase data density per frame
-- Add a dedicated Fast Local Mode
 - Develop balanced and platform-resistant encoding modes
 - Add pause and resume support
 - Support streaming decode with lower memory requirements

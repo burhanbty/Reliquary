@@ -47,7 +47,12 @@ std::size_t max_packet_bytes_per_frame() {
 VideoEncoder::VideoEncoder(const std::string &output_path,
                            PerformanceProfiler *profiler)
     : profiler_(profiler) {
-    init_encoder(output_path);
+    try {
+        init_encoder(output_path);
+    } catch (...) {
+        cleanup();
+        throw;
+    }
 }
 
 VideoEncoder::~VideoEncoder() {
@@ -55,12 +60,17 @@ VideoEncoder::~VideoEncoder() {
         try { finalize(); } catch (...) {
         }
     }
+    cleanup();
+}
+
+void VideoEncoder::cleanup() noexcept {
     if (av_packet) av_packet_free(&av_packet);
     if (frame) av_frame_free(&frame);
     if (codec_ctx) avcodec_free_context(&codec_ctx);
     if (format_ctx) {
         if (format_ctx->pb) avio_closep(&format_ctx->pb);
         avformat_free_context(format_ctx);
+        format_ctx = nullptr;
     }
 }
 
@@ -311,6 +321,34 @@ void VideoEncoder::write_encoded_packet() {
     if (ret < 0) {
         throw std::runtime_error("Error writing frame");
     }
+}
+
+void VideoEncoder::encode_gray8_frame(
+    const std::span<const std::byte> pixels) {
+    if (finalized) {
+        throw std::runtime_error("Encoder already finalized");
+    }
+    if (!frame_data_buffer.empty()) {
+        throw std::runtime_error(
+            "cannot mix resilient packets and raw Fast Local frames");
+    }
+    if (pixels.size() != gray8_frame_bytes()) {
+        throw std::invalid_argument("invalid GRAY8 frame byte count");
+    }
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::PacketToFrame);
+        if (av_frame_make_writable(frame) < 0) {
+            throw std::runtime_error("Frame not writable");
+        }
+        const auto *source =
+            reinterpret_cast<const uint8_t *>(pixels.data());
+        for (int y = 0; y < FRAME_HEIGHT; ++y) {
+            std::memcpy(frame->data[0] + y * frame->linesize[0],
+                        source + static_cast<std::size_t>(y) * FRAME_WIDTH,
+                        FRAME_WIDTH);
+        }
+    }
+    encode_frame();
 }
 
 void VideoEncoder::flush_encoder() {

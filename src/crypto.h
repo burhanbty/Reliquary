@@ -45,6 +45,13 @@ std::vector<std::byte> decrypt_chunk(
     std::span<const std::byte, 16> file_id,
     uint32_t chunk_index);
 
+std::vector<std::byte> decrypt_chunk_up_to(
+    std::span<const std::byte> chunk_from_decoder,
+    std::span<const std::byte, CRYPTO_KEY_BYTES> key,
+    std::span<const std::byte, 16> file_id,
+    uint32_t chunk_index,
+    std::size_t maximum_plain_size);
+
 void decrypt_chunk_into(std::span<std::byte> out,
                         std::span<const std::byte> chunk_from_decoder,
                         std::span<const std::byte, CRYPTO_KEY_BYTES> key,

@@ -39,6 +39,7 @@ struct GuiPreflightFingerprint {
     int reliability_profile = 0;
     double repair_ratio = 0.0;
     bool encrypted = false;
+    int encoding_mode = 0;
 
     bool operator==(const GuiPreflightFingerprint &) const = default;
 };

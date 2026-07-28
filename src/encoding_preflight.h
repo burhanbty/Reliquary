@@ -6,6 +6,7 @@
 #pragma once
 
 #include "encoder.h"
+#include "encoding_mode.h"
 #include "encoding_reliability.h"
 
 #include <cstddef>
@@ -16,6 +17,7 @@
 #include <string>
 
 struct EncodingPreflightEstimate {
+    EncodingMode mode = EncodingMode::Resilient;
     uint64_t input_size_bytes = 0;
     int64_t input_last_write_time_ticks = 0;
     uint64_t input_path_fingerprint = 0;
@@ -27,6 +29,10 @@ struct EncodingPreflightEstimate {
     uint64_t total_packet_count = 0;
     uint64_t estimated_frame_count = 0;
     double estimated_video_duration_seconds = 0.0;
+    uint64_t header_bytes = 0;
+    uint64_t frame_payload_capacity = 0;
+    uint64_t payload_bytes = 0;
+    uint64_t padding_bytes = 0;
 
     std::optional<uint64_t> estimated_output_bytes;
     std::optional<uint64_t> estimated_output_min_bytes;
@@ -59,6 +65,7 @@ struct EncodingPreflightRequest {
     EncodingReliabilityOptions reliability;
     bool enable_probe = true;
     uint64_t maximum_probe_frames = 90;
+    EncodingMode mode = EncodingMode::Resilient;
 };
 
 struct EncodingStartValidation {

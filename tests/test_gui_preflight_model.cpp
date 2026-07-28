@@ -95,6 +95,18 @@ TEST(GuiPreflightModel, ReliabilityChangeMakesEstimateStale) {
     EXPECT_FALSE(model.isCurrent(value));
 }
 
+TEST(GuiPreflightModel, EncodingModeChangeMakesEstimateStale) {
+    GuiPreflightModel model;
+    auto value = fingerprint();
+    const uint64_t generation = *model.request(value);
+    ASSERT_TRUE(model.accept(
+        generation, value, ready_snapshot()));
+    value.encoding_mode = 1;
+    EXPECT_FALSE(model.isCurrent(value));
+    EXPECT_EQ(model.eligibility(value),
+              GuiEncodeEligibility::RefreshRequired);
+}
+
 TEST(GuiPreflightModel, ReadyEstimateAllowsEncode) {
     GuiPreflightModel model;
     const auto value = fingerprint();

@@ -29,16 +29,27 @@
 VideoDecoder::VideoDecoder(const std::string &input_path,
                            PerformanceProfiler *profiler)
     : profiler_(profiler) {
-    init_decoder(input_path);
+    try {
+        init_decoder(input_path);
+    } catch (...) {
+        cleanup();
+        throw;
+    }
 }
 
 VideoDecoder::~VideoDecoder() {
+    cleanup();
+}
+
+void VideoDecoder::cleanup() noexcept {
     if (sws_ctx_) sws_freeContext(sws_ctx_);
     if (av_packet_) av_packet_free(&av_packet_);
     if (gray_frame_) av_frame_free(&gray_frame_);
     if (frame_) av_frame_free(&frame_);
     if (codec_ctx_) avcodec_free_context(&codec_ctx_);
     if (format_ctx_) avformat_close_input(&format_ctx_);
+    sws_ctx_ = nullptr;
+    video_stream_index_ = -1;
 }
 
 void VideoDecoder::init_decoder(const std::string &input_path) {
@@ -106,6 +117,11 @@ void VideoDecoder::init_decoder(const std::string &input_path) {
     is_gray8_ = (codec_ctx_->pix_fmt == AV_PIX_FMT_GRAY8);
 
     if (!is_gray8_) {
+        if (codec_ctx_->pix_fmt == AV_PIX_FMT_NONE ||
+            codec_ctx_->width <= 0 || codec_ctx_->height <= 0) {
+            throw std::runtime_error(
+                "Video stream has incomplete pixel format metadata");
+        }
         gray_frame_ = av_frame_alloc();
         if (!gray_frame_) {
             throw std::runtime_error("Failed to allocate gray frame");
@@ -319,6 +335,84 @@ void VideoDecoder::prepare_frame_for_extraction() {
         }
     }
     ++frame_index_;
+}
+
+void VideoDecoder::copy_current_gray8_frame(
+    std::vector<std::byte> &pixels) const {
+    const uint8_t *source = is_gray8_
+        ? frame_->data[0] : gray_frame_->data[0];
+    const int stride = is_gray8_
+        ? frame_->linesize[0] : gray_frame_->linesize[0];
+    pixels.resize(
+        static_cast<std::size_t>(codec_ctx_->width) * codec_ctx_->height);
+    for (int y = 0; y < codec_ctx_->height; ++y) {
+        std::memcpy(
+            pixels.data() + static_cast<std::size_t>(y) * codec_ctx_->width,
+            source + y * stride,
+            static_cast<std::size_t>(codec_ctx_->width));
+    }
+}
+
+bool VideoDecoder::decode_next_gray8_frame(
+    std::vector<std::byte> &pixels) {
+    if (eof_) return false;
+    while (true) {
+        int receive_result = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+            receive_result = avcodec_receive_frame(codec_ctx_, frame_);
+        }
+        if (receive_result == 0) {
+            prepare_frame_for_extraction();
+            copy_current_gray8_frame(pixels);
+            return true;
+        }
+        if (receive_result != AVERROR(EAGAIN) &&
+            receive_result != AVERROR_EOF) {
+            throw std::runtime_error("Error receiving frame");
+        }
+
+        if (raw_drain_sent_) {
+            eof_ = true;
+            return false;
+        }
+
+        int read_result = 0;
+        do {
+            {
+                ScopedTimer timer(
+                    profiler_, PerformanceStage::VideoReadDemux);
+                read_result = av_read_frame(format_ctx_, av_packet_);
+            }
+            if (read_result < 0) {
+                ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+                const int send_result =
+                    avcodec_send_packet(codec_ctx_, nullptr);
+                raw_drain_sent_ = true;
+                if (send_result < 0 && send_result != AVERROR_EOF) {
+                    throw std::runtime_error("Error draining decoder");
+                }
+                break;
+            }
+            if (av_packet_->stream_index != video_stream_index_) {
+                av_packet_unref(av_packet_);
+            }
+        } while (read_result >= 0 &&
+                 av_packet_->stream_index != video_stream_index_);
+
+        if (read_result >= 0) {
+            int send_result = 0;
+            {
+                ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+                send_result =
+                    avcodec_send_packet(codec_ctx_, av_packet_);
+            }
+            av_packet_unref(av_packet_);
+            if (send_result < 0 && send_result != AVERROR(EAGAIN)) {
+                throw std::runtime_error("Error sending video packet");
+            }
+        }
+    }
 }
 
 std::vector<std::vector<std::byte> > VideoDecoder::accumulate_frame_and_extract_packets() {

@@ -51,6 +51,8 @@ public:
 
     std::vector<std::vector<std::byte> > decode_all_frames();
 
+    bool decode_next_gray8_frame(std::vector<std::byte> &pixels);
+
     [[nodiscard]] int64_t frames_read() const { return frame_index_; }
 
     [[nodiscard]] int64_t total_frames() const;
@@ -68,12 +70,15 @@ private:
     int video_stream_index_ = -1;
     int64_t frame_index_ = 0;
     bool eof_ = false;
+    bool raw_drain_sent_ = false;
     bool is_gray8_ = false;
     FrameLayout layout_{};
     std::vector<std::byte> extract_buffer_{};
     PerformanceProfiler *profiler_ = nullptr;
 
     void init_decoder(const std::string &input_path);
+
+    void cleanup() noexcept;
 
     [[nodiscard]] std::vector<std::byte> extract_data_from_frame() const;
 
@@ -85,6 +90,8 @@ private:
                                             std::vector<std::vector<std::byte> > &out_packets);
 
     void prepare_frame_for_extraction();
+
+    void copy_current_gray8_frame(std::vector<std::byte> &pixels) const;
 
     [[nodiscard]] std::vector<std::vector<std::byte> > accumulate_frame_and_extract_packets();
 

@@ -42,9 +42,12 @@
 #include "crypto.h"
 #include "decoder.h"
 #include "encoding_preflight.h"
+#include "encoding_mode.h"
 #include "encoding_reliability.h"
 #include "encoder.h"
+#include "fast_local_codec.h"
 #include "performance_profiler.h"
+#include "safe_output.h"
 #include "stream.h"
 #include "video_decoder.h"
 #include "video_encoder.h"
@@ -60,72 +63,6 @@ static HashAlgorithm to_internal_hash(ms_hash_algorithm_t algo);
 
 namespace {
     constexpr double bytes_per_mib = 1024.0 * 1024.0;
-
-    class SafeEncodeOutput {
-    public:
-        explicit SafeEncodeOutput(
-            const std::filesystem::path &target)
-            : target_(target) {
-            static std::atomic<uint64_t> sequence{0};
-            std::filesystem::path parent = target_.parent_path();
-            if (parent.empty()) parent = std::filesystem::current_path();
-            const std::string extension = target_.extension().string();
-            const std::string stem = target_.stem().string();
-            std::random_device random;
-            for (unsigned attempt = 0; attempt < 32; ++attempt) {
-                partial_ = parent /
-                    ("." + stem + ".vidstorex-part-" +
-                     std::to_string(random()) + "-" +
-                     std::to_string(sequence.fetch_add(1)) +
-                     extension);
-                std::error_code error;
-                if (!std::filesystem::exists(partial_, error) &&
-                    !error) {
-                    return;
-                }
-            }
-            throw std::runtime_error(
-                "could not allocate a unique partial output path");
-        }
-
-        ~SafeEncodeOutput() {
-            if (!committed_) {
-                std::error_code ignored;
-                std::filesystem::remove(partial_, ignored);
-            }
-        }
-
-        SafeEncodeOutput(const SafeEncodeOutput &) = delete;
-        SafeEncodeOutput &operator=(const SafeEncodeOutput &) = delete;
-
-        [[nodiscard]] const std::filesystem::path &partial_path() const {
-            return partial_;
-        }
-
-        void commit() {
-#if defined(_WIN32)
-            if (!MoveFileExW(
-                    partial_.c_str(), target_.c_str(),
-                    MOVEFILE_REPLACE_EXISTING |
-                        MOVEFILE_WRITE_THROUGH)) {
-                throw std::filesystem::filesystem_error(
-                    "could not replace output file",
-                    partial_, target_,
-                    std::error_code(
-                        static_cast<int>(GetLastError()),
-                        std::system_category()));
-            }
-#else
-            std::filesystem::rename(partial_, target_);
-#endif
-            committed_ = true;
-        }
-
-    private:
-        std::filesystem::path target_;
-        std::filesystem::path partial_;
-        bool committed_ = false;
-    };
 
     constexpr const char *stage_names[MS_PERF_STAGE_COUNT] = {
         "Input file read/open",
@@ -167,6 +104,23 @@ namespace {
             case MS_OPERATION_STREAM_DECODE: return "stream_decode";
             default: return "unknown";
         }
+    }
+
+    EncodingMode to_internal_mode(const ms_encoding_mode_t mode) {
+        switch (mode) {
+            case MS_ENCODING_MODE_RESILIENT:
+                return EncodingMode::Resilient;
+            case MS_ENCODING_MODE_FAST_LOCAL:
+                return EncodingMode::FastLocal;
+            default:
+                throw std::invalid_argument("invalid encoding mode");
+        }
+    }
+
+    ms_encoding_mode_t to_public_mode(const EncodingMode mode) {
+        return mode == EncodingMode::FastLocal
+            ? MS_ENCODING_MODE_FAST_LOCAL
+            : MS_ENCODING_MODE_RESILIENT;
     }
 
     bool stage_applies(const ms_operation_t operation, const std::size_t index) {
@@ -391,6 +345,13 @@ namespace {
             source.probe_duration_seconds;
         destination.preflight_duration_seconds =
             source.preflight_duration_seconds;
+        destination.encoding_mode =
+            to_public_mode(source.mode);
+        destination.header_bytes = source.header_bytes;
+        destination.frame_payload_capacity =
+            source.frame_payload_capacity;
+        destination.payload_bytes = source.payload_bytes;
+        destination.padding_bytes = source.padding_bytes;
         copy_text(destination.warning, source.warning);
         copy_text(destination.error, source.error);
     }
@@ -475,6 +436,13 @@ namespace {
             source.probe_duration_seconds;
         destination.preflight_duration_seconds =
             source.preflight_duration_seconds;
+        destination.mode =
+            to_internal_mode(source.encoding_mode);
+        destination.header_bytes = source.header_bytes;
+        destination.frame_payload_capacity =
+            source.frame_payload_capacity;
+        destination.payload_bytes = source.payload_bytes;
+        destination.padding_bytes = source.padding_bytes;
         destination.warning = bounded_text(source.warning);
         destination.error = bounded_text(source.error);
         return destination;
@@ -490,7 +458,7 @@ namespace {
                           options.password),
                       options.password_len)
                 : std::span<const std::byte>{};
-        return {
+        EncodingPreflightRequest request{
             std::filesystem::path(options.input_path),
             std::filesystem::path(options.output_path),
             options.encrypt != 0,
@@ -502,6 +470,8 @@ namespace {
             enable_probe,
             90,
         };
+        request.mode = to_internal_mode(options.encoding_mode);
+        return request;
     }
 }
 
@@ -558,6 +528,12 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
 
     const std::string input_path(options->input_path);
     const std::string output_path(options->output_path);
+    EncodingMode mode;
+    try {
+        mode = to_internal_mode(options->encoding_mode);
+    } catch (...) {
+        return MS_ERR_INVALID_ARGS;
+    }
     EncodingReliabilityOptions reliability;
     try {
         reliability = reliability_from_encode_options(
@@ -619,6 +595,43 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
 
     PerformanceProfiler profiler;
 
+    if (mode == EncodingMode::FastLocal) {
+        try {
+            const std::span<const std::byte> password =
+                options->password && options->password_len > 0
+                    ? std::span<const std::byte>(
+                          reinterpret_cast<const std::byte *>(
+                              options->password),
+                          options->password_len)
+                    : std::span<const std::byte>{};
+            const auto statistics = encode_fast_local(
+                input_path, output_path, options->encrypt != 0,
+                password, &profiler, options->progress,
+                options->progress_user);
+            fill_result(
+                result, profiler, MS_OPERATION_ENCODE,
+                statistics.input_bytes, statistics.output_bytes,
+                statistics.total_frames, 0, 0, 0,
+                statistics.total_frames, 0.0);
+            if (result) {
+                result->encoding_mode = MS_ENCODING_MODE_FAST_LOCAL;
+                result->frame_payload_capacity =
+                    statistics.frame_payload_capacity;
+                result->header_bytes = statistics.header_bytes;
+                result->payload_bytes = statistics.payload_bytes;
+                result->padding_bytes = statistics.padding_bytes;
+            }
+            fill_estimate_validation(
+                result, *preflight, statistics.output_bytes,
+                preflight_duration_seconds);
+            return MS_OK;
+        } catch (const std::invalid_argument &) {
+            return MS_ERR_INVALID_ARGS;
+        } catch (...) {
+            return MS_ERR_ENCODE_FAILED;
+        }
+    }
+
     const bool encrypt = options->encrypt != 0;
     const std::size_t chunk_size = encrypt ? CHUNK_SIZE_PLAIN_MAX_ENCRYPTED : 0;
     uint64_t input_size = 0;
@@ -658,7 +671,7 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
 
     uint64_t output_size = 0;
     try {
-        SafeEncodeOutput safe_output(output_path);
+        SafeOutputFile safe_output(output_path);
         {
             VideoEncoder video_encoder(
                 safe_output.partial_path().string(), &profiler);
@@ -777,7 +790,10 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
                 input_size, output_size, num_chunks, total_packets,
                 source_packets, repair_packets,
                 static_cast<uint64_t>(total_frames),
-                reliability.repair_ratio);
+                 reliability.repair_ratio);
+    if (result) {
+        result->encoding_mode = MS_ENCODING_MODE_RESILIENT;
+    }
     fill_estimate_validation(
         result, *preflight, output_size,
         preflight_duration_seconds);
@@ -802,6 +818,51 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
     {
         ScopedTimer timer(&profiler, PerformanceStage::VideoReadDemux);
         video_size = std::filesystem::file_size(input_path);
+    }
+
+    if (fast_local_has_magic(input_path)) {
+        try {
+            const std::span<const std::byte> password =
+                options->password && options->password_len > 0
+                    ? std::span<const std::byte>(
+                          reinterpret_cast<const std::byte *>(
+                              options->password),
+                          options->password_len)
+                    : std::span<const std::byte>{};
+            const auto statistics = decode_fast_local(
+                input_path, output_path, password, &profiler,
+                options->progress, options->progress_user);
+            fill_result(
+                result, profiler, MS_OPERATION_DECODE,
+                statistics.input_bytes, statistics.output_bytes,
+                statistics.total_frames, 0, 0, 0,
+                statistics.total_frames);
+            if (result) {
+                result->encoding_mode = MS_ENCODING_MODE_FAST_LOCAL;
+                result->frame_payload_capacity =
+                    statistics.frame_payload_capacity;
+                result->header_bytes = statistics.header_bytes;
+                result->payload_bytes = statistics.payload_bytes;
+                result->padding_bytes = statistics.padding_bytes;
+            }
+            return MS_OK;
+        } catch (const FastLocalError &error) {
+            switch (error.code()) {
+                case FastLocalErrorCode::Crypto:
+                    return MS_ERR_CRYPTO;
+                case FastLocalErrorCode::Incomplete:
+                    return MS_ERR_INCOMPLETE;
+                case FastLocalErrorCode::UnsupportedVersion:
+                    return MS_ERR_UNSUPPORTED_FORMAT;
+                case FastLocalErrorCode::Corrupt:
+                case FastLocalErrorCode::InvalidFormat:
+                    return MS_ERR_CORRUPT;
+                default:
+                    return MS_ERR_IO;
+            }
+        } catch (...) {
+            return MS_ERR_DECODE_FAILED;
+        }
     }
 
     Decoder decoder;
@@ -916,6 +977,9 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
                 video_size, output_size, expected_chunks, total_extracted,
                 source_packets, repair_packets,
                 static_cast<uint64_t>(total_frames_read));
+    if (result) {
+        result->encoding_mode = MS_ENCODING_MODE_RESILIENT;
+    }
 
     return MS_OK;
 }
@@ -1251,12 +1315,14 @@ const char *ms_status_string(const ms_status_t status) {
         case MS_ERR_INCOMPLETE:  return "incomplete data";
         case MS_ERR_INSUFFICIENT_DISK: return "insufficient disk space";
         case MS_ERR_PREFLIGHT_STALE: return "preflight estimate is stale";
+        case MS_ERR_UNSUPPORTED_FORMAT: return "unsupported video format";
+        case MS_ERR_CORRUPT: return "corrupted Fast Local data";
         default:                 return "unknown error";
     }
 }
 
 const char *ms_version(void) {
-    return "1.2.0";
+    return "1.3.0";
 }
 
 size_t ms_format_performance_report(const ms_result_t *result,
@@ -1267,6 +1333,10 @@ size_t ms_format_performance_report(const ms_result_t *result,
     std::ostringstream out;
     out << "\n=== Performance report (" << operation_name(result->operation)
         << ") ===\n"
+        << "Encoding mode: "
+        << (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
+                ? "Fast Local" : "Resilient / Platform")
+        << "\n"
         << "Input / output: " << result->input_size << " B -> "
         << result->output_size << " B";
     if (result->input_size > 0) {
@@ -1274,8 +1344,9 @@ size_t ms_format_performance_report(const ms_result_t *result,
             << result->output_input_ratio << "x)";
     }
     out << "\n";
-    if (result->operation == MS_OPERATION_ENCODE ||
-        result->operation == MS_OPERATION_STREAM_ENCODE) {
+    if ((result->operation == MS_OPERATION_ENCODE ||
+         result->operation == MS_OPERATION_STREAM_ENCODE) &&
+        result->encoding_mode != MS_ENCODING_MODE_FAST_LOCAL) {
         out << "Reliability:\n"
             << std::fixed << std::setprecision(2)
             << "  Repair percentage: "
@@ -1297,6 +1368,17 @@ size_t ms_format_performance_report(const ms_result_t *result,
         << std::fixed << std::setprecision(3)
         << "Rates: " << result->average_frames_per_second << " frames/s, "
         << result->throughput_mib_per_second << " MiB/s\n";
+    if (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL) {
+        out << "Fast Local layout:\n"
+            << "  Frame payload capacity: "
+            << result->frame_payload_capacity << " B\n"
+            << "  Header bytes:           "
+            << result->header_bytes << " B\n"
+            << "  Stored payload bytes:   "
+            << result->payload_bytes << " B\n"
+            << "  Raw-frame padding:      "
+            << result->padding_bytes << " B\n";
+    }
     if (result->operation == MS_OPERATION_ENCODE) {
         out << "Estimate validation:\n";
         if (result->estimate_validation_available) {
@@ -1372,11 +1454,16 @@ ms_status_t ms_write_benchmark_json(const ms_result_t *result,
         << "{\n"
         << "  \"schema_version\": 1,\n"
         << "  \"operation\": \"" << operation_name(result->operation) << "\",\n"
+        << "  \"encoding_mode\": \""
+        << (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
+                ? "fast-local" : "resilient")
+        << "\",\n"
         << "  \"input_size_bytes\": " << result->input_size << ",\n"
         << "  \"output_size_bytes\": " << result->output_size << ",\n"
         << "  \"output_input_ratio\": " << result->output_input_ratio << ",\n";
-    if (result->operation == MS_OPERATION_ENCODE ||
-        result->operation == MS_OPERATION_STREAM_ENCODE) {
+    if ((result->operation == MS_OPERATION_ENCODE ||
+         result->operation == MS_OPERATION_STREAM_ENCODE) &&
+        result->encoding_mode != MS_ENCODING_MODE_FAST_LOCAL) {
         out << "  \"reliability\": {\n"
             << "    \"repair_percentage\": "
             << result->selected_repair_percentage << ",\n"
@@ -1390,6 +1477,20 @@ ms_status_t ms_write_benchmark_json(const ms_result_t *result,
             << result->repair_source_ratio << ",\n"
             << "    \"total_packet_count\": "
             << result->total_packets << "\n"
+            << "  },\n";
+    }
+    if (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL) {
+        out << "  \"fast_local\": {\n"
+            << "    \"format_version\": "
+            << FAST_LOCAL_FORMAT_VERSION << ",\n"
+            << "    \"frame_payload_capacity\": "
+            << result->frame_payload_capacity << ",\n"
+            << "    \"header_bytes\": "
+            << result->header_bytes << ",\n"
+            << "    \"payload_bytes\": "
+            << result->payload_bytes << ",\n"
+            << "    \"padding_bytes\": "
+            << result->padding_bytes << "\n"
             << "  },\n";
     }
     if (result->operation == MS_OPERATION_ENCODE) {
@@ -1527,6 +1628,10 @@ ms_status_t ms_write_encoding_estimate_json(
     out << std::fixed << std::setprecision(9)
         << "{\n"
         << "  \"schema_version\": 1,\n"
+        << "  \"encoding_mode\": \""
+        << (estimate->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
+                ? "fast-local" : "resilient")
+        << "\",\n"
         << "  \"input_size_bytes\": "
         << estimate->input_size_bytes << ",\n"
         << "  \"repair_percentage\": "
@@ -1544,6 +1649,14 @@ ms_status_t ms_write_encoding_estimate_json(
         << estimate->estimated_frame_count << ",\n"
         << "  \"estimated_video_duration_seconds\": "
         << estimate->estimated_video_duration_seconds << ",\n"
+        << "  \"header_bytes\": "
+        << estimate->header_bytes << ",\n"
+        << "  \"frame_payload_capacity\": "
+        << estimate->frame_payload_capacity << ",\n"
+        << "  \"payload_bytes\": "
+        << estimate->payload_bytes << ",\n"
+        << "  \"padding_bytes\": "
+        << estimate->padding_bytes << ",\n"
         << "  \"estimated_output_bytes\": ";
     optional_uint(
         out, estimate->output_size_estimate_available != 0,

@@ -8,6 +8,8 @@
 #include "chunker.h"
 #include "configuration.h"
 #include "crypto.h"
+#include "fast_local_codec.h"
+#include "fast_local_format.h"
 #include "video_encoder.h"
 
 #include <algorithm>
@@ -18,6 +20,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -237,6 +240,189 @@ namespace {
         bool encoded_entire_output = false;
         std::string method;
     };
+
+    ProbeResult run_fast_local_probe(
+        const EncodingPreflightRequest &request,
+        const uint64_t total_frames) {
+        TemporaryProbeFile temporary(".mkv");
+        const uint64_t exact_frame_limit =
+            std::min<uint64_t>(request.maximum_probe_frames, 12);
+        if (request.encrypted &&
+            total_frames <= exact_frame_limit) {
+            std::array<uint64_t, 3> measured{};
+            for (std::size_t index = 0;
+                 index < measured.size(); ++index) {
+                TemporaryProbeFile encrypted_sample(".mkv");
+                measured[index] = encode_fast_local(
+                    request.input_path, encrypted_sample.path(), true,
+                    request.password, nullptr).output_bytes;
+            }
+            const uint64_t sum = checked_add(
+                checked_add(
+                    measured[0], measured[1],
+                    "encrypted probe size overflow"),
+                measured[2], "encrypted probe size overflow");
+            return {
+                sum / measured.size(),
+                *std::min_element(measured.begin(), measured.end()),
+                *std::max_element(measured.begin(), measured.end()),
+                checked_multiply(
+                    total_frames, measured.size(),
+                    "encrypted probe frame count overflow"),
+                false,
+                "three complete bounded Fast Local encrypted FFV1 "
+                "measurements; observed output range",
+            };
+        }
+        if (total_frames <= exact_frame_limit) {
+            const auto statistics = encode_fast_local(
+                request.input_path, temporary.path(), request.encrypted,
+                request.password, nullptr);
+            return {
+                statistics.output_bytes,
+                statistics.output_bytes,
+                statistics.output_bytes,
+                statistics.total_frames,
+                true,
+                "complete bounded Fast Local FFV1 encode "
+                "(exact for this input)",
+            };
+        }
+
+        const uint64_t plain_capacity =
+            fast_local_plain_capacity(request.encrypted);
+        const std::array<uint64_t, 3> indices{
+            0, (total_frames - 1) / 2, total_frames - 1};
+        const auto file_id = request.encrypted
+            ? make_encoding_file_id()
+            : std::array<std::byte, 16>{};
+        std::array<std::byte, CRYPTO_KEY_BYTES> key{};
+        if (request.encrypted) {
+            key = derive_key(request.password, file_id);
+        }
+        struct KeyCleaner {
+            std::array<std::byte, CRYPTO_KEY_BYTES> &key;
+            bool enabled;
+            ~KeyCleaner() {
+                if (enabled) secure_zero(key);
+            }
+        } key_cleaner{key, request.encrypted};
+
+        FastLocalFileHeader file_header;
+        file_header.flags =
+            request.encrypted ? FastLocalEncrypted : 0;
+        file_header.original_size =
+            std::filesystem::file_size(request.input_path);
+        file_header.total_frames = total_frames;
+        file_header.plain_frame_capacity = plain_capacity;
+        file_header.file_id = file_id;
+        const auto serialized_file =
+            serialize_fast_local_file_header(file_header);
+
+        std::ifstream input(request.input_path, std::ios::binary);
+        if (!input) throw std::runtime_error(
+            "could not open Fast Local probe input");
+        VideoEncoder video(temporary.path().string());
+        std::vector<std::byte> plain(
+            static_cast<std::size_t>(plain_capacity));
+        std::vector<std::byte> frame(
+            FAST_LOCAL_FRAME_BYTES, std::byte{0});
+        for (const uint64_t index : indices) {
+            const uint64_t offset = index * plain_capacity;
+            const uint64_t remaining =
+                file_header.original_size - offset;
+            const std::size_t length = static_cast<std::size_t>(
+                std::min<uint64_t>(remaining, plain_capacity));
+            input.clear();
+            input.seekg(static_cast<std::streamoff>(offset));
+            if (!input) throw std::runtime_error(
+                "Fast Local probe seek failed");
+            input.read(reinterpret_cast<char *>(plain.data()),
+                       static_cast<std::streamsize>(length));
+            if (input.gcount() != static_cast<std::streamsize>(length)) {
+                throw std::runtime_error(
+                    "Fast Local probe read failed");
+            }
+            std::span<const std::byte> stored(plain.data(), length);
+            std::vector<std::byte> encrypted;
+            if (request.encrypted) {
+                encrypted = encrypt_chunk(
+                    stored, key, file_id,
+                    static_cast<uint32_t>(index));
+                stored = encrypted;
+            }
+            FastLocalFrameHeader frame_header;
+            frame_header.flags =
+                request.encrypted ? FastLocalEncrypted : 0;
+            frame_header.frame_index =
+                static_cast<uint32_t>(index);
+            frame_header.total_frames =
+                static_cast<uint32_t>(total_frames);
+            frame_header.payload_length =
+                static_cast<uint32_t>(stored.size());
+            frame_header.plain_length =
+                static_cast<uint32_t>(length);
+            frame_header.payload_checksum = crc32c(stored);
+            const auto serialized_frame =
+                serialize_fast_local_frame_header(frame_header);
+            std::fill(frame.begin(), frame.end(), std::byte{0});
+            if (index == 0) {
+                std::copy(serialized_file.begin(),
+                          serialized_file.end(), frame.begin());
+            }
+            std::copy(serialized_frame.begin(), serialized_frame.end(),
+                      frame.begin() + FAST_LOCAL_FILE_HEADER_SIZE);
+            std::copy(stored.begin(), stored.end(),
+                      frame.begin() + FAST_LOCAL_RESERVED_PREFIX);
+            video.encode_gray8_frame(frame);
+        }
+        video.finalize();
+
+        const uint64_t probe_file_bytes =
+            std::filesystem::file_size(temporary.path());
+        const auto &statistics = video.statistics();
+        if (statistics.encoded_packet_bytes.size() != indices.size()) {
+            throw std::runtime_error(
+                "Fast Local probe produced an unexpected frame count");
+        }
+        const uint64_t compressed_total = std::accumulate(
+            statistics.encoded_packet_bytes.begin(),
+            statistics.encoded_packet_bytes.end(), uint64_t{0});
+        const uint64_t overhead =
+            probe_file_bytes >= compressed_total
+                ? probe_file_bytes - compressed_total : 0;
+        std::vector<long double> samples;
+        for (const uint64_t bytes :
+             statistics.encoded_packet_bytes) {
+            samples.push_back(static_cast<long double>(bytes));
+        }
+        const long double mean = std::accumulate(
+            samples.begin(), samples.end(), 0.0L) / samples.size();
+        long double squared = 0.0L;
+        for (const long double sample : samples) {
+            const long double difference = sample - mean;
+            squared += difference * difference;
+        }
+        const long double deviation =
+            std::sqrt(squared / (samples.size() - 1));
+        const long double half_width =
+            student_t_95(samples.size()) * deviation /
+            std::sqrt(static_cast<long double>(samples.size()));
+        const long double frames =
+            static_cast<long double>(total_frames);
+        return {
+            checked_rounded(overhead + mean * frames, false),
+            checked_rounded(
+                overhead + std::max(0.0L, mean - half_width) * frames,
+                true),
+            checked_rounded(
+                overhead + (mean + half_width) * frames, true),
+            static_cast<uint64_t>(indices.size()),
+            false,
+            "representative start/middle/end Fast Local frames; "
+            "measured Matroska overhead; 95% Student-t interval",
+        };
+    }
 
     ProbeResult run_probe(const EncodingPreflightRequest &request,
                           const EncodingReliabilityEstimate &deterministic) {
@@ -555,6 +741,7 @@ EncodingPreflightEstimate estimate_encoding_preflight(
     const EncodingPreflightRequest &request) {
     const auto started = std::chrono::steady_clock::now();
     EncodingPreflightEstimate estimate;
+    estimate.mode = request.mode;
     estimate.repair_ratio = request.reliability.repair_ratio;
     try {
         estimate.repair_percentage =
@@ -577,22 +764,62 @@ EncodingPreflightEstimate estimate_encoding_preflight(
             metadata.path_fingerprint;
         validate_output_target(
             request.input_path, request.output_path);
-
-        const auto deterministic = estimate_encoding_reliability(
-            estimate.input_size_bytes, request.encrypted,
-            request.reliability,
-            static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
-            FRAME_FPS);
-        estimate.chunk_count = deterministic.chunk_count;
-        estimate.source_packet_count =
-            deterministic.source_packet_count;
-        estimate.repair_packet_count =
-            deterministic.repair_packet_count;
-        estimate.total_packet_count =
-            deterministic.total_packet_count;
-        estimate.estimated_frame_count = deterministic.frame_count;
-        estimate.estimated_video_duration_seconds =
-            deterministic.video_duration_seconds;
+        EncodingReliabilityEstimate deterministic;
+        if (request.mode == EncodingMode::FastLocal) {
+            std::string extension =
+                request.output_path.extension().string();
+            std::transform(
+                extension.begin(), extension.end(), extension.begin(),
+                [](const unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+            if (extension != ".mkv") {
+                throw std::invalid_argument(
+                    "Fast Local output must use the .mkv extension");
+            }
+            estimate.repair_percentage = 0.0;
+            estimate.repair_ratio = 0.0;
+            estimate.estimated_frame_count =
+                fast_local_frame_count(
+                    estimate.input_size_bytes, request.encrypted);
+            estimate.chunk_count = estimate.estimated_frame_count;
+            estimate.estimated_video_duration_seconds =
+                static_cast<double>(estimate.estimated_frame_count) /
+                FRAME_FPS;
+            estimate.header_bytes =
+                FAST_LOCAL_FILE_HEADER_SIZE +
+                estimate.estimated_frame_count *
+                    FAST_LOCAL_FRAME_HEADER_SIZE;
+            estimate.frame_payload_capacity =
+                fast_local_plain_capacity(request.encrypted);
+            estimate.payload_bytes = estimate.input_size_bytes +
+                (request.encrypted
+                     ? estimate.estimated_frame_count *
+                           FAST_LOCAL_CRYPTO_OVERHEAD
+                     : 0);
+            estimate.padding_bytes = fast_local_padding_bytes(
+                estimate.input_size_bytes, request.encrypted);
+            estimate.estimation_method =
+                "deterministic Fast Local frame count";
+            deterministic.frame_count =
+                estimate.estimated_frame_count;
+        } else {
+            deterministic = estimate_encoding_reliability(
+                estimate.input_size_bytes, request.encrypted,
+                request.reliability,
+                static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
+                FRAME_FPS);
+            estimate.chunk_count = deterministic.chunk_count;
+            estimate.source_packet_count =
+                deterministic.source_packet_count;
+            estimate.repair_packet_count =
+                deterministic.repair_packet_count;
+            estimate.total_packet_count =
+                deterministic.total_packet_count;
+            estimate.estimated_frame_count = deterministic.frame_count;
+            estimate.estimated_video_duration_seconds =
+                deterministic.video_duration_seconds;
+        }
 
         const DiskQueryResult disk =
             query_output_disk(request.output_path);
@@ -608,7 +835,11 @@ EncodingPreflightEstimate estimate_encoding_preflight(
 
         if (request.enable_probe) {
             try {
-                const ProbeResult probe = run_probe(request, deterministic);
+                const ProbeResult probe =
+                    request.mode == EncodingMode::FastLocal
+                        ? run_fast_local_probe(
+                              request, estimate.estimated_frame_count)
+                        : run_probe(request, deterministic);
                 estimate.estimated_output_bytes = probe.likely_bytes;
                 estimate.estimated_output_min_bytes =
                     probe.minimum_bytes;
@@ -721,19 +952,32 @@ EncodingStartValidation validate_encoding_preflight_for_start(
             return validation;
         }
 
-        const auto deterministic = estimate_encoding_reliability(
-            current.size, request.encrypted, request.reliability,
-            static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
-            FRAME_FPS);
-        if (deterministic.chunk_count != estimate.chunk_count ||
-            deterministic.source_packet_count !=
-                estimate.source_packet_count ||
-            deterministic.repair_packet_count !=
-                estimate.repair_packet_count ||
-            deterministic.total_packet_count !=
-                estimate.total_packet_count ||
-            deterministic.frame_count !=
-                estimate.estimated_frame_count) {
+        bool deterministic_matches = false;
+        if (request.mode == EncodingMode::FastLocal &&
+            estimate.mode == EncodingMode::FastLocal) {
+            deterministic_matches =
+                fast_local_frame_count(current.size, request.encrypted) ==
+                    estimate.estimated_frame_count &&
+                estimate.frame_payload_capacity ==
+                    fast_local_plain_capacity(request.encrypted);
+        } else if (request.mode == EncodingMode::Resilient &&
+                   estimate.mode == EncodingMode::Resilient) {
+            const auto deterministic = estimate_encoding_reliability(
+                current.size, request.encrypted, request.reliability,
+                static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
+                FRAME_FPS);
+            deterministic_matches =
+                deterministic.chunk_count == estimate.chunk_count &&
+                deterministic.source_packet_count ==
+                    estimate.source_packet_count &&
+                deterministic.repair_packet_count ==
+                    estimate.repair_packet_count &&
+                deterministic.total_packet_count ==
+                    estimate.total_packet_count &&
+                deterministic.frame_count ==
+                    estimate.estimated_frame_count;
+        }
+        if (!deterministic_matches) {
             validation.error =
                 "preflight deterministic counts no longer match the "
                 "current encode configuration";

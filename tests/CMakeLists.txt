@@ -27,6 +27,7 @@ add_executable(media_storage_tests
         test_encoding_reliability.cpp
         test_encoding_preflight.cpp
         test_gui_preflight_model.cpp
+        test_fast_local.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE
@@ -58,6 +59,14 @@ add_test(
         "-DCLI=$<TARGET_FILE:media_storage>"
         "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_preflight_integration"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_preflight.cmake"
+)
+
+add_test(
+        NAME CLI.FastLocalIntegration
+        COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:media_storage>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_fast_local_integration"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_fast_local.cmake"
 )
 
 if (TARGET media_storage_gui)
