@@ -29,6 +29,8 @@
 #include "configuration.h"
 #include "integrity.h"
 
+class PerformanceProfiler;
+
 struct PacketHeader {
     uint32_t magic = 0;
     uint8_t version = 0;
@@ -124,7 +126,9 @@ public:
 
     [[nodiscard]] std::optional<std::vector<std::byte> > assemble_file(uint32_t expected_chunks) const;
 
-    [[nodiscard]] bool write_assembled_file(const std::string &output_path, uint32_t expected_chunks) const;
+    [[nodiscard]] bool write_assembled_file(
+        const std::string &output_path, uint32_t expected_chunks,
+        PerformanceProfiler *profiler = nullptr) const;
 
     void set_decrypt_key(std::span<const std::byte, 32> key);
 

@@ -23,6 +23,8 @@ add_executable(media_storage_tests
         test_stream.cpp
         test_dct.cpp
         test_api.cpp
+        test_performance_profiler.cpp
+        test_encoding_reliability.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE

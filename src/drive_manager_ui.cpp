@@ -15,7 +15,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "drive_manager_ui.h"
+#include "encoding_reliability.h"
 #include "media_storage.h"
+#include "video_encoder.h"
 
 #include <QApplication>
 #include <QMainWindow>
@@ -30,14 +32,18 @@
 #include <QFileInfo>
 #include <QDateTime>
 
+#include <vector>
+
 WorkerThread::WorkerThread(const Operation op, const QString &input, const QString &output,
                            const bool encrypt, const QString &password,
                            const QString &streamUrl, const int bitrate,
                            const int streamWidth, const int streamHeight,
-                           const int streamFps, QObject *parent)
+                           const int streamFps, const double repairRatio,
+                           QObject *parent)
     : QThread(parent), operation(op), inputPath(input), outputPath(output),
       encrypt(encrypt), password(password), streamUrl(streamUrl), bitrate(bitrate),
-      streamWidth(streamWidth), streamHeight(streamHeight), streamFps(streamFps) {
+      streamWidth(streamWidth), streamHeight(streamHeight), streamFps(streamFps),
+      repairRatio(repairRatio) {
 }
 
 static int gui_encode_progress(const uint64_t current, const uint64_t total, void *user) {
@@ -78,6 +84,17 @@ static int gui_stream_decode_progress(const uint64_t current, const uint64_t tot
     return 0;
 }
 
+static void emit_performance_report(WorkerThread *thread,
+                                    const ms_result_t &result) {
+    const size_t required = ms_format_performance_report(
+        &result, nullptr, 0);
+    std::vector<char> report(required);
+    ms_format_performance_report(
+        &result, report.data(), report.size());
+    emit thread->logMessage(
+        QString::fromUtf8(report.data()).trimmed());
+}
+
 void WorkerThread::run() {
     const std::string input = inputPath.toStdString();
     const std::string output = outputPath.toStdString();
@@ -100,6 +117,8 @@ void WorkerThread::run() {
         opts.hash_algorithm = MS_HASH_CRC32;
         opts.progress = gui_encode_progress;
         opts.progress_user = this;
+        opts.repair_ratio = repairRatio;
+        opts.repair_ratio_is_set = 1;
 
         ms_result_t result{};
 
@@ -108,6 +127,7 @@ void WorkerThread::run() {
             emit logMessage(QString("Chunks: %1").arg(result.total_chunks));
             emit logMessage(QString("Generated %1 packets in %2 frames")
                 .arg(result.total_packets).arg(result.total_frames));
+            emit_performance_report(this, result);
             emit progressUpdated(100);
             emit operationCompleted(true, "Encoding completed successfully");
         } else {
@@ -133,6 +153,7 @@ void WorkerThread::run() {
             emit logMessage(QString("Packets extracted: %1").arg(result.total_packets));
             emit logMessage(QString("Chunks decoded: %1").arg(result.total_chunks));
             emit logMessage(QString("Frames: %1").arg(result.total_frames));
+            emit_performance_report(this, result);
             emit progressUpdated(100);
             emit operationCompleted(true, "Decoding completed successfully");
         } else {
@@ -162,6 +183,8 @@ void WorkerThread::run() {
         opts.fps = streamFps;
         opts.progress = gui_stream_encode_progress;
         opts.progress_user = this;
+        opts.repair_ratio = repairRatio;
+        opts.repair_ratio_is_set = 1;
 
         ms_result_t result{};
 
@@ -170,6 +193,7 @@ void WorkerThread::run() {
             emit logMessage(QString("Chunks: %1").arg(result.total_chunks));
             emit logMessage(QString("Streamed %1 packets in %2 frames")
                 .arg(result.total_packets).arg(result.total_frames));
+            emit_performance_report(this, result);
             emit progressUpdated(100);
             emit operationCompleted(true, "Stream encode completed successfully");
         } else {
@@ -197,6 +221,7 @@ void WorkerThread::run() {
             emit logMessage(QString("Chunks decoded: %1").arg(result.total_chunks));
             emit logMessage(QString("Frames: %1").arg(result.total_frames));
             emit logMessage(QString("Output size: %1 bytes").arg(result.output_size));
+            emit_performance_report(this, result);
             emit progressUpdated(100);
             emit operationCompleted(true, "Stream decode completed successfully");
         } else {
@@ -270,13 +295,36 @@ void DriveManagerUI::setupUI() {
     passwordVisibilityButton->setFixedWidth(selectInputButton->sizeHint().width());
     fileOpsLayout->addWidget(passwordVisibilityButton, 3, 2);
 
+    fileOpsLayout->addWidget(new QLabel("Reliability:"), 4, 0);
+    reliabilityProfileCombo = new QComboBox();
+    reliabilityProfileCombo->addItem("Local / Fast (5%)", 5.0);
+    reliabilityProfileCombo->addItem("Balanced (20%)", 20.0);
+    reliabilityProfileCombo->addItem("Durable (50%)", 50.0);
+    reliabilityProfileCombo->addItem("Custom", -1.0);
+    fileOpsLayout->addWidget(reliabilityProfileCombo, 4, 1);
+
+    repairPercentSpinBox = new QDoubleSpinBox();
+    repairPercentSpinBox->setRange(0.0, MAX_REPAIR_PERCENTAGE);
+    repairPercentSpinBox->setDecimals(2);
+    repairPercentSpinBox->setSingleStep(0.5);
+    repairPercentSpinBox->setValue(DEFAULT_REPAIR_PERCENTAGE);
+    repairPercentSpinBox->setSuffix("%");
+    repairPercentSpinBox->setEnabled(false);
+    fileOpsLayout->addWidget(repairPercentSpinBox, 4, 2);
+
+    reliabilityHelpLabel = new QLabel(
+        "Higher repair improves damage tolerance, but increases frames, time, and output size.");
+    reliabilityHelpLabel->setWordWrap(true);
+    reliabilityHelpLabel->setStyleSheet("color: palette(mid); font-size: 9pt;");
+    fileOpsLayout->addWidget(reliabilityHelpLabel, 5, 0, 1, 3);
+
     encodeButton = new QPushButton("Encode to Video");
     encodeButton->setIcon(QIcon::fromTheme("media-record"));
-    fileOpsLayout->addWidget(encodeButton, 4, 0, 1, 3);
+    fileOpsLayout->addWidget(encodeButton, 6, 0, 1, 3);
 
     decodeButton = new QPushButton("Decode from Video");
     decodeButton->setIcon(QIcon::fromTheme("media-playback-start"));
-    fileOpsLayout->addWidget(decodeButton, 5, 0, 1, 3);
+    fileOpsLayout->addWidget(decodeButton, 7, 0, 1, 3);
 
     leftLayout->addWidget(fileOperationsGroup);
 
@@ -404,7 +452,11 @@ void DriveManagerUI::setupUI() {
     rightLayout->addWidget(logsGroup);
 
     // Add panels to splitter
-    mainSplitter->addWidget(leftPanel);
+    auto *leftScrollArea = new QScrollArea();
+    leftScrollArea->setWidgetResizable(true);
+    leftScrollArea->setFrameShape(QFrame::NoFrame);
+    leftScrollArea->setWidget(leftPanel);
+    mainSplitter->addWidget(leftScrollArea);
     mainSplitter->addWidget(rightPanel);
     mainSplitter->setSizes({600, 600});
 
@@ -457,6 +509,9 @@ void DriveManagerUI::connectSignals() {
             this, &DriveManagerUI::onPlatformChanged);
     connect(resolutionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DriveManagerUI::onResolutionChanged);
+    connect(reliabilityProfileCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DriveManagerUI::onReliabilityProfileChanged);
 }
 
 void DriveManagerUI::togglePasswordVisibility() const {
@@ -533,6 +588,22 @@ void DriveManagerUI::startEncode() {
         return;
     }
 
+    EncodingReliabilityOptions reliability;
+    try {
+        reliability = selectedReliabilityOptions();
+        const auto estimate = estimate_encoding_reliability(
+            static_cast<uint64_t>(QFileInfo(inputFileEdit->text()).size()),
+            encrypt, reliability,
+            static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
+            FRAME_FPS);
+        logReliabilityEstimate(estimate, reliability);
+    } catch (const std::exception &error) {
+        QMessageBox::warning(
+            this, "Invalid repair percentage",
+            QString::fromUtf8(error.what()));
+        return;
+    }
+
     isOperationRunning = true;
     currentOperation = "Encoding";
     encodeButton->setEnabled(false);
@@ -541,7 +612,8 @@ void DriveManagerUI::startEncode() {
     workerThread = std::make_unique<WorkerThread>(WorkerThread::Encode,
                                                   inputFileEdit->text(), outputFileEdit->text(), encrypt,
                                                   passwordEdit->text(), QString(), 35000,
-                                                  0, 0, 0, this);
+                                                  0, 0, 0,
+                                                  reliability.repair_ratio, this);
 
     connect(workerThread.get(), &WorkerThread::progressUpdated,
             this, &DriveManagerUI::onProgressUpdated);
@@ -573,7 +645,8 @@ void DriveManagerUI::startDecode() {
     workerThread = std::make_unique<WorkerThread>(WorkerThread::Decode,
                                                   inputFileEdit->text(), outputFileEdit->text(), false,
                                                   passwordEdit->text(), QString(), 35000,
-                                                  0, 0, 0, this);
+                                                  0, 0, 0,
+                                                  DEFAULT_REPAIR_RATIO, this);
 
     connect(workerThread.get(), &WorkerThread::progressUpdated,
             this, &DriveManagerUI::onProgressUpdated);
@@ -632,6 +705,16 @@ void DriveManagerUI::onResolutionChanged(const int index) const {
         bitrateSpinBox->setValue(35000);
 }
 
+void DriveManagerUI::onReliabilityProfileChanged(const int index) const {
+    const double percentage =
+        reliabilityProfileCombo->itemData(index).toDouble();
+    const bool custom = percentage < 0.0;
+    repairPercentSpinBox->setEnabled(custom);
+    if (!custom) {
+        repairPercentSpinBox->setValue(percentage);
+    }
+}
+
 void DriveManagerUI::startStreamEncode() {
     if (isOperationRunning) {
         QMessageBox::warning(this, "Warning", "An operation is already in progress");
@@ -661,6 +744,27 @@ void DriveManagerUI::startStreamEncode() {
         return;
     }
 
+    EncodingReliabilityOptions reliability;
+    try {
+        reliability = selectedReliabilityOptions();
+        const QSize estimate_res =
+            resolutionCombo->currentData().toSize();
+        const auto layout = compute_frame_layout(
+            estimate_res.width(), estimate_res.height());
+        const uint64_t packets_per_frame =
+            static_cast<uint64_t>(layout.bytes_per_frame) / PACKET_SIZE;
+        const auto estimate = estimate_encoding_reliability(
+            static_cast<uint64_t>(QFileInfo(inputFileEdit->text()).size()),
+            encrypt, reliability, packets_per_frame,
+            static_cast<uint32_t>(fpsSpinBox->value()));
+        logReliabilityEstimate(estimate, reliability);
+    } catch (const std::exception &error) {
+        QMessageBox::warning(
+            this, "Invalid repair percentage",
+            QString::fromUtf8(error.what()));
+        return;
+    }
+
     isOperationRunning = true;
     currentOperation = "Stream Encoding";
     encodeButton->setEnabled(false);
@@ -674,7 +778,8 @@ void DriveManagerUI::startStreamEncode() {
                                                   passwordEdit->text(), fullUrl,
                                                   bitrateSpinBox->value(),
                                                   res.width(), res.height(),
-                                                  fpsSpinBox->value(), this);
+                                                  fpsSpinBox->value(),
+                                                  reliability.repair_ratio, this);
 
     connect(workerThread.get(), &WorkerThread::progressUpdated,
             this, &DriveManagerUI::onProgressUpdated);
@@ -719,7 +824,8 @@ void DriveManagerUI::startStreamDecode() {
     workerThread = std::make_unique<WorkerThread>(WorkerThread::StreamDecode,
                                                   QString(), outputFileEdit->text(), false,
                                                   passwordEdit->text(), decodeUrl,
-                                                  0, 0, 0, 0, this);
+                                                  0, 0, 0, 0,
+                                                  DEFAULT_REPAIR_RATIO, this);
 
     connect(workerThread.get(), &WorkerThread::progressUpdated,
             this, &DriveManagerUI::onProgressUpdated);
@@ -799,6 +905,27 @@ void DriveManagerUI::resetProgress() {
 void DriveManagerUI::logMessage(const QString &message) const {
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     logTextEdit->append(QString("[%1] %2").arg(timestamp, message));
+}
+
+EncodingReliabilityOptions
+DriveManagerUI::selectedReliabilityOptions() const {
+    const double percentage = repairPercentSpinBox->value();
+    return {repair_percentage_to_ratio(percentage)};
+}
+
+void DriveManagerUI::logReliabilityEstimate(
+    const EncodingReliabilityEstimate &estimate,
+    const EncodingReliabilityOptions &options) const {
+    logMessage(QString("Reliability: %1% repair (ratio %2)")
+        .arg(repair_ratio_to_percentage(options.repair_ratio), 0, 'f', 2)
+        .arg(options.repair_ratio, 0, 'f', 4));
+    logMessage(QString("Estimate: %1 source + %2 repair = %3 packets")
+        .arg(estimate.source_packet_count)
+        .arg(estimate.repair_packet_count)
+        .arg(estimate.total_packet_count));
+    logMessage(QString("Estimate: %1 frames, %2 seconds of video")
+        .arg(estimate.frame_count)
+        .arg(estimate.video_duration_seconds, 0, 'f', 2));
 }
 
 bool DriveManagerUI::validatePaths() {

@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "decoder.h"
+#include "performance_profiler.h"
 
 #include "configuration.h"
 #include "crypto.h"
@@ -532,7 +533,9 @@ std::optional<std::vector<std::byte> > Decoder::assemble_file(const uint32_t exp
     return result;
 }
 
-bool Decoder::write_assembled_file(const std::string &output_path, const uint32_t expected_chunks) const {
+bool Decoder::write_assembled_file(const std::string &output_path,
+                                   const uint32_t expected_chunks,
+                                   PerformanceProfiler *profiler) const {
     if (completed_count_ != expected_chunks) {
         return false;
     }
@@ -551,49 +554,63 @@ bool Decoder::write_assembled_file(const std::string &output_path, const uint32_
         return false;
     }
 
-    std::ofstream out(output_path, std::ios::binary);
+    std::ofstream out;
+    {
+        ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
+        out.open(output_path, std::ios::binary);
+    }
     if (!out) {
         return false;
     }
 
     if (encrypted_ && decrypt_key_set_) {
         std::vector<std::size_t> sizes(expected_chunks);
-        for (uint32_t i = 0; i < expected_chunks; ++i) {
-            const auto &chunk = *completed_chunks[i];
-            if (chunk.size() < CRYPTO_PLAIN_SIZE_HEADER) {
-                return false;
-            }
-            sizes[i] = read_plain_size_from_header(chunk);
-            if (sizes[i] > CHUNK_SIZE_BYTES) {
-                return false;
+        {
+            ScopedTimer timer(profiler, PerformanceStage::Postprocess);
+            for (uint32_t i = 0; i < expected_chunks; ++i) {
+                const auto &chunk = *completed_chunks[i];
+                if (chunk.size() < CRYPTO_PLAIN_SIZE_HEADER) {
+                    return false;
+                }
+                sizes[i] = read_plain_size_from_header(chunk);
+                if (sizes[i] > CHUNK_SIZE_BYTES) {
+                    return false;
+                }
             }
         }
 
         std::vector<std::vector<std::byte>> decrypted_chunks(expected_chunks);
         bool decrypt_error = false;
 
+        {
+            ScopedTimer timer(profiler, PerformanceStage::Postprocess);
 #pragma omp parallel for schedule(static)
-        for (int i = 0; i < static_cast<int>(expected_chunks); ++i) {
-            if (decrypt_error) continue;
-            try {
-                decrypted_chunks[i].resize(sizes[i]);
-                decrypt_chunk_into(
-                    std::span<std::byte>(decrypted_chunks[i].data(), sizes[i]),
-                    *completed_chunks[static_cast<uint32_t>(i)],
-                    decrypt_key_, *id, static_cast<uint32_t>(i));
-            } catch (...) {
-                decrypt_error = true;
+            for (int i = 0; i < static_cast<int>(expected_chunks); ++i) {
+                if (decrypt_error) continue;
+                try {
+                    decrypted_chunks[i].resize(sizes[i]);
+                    decrypt_chunk_into(
+                        std::span<std::byte>(decrypted_chunks[i].data(), sizes[i]),
+                        *completed_chunks[static_cast<uint32_t>(i)],
+                        decrypt_key_, *id, static_cast<uint32_t>(i));
+                } catch (...) {
+                    decrypt_error = true;
+                }
             }
         }
 
         if (decrypt_error) return false;
 
-        for (uint32_t i = 0; i < expected_chunks; ++i) {
-            out.write(reinterpret_cast<const char *>(decrypted_chunks[i].data()),
-                      static_cast<std::streamsize>(sizes[i]));
-            if (!out.good()) return false;
+        {
+            ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
+            for (uint32_t i = 0; i < expected_chunks; ++i) {
+                out.write(reinterpret_cast<const char *>(decrypted_chunks[i].data()),
+                          static_cast<std::streamsize>(sizes[i]));
+                if (!out.good()) return false;
+            }
         }
     } else {
+        ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
         for (uint32_t i = 0; i < expected_chunks; ++i) {
             const auto &chunk = *completed_chunks[i];
             out.write(reinterpret_cast<const char *>(chunk.data()),

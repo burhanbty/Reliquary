@@ -30,9 +30,12 @@ extern "C" {
 
 #include "video_encoder.h"
 
+class PerformanceProfiler;
+
 class VideoDecoder {
 public:
-    explicit VideoDecoder(const std::string &input_path);
+    explicit VideoDecoder(const std::string &input_path,
+                          PerformanceProfiler *profiler = nullptr);
 
     ~VideoDecoder();
 
@@ -68,6 +71,7 @@ private:
     bool is_gray8_ = false;
     FrameLayout layout_{};
     std::vector<std::byte> extract_buffer_{};
+    PerformanceProfiler *profiler_ = nullptr;
 
     void init_decoder(const std::string &input_path);
 

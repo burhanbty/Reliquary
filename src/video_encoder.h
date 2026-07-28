@@ -30,6 +30,8 @@ extern "C" {
 #include "configuration.h"
 #include "encoder.h"
 
+class PerformanceProfiler;
+
 FrameLayout compute_frame_layout();
 
 FrameLayout compute_frame_layout(int width, int height);
@@ -38,7 +40,8 @@ std::size_t max_packet_bytes_per_frame();
 
 class VideoEncoder {
 public:
-    explicit VideoEncoder(const std::string &output_path);
+    explicit VideoEncoder(const std::string &output_path,
+                          PerformanceProfiler *profiler = nullptr);
 
     ~VideoEncoder();
 
@@ -71,6 +74,7 @@ private:
     FrameLayout layout_{};
     int64_t frame_index = 0;
     bool finalized = false;
+    PerformanceProfiler *profiler_ = nullptr;
 
     void init_encoder(const std::string &output_path);
 

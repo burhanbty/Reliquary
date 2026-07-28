@@ -17,6 +17,7 @@
 #include "video_encoder.h"
 #include "configuration.h"
 #include "dct_common.h"
+#include "performance_profiler.h"
 
 #include <algorithm>
 #include <cstring>
@@ -43,7 +44,9 @@ std::size_t max_packet_bytes_per_frame() {
     return static_cast<std::size_t>(compute_frame_layout().bytes_per_frame);
 }
 
-VideoEncoder::VideoEncoder(const std::string &output_path) {
+VideoEncoder::VideoEncoder(const std::string &output_path,
+                           PerformanceProfiler *profiler)
+    : profiler_(profiler) {
     init_encoder(output_path);
 }
 
@@ -62,7 +65,11 @@ VideoEncoder::~VideoEncoder() {
 }
 
 void VideoEncoder::init_encoder(const std::string &output_path) {
-    int ret = avformat_alloc_output_context2(&format_ctx, nullptr, nullptr, output_path.c_str());
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avformat_alloc_output_context2(&format_ctx, nullptr, nullptr, output_path.c_str());
+    }
     if (ret < 0 || !format_ctx) {
         throw std::runtime_error("Failed to create output context");
     }
@@ -96,7 +103,10 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
         codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
-    ret = avcodec_open2(codec_ctx, codec, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_open2(codec_ctx, codec, nullptr);
+    }
     if (ret < 0) {
         char error_buffer[256];
         av_strerror(ret, error_buffer, sizeof(error_buffer));
@@ -132,12 +142,18 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
     layout_ = compute_frame_layout();
     frame_data_buffer.reserve(layout_.bytes_per_frame);
 
-    ret = avio_open(&format_ctx->pb, output_path.c_str(), AVIO_FLAG_WRITE);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avio_open(&format_ctx->pb, output_path.c_str(), AVIO_FLAG_WRITE);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to open output file");
     }
 
-    ret = avformat_write_header(format_ctx, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avformat_write_header(format_ctx, nullptr);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to write header");
     }
@@ -202,20 +218,30 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
 }
 
 void VideoEncoder::encode_frame() {
-    int ret = av_frame_make_writable(frame);
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = av_frame_make_writable(frame);
+    }
     if (ret < 0) {
         throw std::runtime_error("Frame not writable");
     }
 
     frame->pts = frame_index++;
 
-    ret = avcodec_send_frame(codec_ctx, frame);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_send_frame(codec_ctx, frame);
+    }
     if (ret < 0) {
         throw std::runtime_error("Error sending frame");
     }
 
     while (true) {
-        ret = avcodec_receive_packet(codec_ctx, av_packet);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_receive_packet(codec_ctx, av_packet);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
@@ -226,7 +252,10 @@ void VideoEncoder::encode_frame() {
         av_packet_rescale_ts(av_packet, codec_ctx->time_base, stream->time_base);
         av_packet->stream_index = stream->index;
 
-        ret = av_interleaved_write_frame(format_ctx, av_packet);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+            ret = av_interleaved_write_frame(format_ctx, av_packet);
+        }
         if (ret < 0) {
             throw std::runtime_error("Error writing frame");
         }
@@ -245,9 +274,12 @@ void VideoEncoder::add_packet(const Packet &packet) {
         flush_frame_buffer();
     }
 
-    frame_data_buffer.insert(frame_data_buffer.end(),
-                             packet.bytes.begin(),
-                             packet.bytes.end());
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::PacketToFrame);
+        frame_data_buffer.insert(frame_data_buffer.end(),
+                                 packet.bytes.begin(),
+                                 packet.bytes.end());
+    }
 }
 
 void VideoEncoder::encode_packets(const std::vector<Packet> &packets) {
@@ -259,16 +291,26 @@ void VideoEncoder::encode_packets(const std::vector<Packet> &packets) {
 void VideoEncoder::flush_frame_buffer() {
     if (frame_data_buffer.empty()) return;
 
-    embed_data_in_frame(frame_data_buffer);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::PacketToFrame);
+        embed_data_in_frame(frame_data_buffer);
+    }
     encode_frame();
     frame_data_buffer.clear();
 }
 
 void VideoEncoder::flush_encoder() const {
-    int ret = avcodec_send_frame(codec_ctx, nullptr);
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_send_frame(codec_ctx, nullptr);
+    }
 
     while (ret >= 0) {
-        ret = avcodec_receive_packet(codec_ctx, av_packet);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_receive_packet(codec_ctx, av_packet);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
@@ -279,7 +321,10 @@ void VideoEncoder::flush_encoder() const {
         av_packet_rescale_ts(av_packet, codec_ctx->time_base, stream->time_base);
         av_packet->stream_index = stream->index;
 
-        av_interleaved_write_frame(format_ctx, av_packet);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+            av_interleaved_write_frame(format_ctx, av_packet);
+        }
         av_packet_unref(av_packet);
     }
 }
@@ -289,5 +334,8 @@ void VideoEncoder::finalize() {
     finalized = true;
     flush_frame_buffer();
     flush_encoder();
-    av_write_trailer(format_ctx);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        av_write_trailer(format_ctx);
+    }
 }

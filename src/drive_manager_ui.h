@@ -28,9 +28,11 @@
 #include <QMessageBox>
 #include <QListWidget>
 #include <QSplitter>
+#include <QScrollArea>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QTimer>
 #include <QThread>
@@ -39,6 +41,7 @@
 #include <memory>
 
 #include "configuration.h"
+#include "encoding_reliability.h"
 
 class WorkerThread : public QThread {
     Q_OBJECT
@@ -55,7 +58,9 @@ public:
                  bool encrypt = false, const QString &password = QString(),
                  const QString &streamUrl = QString(), int bitrate = FRAME_BITRATE,
                  int streamWidth = FRAME_WIDTH_STREAM, int streamHeight = FRAME_HEIGHT_STREAM,
-                 int streamFps = FRAME_FPS, QObject *parent = nullptr);
+                 int streamFps = FRAME_FPS,
+                 double repairRatio = DEFAULT_REPAIR_RATIO,
+                 QObject *parent = nullptr);
 
 signals:
     void progressUpdated(int percentage);
@@ -80,6 +85,7 @@ private:
     int streamWidth;
     int streamHeight;
     int streamFps;
+    double repairRatio;
 };
 
 class DriveManagerUI : public QMainWindow {
@@ -113,6 +119,8 @@ slots:
     void onPlatformChanged(int index) const;
 
     void onResolutionChanged(int index) const;
+
+    void onReliabilityProfileChanged(int index) const;
 
     void clearLogs() const;
 
@@ -151,6 +159,12 @@ private:
 
     bool validatePaths();
 
+    [[nodiscard]] EncodingReliabilityOptions selectedReliabilityOptions() const;
+
+    void logReliabilityEstimate(
+        const EncodingReliabilityEstimate &estimate,
+        const EncodingReliabilityOptions &options) const;
+
     // UI Components
     QWidget *centralWidget;
     QSplitter *mainSplitter;
@@ -164,6 +178,9 @@ private:
     QCheckBox *encryptCheckBox;
     QLineEdit *passwordEdit;
     QPushButton *passwordVisibilityButton;
+    QComboBox *reliabilityProfileCombo;
+    QDoubleSpinBox *repairPercentSpinBox;
+    QLabel *reliabilityHelpLabel;
     QPushButton *encodeButton;
     QPushButton *decodeButton;
 

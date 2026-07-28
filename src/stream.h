@@ -31,11 +31,14 @@ extern "C" {
 #include "configuration.h"
 #include "encoder.h"
 
+class PerformanceProfiler;
+
 class StreamEncoder {
 public:
     explicit StreamEncoder(const std::string &rtmp_url, int bitrate_kbps = FRAME_BITRATE,
                            int width = FRAME_WIDTH_STREAM, int height = FRAME_HEIGHT_STREAM,
-                           int fps = FRAME_FPS);
+                           int fps = FRAME_FPS,
+                           PerformanceProfiler *profiler = nullptr);
 
     ~StreamEncoder();
 
@@ -79,6 +82,7 @@ private:
     FrameLayout layout_{};
     int64_t frame_index_ = 0;
     bool finalized_ = false;
+    PerformanceProfiler *profiler_ = nullptr;
 
     void init_stream(const std::string &rtmp_url, int bitrate_kbps);
 

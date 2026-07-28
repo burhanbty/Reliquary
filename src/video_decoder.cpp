@@ -18,6 +18,7 @@
 #include "video_encoder.h"
 #include "configuration.h"
 #include "dct_common.h"
+#include "performance_profiler.h"
 
 #include <algorithm>
 #include <array>
@@ -25,7 +26,9 @@
 #include <span>
 #include <stdexcept>
 
-VideoDecoder::VideoDecoder(const std::string &input_path) {
+VideoDecoder::VideoDecoder(const std::string &input_path,
+                           PerformanceProfiler *profiler)
+    : profiler_(profiler) {
     init_decoder(input_path);
 }
 
@@ -39,12 +42,19 @@ VideoDecoder::~VideoDecoder() {
 }
 
 void VideoDecoder::init_decoder(const std::string &input_path) {
-    int ret = avformat_open_input(&format_ctx_, input_path.c_str(), nullptr, nullptr);
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::VideoReadDemux);
+        ret = avformat_open_input(&format_ctx_, input_path.c_str(), nullptr, nullptr);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to open input file");
     }
 
-    ret = avformat_find_stream_info(format_ctx_, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::VideoReadDemux);
+        ret = avformat_find_stream_info(format_ctx_, nullptr);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to find stream info");
     }
@@ -79,7 +89,10 @@ void VideoDecoder::init_decoder(const std::string &input_path) {
     codec_ctx_->thread_count = 0;
     codec_ctx_->thread_type = FF_THREAD_SLICE;
 
-    ret = avcodec_open2(codec_ctx_, codec, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+        ret = avcodec_open2(codec_ctx_, codec, nullptr);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to open codec");
     }
@@ -298,14 +311,18 @@ std::vector<std::vector<std::byte> > VideoDecoder::extract_packets_from_frame() 
 }
 
 void VideoDecoder::prepare_frame_for_extraction() {
-    if (!is_gray8_) {
-        sws_scale(sws_ctx_, frame_->data, frame_->linesize, 0, frame_->height,
-                  gray_frame_->data, gray_frame_->linesize);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+        if (!is_gray8_) {
+            sws_scale(sws_ctx_, frame_->data, frame_->linesize, 0, frame_->height,
+                      gray_frame_->data, gray_frame_->linesize);
+        }
     }
     ++frame_index_;
 }
 
 std::vector<std::vector<std::byte> > VideoDecoder::accumulate_frame_and_extract_packets() {
+    ScopedTimer timer(profiler_, PerformanceStage::PacketExtraction);
     extract_data_into(extract_buffer_);
     std::vector<std::vector<std::byte> > packets;
     packets.reserve(extract_buffer_.size() / (HEADER_SIZE_V2 + SYMBOL_SIZE_BYTES));
@@ -314,10 +331,17 @@ std::vector<std::vector<std::byte> > VideoDecoder::accumulate_frame_and_extract_
 }
 
 std::vector<std::vector<std::byte> > VideoDecoder::flush_decoder_and_collect_packets() {
-    avcodec_send_packet(codec_ctx_, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+        avcodec_send_packet(codec_ctx_, nullptr);
+    }
     std::vector<std::vector<std::byte> > collected;
     while (true) {
-        const int ret = avcodec_receive_frame(codec_ctx_, frame_);
+        int ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+            ret = avcodec_receive_frame(codec_ctx_, frame_);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
@@ -338,7 +362,11 @@ std::vector<std::vector<std::byte> > VideoDecoder::decode_next_frame() {
     }
 
     while (true) {
-        const int read_ret = av_read_frame(format_ctx_, av_packet_);
+        int read_ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::VideoReadDemux);
+            read_ret = av_read_frame(format_ctx_, av_packet_);
+        }
         if (read_ret < 0) {
             eof_ = true;
             if (auto flushed = flush_decoder_and_collect_packets(); !flushed.empty()) {
@@ -357,13 +385,21 @@ std::vector<std::vector<std::byte> > VideoDecoder::decode_next_frame() {
             continue;
         }
 
-        const int send_ret = avcodec_send_packet(codec_ctx_, av_packet_);
+        int send_ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+            send_ret = avcodec_send_packet(codec_ctx_, av_packet_);
+        }
         av_packet_unref(av_packet_);
         if (send_ret < 0) {
             continue;
         }
 
-        const int recv_ret = avcodec_receive_frame(codec_ctx_, frame_);
+        int recv_ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FrameDecode);
+            recv_ret = avcodec_receive_frame(codec_ctx_, frame_);
+        }
         if (recv_ret == AVERROR(EAGAIN)) {
             continue;
         }

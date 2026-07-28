@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 
@@ -49,16 +50,6 @@ static void writeU32LE(std::span<std::byte> buffer, const std::size_t offset, co
     std::memcpy(dest, &value, sizeof(value));
 }
 
-static uint32_t computeNumSourceSymbols(const std::size_t dataSize, const std::size_t symbolSize) {
-    const std::size_t count = (dataSize + symbolSize - 1) / symbolSize;
-    return static_cast<uint32_t>(count);
-}
-
-static uint32_t computeRepairCount(const uint32_t numSource, const double overhead) {
-    const double repairDouble = static_cast<double>(numSource) * overhead;
-    return static_cast<uint32_t>(std::ceil(repairDouble));
-}
-
 static uint8_t buildFlags(const uint32_t blockId, const uint32_t numSource, const bool isLastChunk,
                           const bool encrypted) {
     uint8_t flags = None;
@@ -75,8 +66,13 @@ static uint8_t buildFlags(const uint32_t blockId, const uint32_t numSource, cons
 }
 
 
-Encoder::Encoder(const FileId file_id, const HashAlgorithm hash_algo)
-    : id(file_id), algo_(hash_algo) {
+Encoder::Encoder(const FileId file_id,
+                 const HashAlgorithm hash_algo,
+                 const EncodingReliabilityOptions reliability)
+    : id(file_id), algo_(hash_algo), reliability_(reliability) {
+    if (!is_valid_repair_ratio(reliability_.repair_ratio)) {
+        throw std::invalid_argument("invalid repair ratio");
+    }
 }
 
 void Encoder::write_packet_header(
@@ -133,7 +129,12 @@ Encoder::encode_chunk(
 
     const auto chunkSize = static_cast<uint32_t>(data_to_encode.size());
     constexpr auto symbolSize = static_cast<uint16_t>(SYMBOL_SIZE_BYTES);
-    const uint32_t numSource = computeNumSourceSymbols(data_to_encode.size(), SYMBOL_SIZE_BYTES);
+    const auto source_packet_count =
+        calculate_source_packet_count(data_to_encode.size());
+    if (source_packet_count > std::numeric_limits<uint32_t>::max()) {
+        throw std::overflow_error("source packet count exceeds packet format");
+    }
+    const auto numSource = static_cast<uint32_t>(source_packet_count);
 
     ChunkManifestEntry manifest;
     manifest.chunk_index = chunk_index;
@@ -151,7 +152,16 @@ Encoder::encode_chunk(
         throw std::runtime_error("wirehair_encoder_create() failed");
     }
 
-    const uint32_t repairCount = computeRepairCount(numSource, REPAIR_OVERHEAD);
+    const uint64_t repair_packet_count =
+        calculate_repair_packet_count(
+            numSource, reliability_.repair_ratio);
+    if (repair_packet_count >
+        std::numeric_limits<uint32_t>::max() - numSource) {
+        wirehair_free(codec);
+        throw std::overflow_error(
+            "source and repair packet count exceeds packet format");
+    }
+    const auto repairCount = static_cast<uint32_t>(repair_packet_count);
     constexpr uint32_t firstBlockId = INCLUDE_SOURCE ? 1u : (numSource + 1u);
     const uint32_t lastBlockId = numSource + repairCount;
 

@@ -17,11 +17,14 @@
 #include <gtest/gtest.h>
 
 #include "../include/media_storage.h"
+#include "encoding_reliability.h"
+#include "integrity.h"
 
 #include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -242,6 +245,18 @@ TEST(API, EncodeDecodeRoundtrip) {
     EXPECT_GT(enc_result.total_chunks, 0u);
     EXPECT_GT(enc_result.total_packets, 0u);
     EXPECT_GT(enc_result.total_frames, 0u);
+    EXPECT_EQ(enc_result.operation, MS_OPERATION_ENCODE);
+    EXPECT_GT(enc_result.total_seconds, 0.0);
+    EXPECT_DOUBLE_EQ(
+        enc_result.selected_repair_ratio, DEFAULT_REPAIR_RATIO);
+    EXPECT_DOUBLE_EQ(
+        enc_result.selected_repair_percentage,
+        DEFAULT_REPAIR_PERCENTAGE);
+    EXPECT_EQ(enc_result.source_packets + enc_result.repair_packets,
+              enc_result.total_packets);
+    EXPECT_GT(
+        enc_result.stage_timings[MS_PERF_FEC_REPAIR_GENERATION].invocations,
+        0u);
 
     ms_decode_options_t dec_opts{};
     dec_opts.input_path = encoded.c_str();
@@ -249,6 +264,12 @@ TEST(API, EncodeDecodeRoundtrip) {
 
     ms_result_t dec_result{};
     ASSERT_EQ(ms_decode(&dec_opts, &dec_result), MS_OK);
+    EXPECT_EQ(dec_result.operation, MS_OPERATION_DECODE);
+    EXPECT_GT(dec_result.total_seconds, 0.0);
+    EXPECT_EQ(dec_result.source_packets + dec_result.repair_packets,
+              dec_result.total_packets);
+    EXPECT_GT(dec_result.stage_timings[MS_PERF_FRAME_DECODE].invocations, 0u);
+    EXPECT_GT(dec_result.stage_timings[MS_PERF_OUTPUT_WRITE].invocations, 0u);
 
     EXPECT_EQ(read_test_file(input.path_str), read_test_file(decoded.path_str));
 }
@@ -278,6 +299,42 @@ TEST(API, EncodeDecodeRoundtrip_WithEncryption) {
 
     ASSERT_EQ(ms_decode(&dec_opts, nullptr), MS_OK);
     EXPECT_EQ(read_test_file(input.path_str), read_test_file(decoded.path_str));
+}
+
+TEST(API, EncodeDecodeRoundtrip_FivePercentRepairSha256) {
+    const TempFile input("api_repair_5_input.bin");
+    const TempFile encoded("api_repair_5.mkv");
+    const TempFile decoded("api_repair_5_output.bin");
+    write_test_file(input.path_str, 65536);
+
+    ms_encode_options_t enc_opts{};
+    enc_opts.input_path = input.c_str();
+    enc_opts.output_path = encoded.c_str();
+    enc_opts.repair_ratio = 0.05;
+    enc_opts.repair_ratio_is_set = 1;
+
+    ms_result_t enc_result{};
+    ASSERT_EQ(ms_encode(&enc_opts, &enc_result), MS_OK);
+    EXPECT_DOUBLE_EQ(enc_result.selected_repair_percentage, 5.0);
+    EXPECT_DOUBLE_EQ(enc_result.selected_repair_ratio, 0.05);
+    EXPECT_EQ(enc_result.source_packets, 256u);
+    EXPECT_EQ(enc_result.repair_packets, 13u);
+    EXPECT_EQ(enc_result.total_packets, 269u);
+
+    ms_decode_options_t dec_opts{};
+    dec_opts.input_path = encoded.c_str();
+    dec_opts.output_path = decoded.c_str();
+    ASSERT_EQ(ms_decode(&dec_opts, nullptr), MS_OK);
+
+    const auto original = read_test_file(input.path_str);
+    const auto recovered = read_test_file(decoded.path_str);
+    const auto original_bytes = std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(original.data()),
+        original.size());
+    const auto recovered_bytes = std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(recovered.data()),
+        recovered.size());
+    EXPECT_EQ(sha256(original_bytes), sha256(recovered_bytes));
 }
 
 TEST(API, EncodeDecodeRoundtrip_WithXXHash) {

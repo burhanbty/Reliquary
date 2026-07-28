@@ -14,13 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "configuration.h"
+#include "encoding_reliability.h"
 #include "media_storage.h"
+#include "video_encoder.h"
 
 static std::string format_size(const uint64_t bytes) {
     const char *units[] = {"B", "KB", "MB", "GB"};
@@ -33,6 +38,27 @@ static std::string format_size(const uint64_t bytes) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << size << " " << units[unit];
     return oss.str();
+}
+
+static bool print_performance_report(const ms_result_t &result,
+                                     const std::string &json_path) {
+    const size_t required = ms_format_performance_report(
+        &result, nullptr, 0);
+    std::vector<char> report(required);
+    ms_format_performance_report(&result, report.data(), report.size());
+    std::cout << report.data();
+
+    if (!json_path.empty()) {
+        if (const ms_status_t status =
+                ms_write_benchmark_json(&result, json_path.c_str());
+            status != MS_OK) {
+            std::cerr << "Error writing benchmark JSON: "
+                      << ms_status_string(status) << "\n";
+            return false;
+        }
+        std::cout << "Benchmark JSON: " << json_path << "\n";
+    }
+    return true;
 }
 
 static int encode_progress(const uint64_t current, const uint64_t total, void *) {
@@ -69,17 +95,39 @@ static void print_usage(const char *program) {
     std::cerr << "Usage:\n"
             << "  " << program <<
             " encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>]\n"
-            << "  " << program << " decode --input <video> --output <file> [--password <pwd>]\n"
+            << "    [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>]\n"
+            << "    [--benchmark-json <report.json>]\n"
+            << "  " << program << " decode --input <video> --output <file> [--password <pwd>]"
+            << " [--benchmark-json <report.json>]\n"
             << "  " << program <<
-            " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>]\n"
-            << "  " << program << " stream-decode --url <stream_url> --output <file> [--password <pwd>]\n";
+            " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]\n"
+            << "  " << program << " stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]\n";
 }
 
 static int do_encode(const std::string &input_path, const std::string &output_path,
                      const bool encrypt, const std::string &password,
-                     const ms_hash_algorithm_t hash_algo) {
+                     const ms_hash_algorithm_t hash_algo,
+                     const EncodingReliabilityOptions &reliability,
+                     const std::string &benchmark_json) {
     std::cout << "Input: " << input_path << "\n";
     std::cout << "Output: " << output_path << "\n";
+    try {
+        const auto estimate = estimate_encoding_reliability(
+            std::filesystem::file_size(input_path), encrypt, reliability,
+            static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
+            FRAME_FPS);
+        std::cout << std::fixed << std::setprecision(2)
+                  << "Repair: "
+                  << repair_ratio_to_percentage(reliability.repair_ratio)
+                  << "%  Estimated packets: "
+                  << estimate.source_packet_count << " source + "
+                  << estimate.repair_packet_count << " repair = "
+                  << estimate.total_packet_count << ", frames: "
+                  << estimate.frame_count << ", video: "
+                  << estimate.video_duration_seconds << " s\n";
+    } catch (const std::exception &) {
+        // The encode API below reports the authoritative file/argument error.
+    }
 
     ms_encode_options_t opts{};
     opts.input_path = input_path.c_str();
@@ -90,6 +138,8 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
     opts.hash_algorithm = hash_algo;
     opts.progress = encode_progress;
     opts.progress_user = nullptr;
+    opts.repair_ratio = reliability.repair_ratio;
+    opts.repair_ratio_is_set = 1;
 
     ms_result_t result{};
     if (const ms_status_t status = ms_encode(&opts, &result); status != MS_OK) {
@@ -105,11 +155,12 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
             << "  Frames: " << result.total_frames << "\n";
     std::cout << "Written to: " << output_path << "\n";
 
-    return 0;
+    return print_performance_report(result, benchmark_json) ? 0 : 1;
 }
 
 static int do_decode(const std::string &input_path, const std::string &output_path,
-                     const std::string &password) {
+                     const std::string &password,
+                     const std::string &benchmark_json) {
     std::cout << "Input: " << input_path << "\n";
     std::cout << "Output: " << output_path << "\n";
 
@@ -135,13 +186,15 @@ static int do_decode(const std::string &input_path, const std::string &output_pa
             << "  Frames: " << result.total_frames << "\n";
     std::cout << "Written to: " << output_path << "\n";
 
-    return 0;
+    return print_performance_report(result, benchmark_json) ? 0 : 1;
 }
 
 static int do_stream_encode(const std::string &input_path, const std::string &stream_url,
                             const bool encrypt, const std::string &password,
                             const ms_hash_algorithm_t hash_algo, const int bitrate_kbps,
-                            const int width, const int height, const int fps) {
+                            const int width, const int height, const int fps,
+                            const EncodingReliabilityOptions &reliability,
+                            const std::string &benchmark_json) {
     std::cout << "Input: " << input_path << "\n";
     std::cout << "Stream URL: " << stream_url << "\n";
     std::cout << "Resolution: " << width << "x" << height << "(" << fps << " fps)\n";
@@ -160,6 +213,8 @@ static int do_stream_encode(const std::string &input_path, const std::string &st
     opts.fps = fps;
     opts.progress = stream_encode_progress;
     opts.progress_user = nullptr;
+    opts.repair_ratio = reliability.repair_ratio;
+    opts.repair_ratio_is_set = 1;
 
     ms_result_t result{};
     if (const ms_status_t status = ms_stream_encode(&opts, &result); status != MS_OK) {
@@ -173,11 +228,12 @@ static int do_stream_encode(const std::string &input_path, const std::string &st
             << "  Packets: " << result.total_packets
             << "  Frames: " << result.total_frames << "\n";
 
-    return 0;
+    return print_performance_report(result, benchmark_json) ? 0 : 1;
 }
 
 static int do_stream_decode(const std::string &stream_url, const std::string &output_path,
-                            const std::string &password) {
+                            const std::string &password,
+                            const std::string &benchmark_json) {
     std::cout << "Stream URL: " << stream_url << "\n";
     std::cout << "Output: " << output_path << "\n";
     std::cout << "Waiting for stream...\n";
@@ -204,7 +260,7 @@ static int do_stream_decode(const std::string &stream_url, const std::string &ou
             << "  Frames: " << result.total_frames << "\n";
     std::cout << "Written to: " << output_path << "\n";
 
-    return 0;
+    return print_performance_report(result, benchmark_json) ? 0 : 1;
 }
 
 int main(const int argc, char *argv[]) {
@@ -232,6 +288,9 @@ int main(const int argc, char *argv[]) {
     int stream_width = FRAME_WIDTH_STREAM;
     int stream_height = FRAME_HEIGHT_STREAM;
     int stream_fps = FRAME_FPS;
+    std::string benchmark_json;
+    std::optional<ReliabilityProfile> reliability_profile;
+    std::optional<double> repair_percentage;
 
     for (int i = 2; i < argc; ++i) {
         if (const std::string arg = argv[i]; (arg == "--input" || arg == "-i") && i + 1 < argc) {
@@ -261,12 +320,52 @@ int main(const int argc, char *argv[]) {
                 std::cerr << "Error: unknown hash algorithm '" << algo_str << "' (use crc32 or xxhash)\n";
                 return 1;
             }
+        } else if (arg == "--benchmark-json" && i + 1 < argc) {
+            benchmark_json = argv[++i];
+        } else if (arg == "--repair-percent" && i + 1 < argc) {
+            try {
+                repair_percentage = parse_repair_percentage(argv[++i]);
+            } catch (const std::exception &error) {
+                std::cerr << "Error: invalid --repair-percent: "
+                          << error.what() << "\n";
+                return 1;
+            }
+        } else if (arg == "--reliability-profile" && i + 1 < argc) {
+            try {
+                reliability_profile =
+                    parse_reliability_profile(argv[++i]);
+            } catch (const std::exception &error) {
+                std::cerr << "Error: invalid --reliability-profile: "
+                          << error.what() << "\n";
+                return 1;
+            }
+        } else if (!arg.empty() && arg[0] != '-' &&
+                   (command == "encode" || command == "decode")) {
+            if (input_path.empty()) {
+                input_path = arg;
+            } else if (output_path.empty()) {
+                output_path = arg;
+            } else {
+                std::cerr << "Error: unexpected positional argument '"
+                          << arg << "'\n";
+                return 1;
+            }
         } else {
             std::cerr << "Error: unknown or incomplete argument '" << arg << "'\n";
             print_usage(argv[0]);
             return 1;
         }
     }
+
+    if ((command == "decode" || command == "stream-decode") &&
+        (reliability_profile.has_value() ||
+         repair_percentage.has_value())) {
+        std::cerr << "Error: repair options apply only to encode operations\n";
+        return 1;
+    }
+    const EncodingReliabilityOptions reliability =
+        resolve_reliability_options(
+            reliability_profile, repair_percentage);
 
     if (command == "encode") {
         if (input_path.empty() || output_path.empty()) {
@@ -278,14 +377,16 @@ int main(const int argc, char *argv[]) {
             std::cerr << "Error: --encrypt requires --password\n";
             return 1;
         }
-        return do_encode(input_path, output_path, encrypt, password, hash_algo);
+        return do_encode(input_path, output_path, encrypt, password, hash_algo,
+                         reliability,
+                         benchmark_json);
     } else if (command == "decode") {
         if (input_path.empty() || output_path.empty()) {
             std::cerr << "Error: both --input and --output must be specified\n";
             print_usage(argv[0]);
             return 1;
         }
-        return do_decode(input_path, output_path, password);
+        return do_decode(input_path, output_path, password, benchmark_json);
     } else if (command == "stream-encode") {
         if (input_path.empty() || stream_url.empty()) {
             std::cerr << "Error: --input and --url must be specified for stream-encode\n";
@@ -297,13 +398,16 @@ int main(const int argc, char *argv[]) {
             return 1;
         }
         return do_stream_encode(input_path, stream_url, encrypt, password, hash_algo, bitrate_kbps,
-                                stream_width, stream_height, stream_fps);
+                                stream_width, stream_height, stream_fps,
+                                reliability,
+                                benchmark_json);
     } else {
         if (stream_url.empty() || output_path.empty()) {
             std::cerr << "Error: --url and --output must be specified for stream-decode\n";
             print_usage(argv[0]);
             return 1;
         }
-        return do_stream_decode(stream_url, output_path, password);
+        return do_stream_decode(stream_url, output_path, password,
+                                benchmark_json);
     }
 }

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "configuration.h"
+#include "encoding_reliability.h"
 #include "integrity.h"
 
 struct Packet {
@@ -45,7 +46,10 @@ class Encoder {
 public:
     using FileId = std::array<std::byte, 16>;
 
-    explicit Encoder(FileId file_id, HashAlgorithm hash_algo = HashAlgorithm::CRC32);
+    explicit Encoder(
+        FileId file_id,
+        HashAlgorithm hash_algo = HashAlgorithm::CRC32,
+        EncodingReliabilityOptions reliability = {});
 
     [[nodiscard]] std::pair<std::vector<Packet>, ChunkManifestEntry>
     encode_chunk(uint32_t chunk_index, std::span<const std::byte> chunk_data, bool is_last_chunk,
@@ -56,6 +60,7 @@ public:
 private:
     FileId id;
     HashAlgorithm algo_;
+    EncodingReliabilityOptions reliability_;
 
     void write_packet_header(
         std::span<std::byte> dest,

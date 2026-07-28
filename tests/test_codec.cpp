@@ -87,9 +87,13 @@ TEST(Codec, Encoder_ProducesCorrectPacketCount) {
     const std::vector<std::byte> input_data = make_test_data(4096);
     const Encoder encoder(make_test_file_id());
     const auto [packets, manifest] = encode_test_data(encoder, input_data);
-    EXPECT_GT(packets.size(), 0u);
-    EXPECT_GE(packets.size(), 32u);
-    EXPECT_LE(packets.size(), 96u);
+    const uint64_t source_packet_count =
+        calculate_source_packet_count(input_data.size());
+    const uint64_t repair_packet_count =
+        calculate_repair_packet_count(
+            source_packet_count, DEFAULT_REPAIR_RATIO);
+    EXPECT_EQ(
+        packets.size(), source_packet_count + repair_packet_count);
 }
 
 TEST(Codec, Encoder_PacketHasCorrectMagic) {
@@ -357,7 +361,8 @@ TEST(Codec, Decoder_GetChunkDataIsCopy) {
 
 TEST(Codec, Decoder_PacketLossResilience) {
     const std::vector<std::byte> original_data = make_test_data(SYMBOL_SIZE_BYTES * 4);
-    const Encoder encoder(make_test_file_id());
+    const Encoder encoder(
+        make_test_file_id(), HashAlgorithm::CRC32, {1.0});
     const auto [packets, manifest] = encode_test_data(encoder, original_data);
 
     const std::size_t half = packets.size() / 2;

@@ -81,10 +81,11 @@ set_target_properties(media_storage_lib PROPERTIES
         SOVERSION 1
 )
 
-target_link_libraries(media_storage PRIVATE media_storage_lib)
+target_link_libraries(media_storage PRIVATE media_storage_lib media_storage_core)
 if (BUILD_GUI)
     target_link_libraries(media_storage_gui PRIVATE
             media_storage_lib
+            media_storage_core
             Qt6::Core
             Qt6::Widgets
     )

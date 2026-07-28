@@ -127,15 +127,15 @@ Or run the test binary directly for verbose output:
 #### Lossless Video (Local Files)
 
 ```
-./media_storage encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>]
-./media_storage decode --input <video> --output <file> [--password <pwd>]
+./media_storage encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]
+./media_storage decode --input <video> --output <file> [--password <pwd>] [--benchmark-json <report.json>]
 ```
 
 #### Live Streaming (Twitch / YouTube)
 
 ```
-./media_storage stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>]
-./media_storage stream-decode --url <stream_url> --output <file> [--password <pwd>]
+./media_storage stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]
+./media_storage stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]
 ```
 
 Stream-decode supports a 30-second retry window, so you can start it before the encoder begins streaming.
@@ -167,9 +167,50 @@ Stream-decode supports a 30-second retry window, so you can start it before the 
 | `--encrypt`  | `-e`  | Enable encryption (encode only)                                 |
 | `--password` | `-p`  | Password for encryption/decryption                              |
 | `--hash`     | `-H`  | Checksum algorithm: `crc32` (default) or `xxhash` (encode only) |
+| `--reliability-profile` | | Repair profile: `local` (5%), `balanced` (20%), or `durable` (50%) |
+| `--repair-percent` | | Custom repair percentage from 0 through 500; overrides the profile |
+| `--benchmark-json` | | Write the performance report as machine-readable JSON           |
 
 The checksum algorithm is embedded in each packet's flags, so `decode` automatically detects which algorithm was used —
 no need to specify it again.
+
+Repair settings affect encoding only. The default is `local`, which emits
+approximately 5 repair packets per 100 source packets. Higher values improve
+damage tolerance but increase packet count, frames, encoding time, and output
+size. A custom percentage takes precedence over a selected profile:
+
+```bash
+# Default local/fast profile (5%)
+./media_storage encode --input archive.rar --output archive.mkv
+
+# Balanced profile (20%)
+./media_storage encode archive.rar archive.mkv --reliability-profile balanced
+
+# Custom 7.5%, overriding the durable profile
+./media_storage encode archive.rar archive.mkv \
+  --reliability-profile durable --repair-percent 7.5
+```
+
+Internally repair values are always ratios (`0.05` means 5%). Percentage-to-
+ratio conversion occurs only at CLI/GUI boundaries.
+
+Every successful encode/decode prints a performance report with input/output
+sizes, source and repair packet counts, frame rate, MiB/s throughput, size
+ratio, total wall time, and per-stage timings. Encode stages cover input
+open/mapping, preprocessing/encryption, chunking, FEC generation, frame
+conversion, FFmpeg encoding, and mux/output writes. Decode stages cover
+read/demux, frame decoding, packet extraction, FEC recovery,
+postprocessing/decryption, and output writes.
+
+Parallel stage durations are accumulated work time. They are divided by total
+wall time for the reported percentages, so overlapping parallel stages can
+sum to more than 100%.
+
+The encode report and benchmark JSON also include the selected repair
+percentage and ratio, source/repair/total packet counts, and the observed
+repair/source ratio. Before encoding, the GUI and CLI show deterministic
+packet, frame, and video-duration estimates based on the same chunk and frame
+capacity calculations used by the encoder.
 
 ### GUI
 

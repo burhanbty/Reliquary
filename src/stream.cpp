@@ -17,6 +17,7 @@
 #include "stream.h"
 #include "configuration.h"
 #include "dct_common.h"
+#include "performance_profiler.h"
 #include "video_encoder.h"
 
 #include <algorithm>
@@ -24,8 +25,9 @@
 #include <stdexcept>
 
 StreamEncoder::StreamEncoder(const std::string &rtmp_url, const int bitrate_kbps,
-                             const int width, const int height, const int fps)
-    : width_(width), height_(height), fps_(fps) {
+                             const int width, const int height, const int fps,
+                             PerformanceProfiler *profiler)
+    : width_(width), height_(height), fps_(fps), profiler_(profiler) {
     init_stream(rtmp_url, bitrate_kbps);
 }
 
@@ -77,7 +79,11 @@ void StreamEncoder::init_audio_encoder() {
         audio_codec_ctx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
-    int ret = avcodec_open2(audio_codec_ctx_, acodec, nullptr);
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_open2(audio_codec_ctx_, acodec, nullptr);
+    }
     if (ret < 0) {
         throw std::runtime_error("Failed to open AAC codec");
     }
@@ -136,25 +142,40 @@ void StreamEncoder::write_audio_up_to(const int64_t video_pts) {
         audio_frame_->pts = audio_pts_;
         audio_pts_ += audio_frame_->nb_samples;
 
-        int ret = avcodec_send_frame(audio_codec_ctx_, audio_frame_);
+        int ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_send_frame(audio_codec_ctx_, audio_frame_);
+        }
         if (ret < 0) break;
 
         while (true) {
-            ret = avcodec_receive_packet(audio_codec_ctx_, av_packet_);
+            {
+                ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+                ret = avcodec_receive_packet(audio_codec_ctx_, av_packet_);
+            }
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             if (ret < 0) break;
 
             av_packet_rescale_ts(av_packet_, audio_codec_ctx_->time_base,
                                  audio_stream_->time_base);
             av_packet_->stream_index = audio_stream_->index;
-            av_interleaved_write_frame(format_ctx_, av_packet_);
+            {
+                ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+                av_interleaved_write_frame(format_ctx_, av_packet_);
+            }
             av_packet_unref(av_packet_);
         }
     }
 }
 
 void StreamEncoder::init_stream(const std::string &rtmp_url, const int bitrate_kbps) {
-    int ret = avformat_alloc_output_context2(&format_ctx_, nullptr, "flv", rtmp_url.c_str());
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avformat_alloc_output_context2(
+            &format_ctx_, nullptr, "flv", rtmp_url.c_str());
+    }
     if (ret < 0 || !format_ctx_) {
         throw std::runtime_error("Failed to create output context for RTMP stream");
     }
@@ -194,7 +215,10 @@ void StreamEncoder::init_stream(const std::string &rtmp_url, const int bitrate_k
         video_codec_ctx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
-    ret = avcodec_open2(video_codec_ctx_, codec, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_open2(video_codec_ctx_, codec, nullptr);
+    }
     if (ret < 0) {
         char error_buffer[256];
         av_strerror(ret, error_buffer, sizeof(error_buffer));
@@ -232,14 +256,20 @@ void StreamEncoder::init_stream(const std::string &rtmp_url, const int bitrate_k
     layout_ = compute_frame_layout(width_, height_);
     frame_data_buffer_.reserve(layout_.bytes_per_frame);
 
-    ret = avio_open(&format_ctx_->pb, rtmp_url.c_str(), AVIO_FLAG_WRITE);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avio_open(&format_ctx_->pb, rtmp_url.c_str(), AVIO_FLAG_WRITE);
+    }
     if (ret < 0) {
         char error_buffer[256];
         av_strerror(ret, error_buffer, sizeof(error_buffer));
         throw std::runtime_error(std::string("Failed to open RTMP stream: ") + error_buffer);
     }
 
-    ret = avformat_write_header(format_ctx_, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = avformat_write_header(format_ctx_, nullptr);
+    }
     if (ret < 0) {
         char error_buffer[256];
         av_strerror(ret, error_buffer, sizeof(error_buffer));
@@ -313,20 +343,30 @@ void StreamEncoder::embed_data_in_frame(const std::vector<std::byte> &data) cons
 }
 
 void StreamEncoder::encode_frame() {
-    int ret = av_frame_make_writable(frame_);
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = av_frame_make_writable(frame_);
+    }
     if (ret < 0) {
         throw std::runtime_error("Frame not writable");
     }
 
     frame_->pts = frame_index_++;
 
-    ret = avcodec_send_frame(video_codec_ctx_, frame_);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        ret = avcodec_send_frame(video_codec_ctx_, frame_);
+    }
     if (ret < 0) {
         throw std::runtime_error("Error sending frame");
     }
 
     while (true) {
-        ret = avcodec_receive_packet(video_codec_ctx_, av_packet_);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_receive_packet(video_codec_ctx_, av_packet_);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
@@ -337,7 +377,10 @@ void StreamEncoder::encode_frame() {
         av_packet_rescale_ts(av_packet_, video_codec_ctx_->time_base, video_stream_->time_base);
         av_packet_->stream_index = video_stream_->index;
 
-        ret = av_interleaved_write_frame(format_ctx_, av_packet_);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+            ret = av_interleaved_write_frame(format_ctx_, av_packet_);
+        }
         if (ret < 0) {
             throw std::runtime_error("Error writing frame to stream");
         }
@@ -358,9 +401,12 @@ void StreamEncoder::add_packet(const Packet &packet) {
         flush_frame_buffer();
     }
 
-    frame_data_buffer_.insert(frame_data_buffer_.end(),
-                              packet.bytes.begin(),
-                              packet.bytes.end());
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::PacketToFrame);
+        frame_data_buffer_.insert(frame_data_buffer_.end(),
+                                  packet.bytes.begin(),
+                                  packet.bytes.end());
+    }
 }
 
 void StreamEncoder::encode_packets(const std::vector<Packet> &packets) {
@@ -372,33 +418,56 @@ void StreamEncoder::encode_packets(const std::vector<Packet> &packets) {
 void StreamEncoder::flush_frame_buffer() {
     if (frame_data_buffer_.empty()) return;
 
-    embed_data_in_frame(frame_data_buffer_);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::PacketToFrame);
+        embed_data_in_frame(frame_data_buffer_);
+    }
     encode_frame();
     frame_data_buffer_.clear();
 }
 
 void StreamEncoder::flush_encoder() const {
-    avcodec_send_frame(video_codec_ctx_, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        avcodec_send_frame(video_codec_ctx_, nullptr);
+    }
     while (true) {
-        const int ret = avcodec_receive_packet(video_codec_ctx_, av_packet_);
+        int ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_receive_packet(video_codec_ctx_, av_packet_);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         if (ret < 0) throw std::runtime_error("Error flushing video encoder");
 
         av_packet_rescale_ts(av_packet_, video_codec_ctx_->time_base, video_stream_->time_base);
         av_packet_->stream_index = video_stream_->index;
-        av_interleaved_write_frame(format_ctx_, av_packet_);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+            av_interleaved_write_frame(format_ctx_, av_packet_);
+        }
         av_packet_unref(av_packet_);
     }
 
-    avcodec_send_frame(audio_codec_ctx_, nullptr);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+        avcodec_send_frame(audio_codec_ctx_, nullptr);
+    }
     while (true) {
-        const int ret = avcodec_receive_packet(audio_codec_ctx_, av_packet_);
+        int ret = 0;
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
+            ret = avcodec_receive_packet(audio_codec_ctx_, av_packet_);
+        }
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         if (ret < 0) break;
 
         av_packet_rescale_ts(av_packet_, audio_codec_ctx_->time_base, audio_stream_->time_base);
         av_packet_->stream_index = audio_stream_->index;
-        av_interleaved_write_frame(format_ctx_, av_packet_);
+        {
+            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+            av_interleaved_write_frame(format_ctx_, av_packet_);
+        }
         av_packet_unref(av_packet_);
     }
 }
@@ -408,5 +477,8 @@ void StreamEncoder::finalize() {
     finalized_ = true;
     flush_frame_buffer();
     flush_encoder();
-    av_write_trailer(format_ctx_);
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        av_write_trailer(format_ctx_);
+    }
 }

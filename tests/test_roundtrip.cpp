@@ -302,7 +302,8 @@ TEST(Roundtrip, OutOfOrderPackets) {
 
 TEST(Roundtrip, PacketLossRecovery) {
     const std::vector<std::byte> original_data = make_test_data(SYMBOL_SIZE_BYTES * 8);
-    const Encoder encoder(make_test_file_id());
+    const Encoder encoder(
+        make_test_file_id(), HashAlgorithm::CRC32, {1.0});
     auto [packets, manifest] = encoder.encode_chunk(0, original_data, true);
 
     Decoder decoder;
