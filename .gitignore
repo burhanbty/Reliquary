@@ -75,4 +75,7 @@ Testing/
 *.avi
 *.mov
 test_*
+!tests/test_encoding_preflight.cpp
+!tests/test_cli_preflight.cmake
+!tests/test_gui_preflight_model.cpp
 decoded_*

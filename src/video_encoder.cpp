@@ -157,6 +157,10 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
     if (ret < 0) {
         throw std::runtime_error("Failed to write header");
     }
+    if (const int64_t position = avio_tell(format_ctx->pb); position >= 0) {
+        statistics_.container_header_bytes =
+            static_cast<uint64_t>(position);
+    }
 }
 
 int VideoEncoder::packets_per_frame() {
@@ -249,18 +253,7 @@ void VideoEncoder::encode_frame() {
             throw std::runtime_error("Error receiving packet");
         }
 
-        av_packet_rescale_ts(av_packet, codec_ctx->time_base, stream->time_base);
-        av_packet->stream_index = stream->index;
-
-        {
-            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
-            ret = av_interleaved_write_frame(format_ctx, av_packet);
-        }
-        if (ret < 0) {
-            throw std::runtime_error("Error writing frame");
-        }
-
-        av_packet_unref(av_packet);
+        write_encoded_packet();
     }
 }
 
@@ -299,7 +292,28 @@ void VideoEncoder::flush_frame_buffer() {
     frame_data_buffer.clear();
 }
 
-void VideoEncoder::flush_encoder() const {
+void VideoEncoder::write_encoded_packet() {
+    if (av_packet->size < 0) {
+        throw std::runtime_error("Encoder returned an invalid packet size");
+    }
+    statistics_.encoded_packet_bytes.push_back(
+        static_cast<uint64_t>(av_packet->size));
+    av_packet_rescale_ts(
+        av_packet, codec_ctx->time_base, stream->time_base);
+    av_packet->stream_index = stream->index;
+
+    int ret = 0;
+    {
+        ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
+        ret = av_interleaved_write_frame(format_ctx, av_packet);
+    }
+    av_packet_unref(av_packet);
+    if (ret < 0) {
+        throw std::runtime_error("Error writing frame");
+    }
+}
+
+void VideoEncoder::flush_encoder() {
     int ret = 0;
     {
         ScopedTimer timer(profiler_, PerformanceStage::FfmpegEncode);
@@ -318,14 +332,7 @@ void VideoEncoder::flush_encoder() const {
             throw std::runtime_error("Error flushing encoder");
         }
 
-        av_packet_rescale_ts(av_packet, codec_ctx->time_base, stream->time_base);
-        av_packet->stream_index = stream->index;
-
-        {
-            ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
-            av_interleaved_write_frame(format_ctx, av_packet);
-        }
-        av_packet_unref(av_packet);
+        write_encoded_packet();
     }
 }
 
@@ -336,6 +343,17 @@ void VideoEncoder::finalize() {
     flush_encoder();
     {
         ScopedTimer timer(profiler_, PerformanceStage::MuxDiskWrite);
-        av_write_trailer(format_ctx);
+        const int64_t before_trailer = avio_tell(format_ctx->pb);
+        if (av_write_trailer(format_ctx) < 0) {
+            throw std::runtime_error("Failed to write trailer");
+        }
+        const int64_t after_trailer = avio_tell(format_ctx->pb);
+        if (before_trailer >= 0 && after_trailer >= before_trailer) {
+            statistics_.container_trailer_bytes =
+                static_cast<uint64_t>(after_trailer - before_trailer);
+        }
+        if (after_trailer >= 0) {
+            statistics_.output_bytes = static_cast<uint64_t>(after_trailer);
+        }
     }
 }

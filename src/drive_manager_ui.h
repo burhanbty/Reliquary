@@ -37,11 +37,16 @@
 #include <QTimer>
 #include <QThread>
 #include <QCheckBox>
+#include <QToolButton>
+#include <QDateTime>
 
 #include <memory>
+#include <optional>
 
 #include "configuration.h"
 #include "encoding_reliability.h"
+#include "gui_preflight_model.h"
+#include "media_storage.h"
 
 class WorkerThread : public QThread {
     Q_OBJECT
@@ -60,6 +65,9 @@ public:
                  int streamWidth = FRAME_WIDTH_STREAM, int streamHeight = FRAME_HEIGHT_STREAM,
                  int streamFps = FRAME_FPS,
                  double repairRatio = DEFAULT_REPAIR_RATIO,
+                 std::optional<ms_encoding_estimate_t> preflightEstimate =
+                     std::nullopt,
+                 bool allowLowDisk = false,
                  QObject *parent = nullptr);
 
 signals:
@@ -67,7 +75,7 @@ signals:
 
     void statusUpdated(const QString &status);
 
-    void operationCompleted(bool success, const QString &message);
+    void operationCompleted(bool success, const QString &message, int status);
 
     void logMessage(const QString &message);
 
@@ -86,6 +94,49 @@ private:
     int streamHeight;
     int streamFps;
     double repairRatio;
+    std::optional<ms_encoding_estimate_t> preflightEstimate;
+    bool allowLowDisk;
+};
+
+struct GuiPreflightJob {
+    uint64_t generation = 0;
+    GuiPreflightFingerprint fingerprint;
+    QString inputPath;
+    QString outputPath;
+    bool encrypted = false;
+    QString password;
+    double repairRatio = DEFAULT_REPAIR_RATIO;
+};
+
+class PreflightEstimateThread : public QThread {
+    Q_OBJECT
+
+public:
+    explicit PreflightEstimateThread(
+        GuiPreflightJob job, QObject *parent = nullptr);
+
+    [[nodiscard]] const GuiPreflightJob &job() const noexcept {
+        return job_;
+    }
+
+    [[nodiscard]] ms_status_t resultStatus() const noexcept {
+        return result_status_;
+    }
+
+    [[nodiscard]] const ms_encoding_estimate_t &estimate() const noexcept {
+        return estimate_;
+    }
+
+signals:
+    void phaseChanged(uint64_t generation, const QString &phase);
+
+protected:
+    void run() override;
+
+private:
+    GuiPreflightJob job_;
+    ms_status_t result_status_ = MS_ERR_IO;
+    ms_encoding_estimate_t estimate_{};
 };
 
 class DriveManagerUI : public QMainWindow {
@@ -120,11 +171,20 @@ slots:
 
     void onResolutionChanged(int index) const;
 
-    void onReliabilityProfileChanged(int index) const;
+    void onReliabilityProfileChanged(int index);
+
+    void onPreflightInputChanged();
+
+    void onCustomRepairChanged();
+
+    void runDebouncedPreflight();
+
+    void onLowDiskOverrideToggled(bool checked);
 
     void clearLogs() const;
 
-    void onOperationCompleted(bool success, const QString &message);
+    void onOperationCompleted(
+        bool success, const QString &message, int status);
 
     void onProgressUpdated(int percentage) const;
 
@@ -159,6 +219,30 @@ private:
 
     bool validatePaths();
 
+    void requestPreflight(bool force = false);
+
+    void startPreflightJob(const GuiPreflightJob &job);
+
+    void onPreflightFinished(PreflightEstimateThread *thread);
+
+    void updatePreflightPanel();
+
+    void updateEncodeEligibility();
+
+    [[nodiscard]] std::optional<GuiPreflightFingerprint>
+    currentPreflightFingerprint(
+        GuiPreflightStatus *waitingStatus = nullptr) const;
+
+    [[nodiscard]] GuiPreflightSnapshot currentSnapshot() const;
+
+    void clearPreflightValues();
+
+    void logPreflightEstimate() const;
+
+    [[nodiscard]] bool confirmOverwrite() const;
+
+    void launchEncode();
+
     [[nodiscard]] EncodingReliabilityOptions selectedReliabilityOptions() const;
 
     void logReliabilityEstimate(
@@ -183,6 +267,32 @@ private:
     QLabel *reliabilityHelpLabel;
     QPushButton *encodeButton;
     QPushButton *decodeButton;
+
+    // Preflight estimate
+    QGroupBox *preflightGroup;
+    QLabel *preflightStatusIcon;
+    QLabel *preflightStatusValue;
+    QProgressBar *preflightProgress;
+    QLabel *preflightInputSizeValue;
+    QLabel *preflightReliabilityValue;
+    QLabel *preflightRepairValue;
+    QLabel *preflightLikelyOutputValue;
+    QLabel *preflightRangeValue;
+    QLabel *preflightAvailableDiskValue;
+    QLabel *preflightRequiredDiskValue;
+    QLabel *preflightMissingDiskValue;
+    QToolButton *preflightDetailsButton;
+    QWidget *preflightDetailsWidget;
+    QLabel *preflightSourcePacketsValue;
+    QLabel *preflightRepairPacketsValue;
+    QLabel *preflightTotalPacketsValue;
+    QLabel *preflightFramesValue;
+    QLabel *preflightVideoDurationValue;
+    QLabel *preflightSafetyMarginValue;
+    QLabel *preflightProbeFramesValue;
+    QLabel *preflightProbeDurationValue;
+    QLabel *preflightMethodValue;
+    QCheckBox *lowDiskOverrideCheckBox;
 
     // Batch operations
     QGroupBox *batchGroup;
@@ -224,8 +334,16 @@ private:
 
     // Worker thread
     std::unique_ptr<WorkerThread> workerThread;
+    PreflightEstimateThread *preflightThread = nullptr;
+    std::optional<GuiPreflightJob> pendingPreflightJob;
+    QTimer *preflightDebounceTimer;
+    GuiPreflightModel preflightModel;
+    std::optional<ms_encoding_estimate_t> acceptedPreflightEstimate;
+    QDateTime acceptedPreflightCompletedAt;
 
     // State
     bool isOperationRunning;
+    bool pendingEncodeAfterPreflight = false;
+    bool shuttingDown = false;
     QString currentOperation;
 };

@@ -19,6 +19,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,13 @@ extern "C" {
 #include "encoder.h"
 
 class PerformanceProfiler;
+
+struct VideoEncoderStatistics {
+    std::vector<uint64_t> encoded_packet_bytes;
+    uint64_t container_header_bytes = 0;
+    uint64_t container_trailer_bytes = 0;
+    uint64_t output_bytes = 0;
+};
 
 FrameLayout compute_frame_layout();
 
@@ -63,6 +71,10 @@ public:
 
     [[nodiscard]] static int packets_per_frame();
 
+    [[nodiscard]] const VideoEncoderStatistics &statistics() const {
+        return statistics_;
+    }
+
 private:
     AVFormatContext *format_ctx = nullptr;
     AVCodecContext *codec_ctx = nullptr;
@@ -75,6 +87,7 @@ private:
     int64_t frame_index = 0;
     bool finalized = false;
     PerformanceProfiler *profiler_ = nullptr;
+    VideoEncoderStatistics statistics_;
 
     void init_encoder(const std::string &output_path);
 
@@ -82,7 +95,9 @@ private:
 
     void encode_frame();
 
-    void flush_encoder() const;
+    void flush_encoder();
+
+    void write_encoded_packet();
 
     void flush_frame_buffer();
 };

@@ -16,6 +16,7 @@
 
 #include "chunker.h"
 #include "configuration.h"
+#include "encoding_reliability.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -88,7 +89,18 @@ FileChunkReader::FileChunkReader(const char *path, const std::size_t chunk_size)
     file_.seekg(0, std::ios::end);
     file_size_ = file_.tellg();
     file_.seekg(0);
-    num_chunks_ = file_size_ == 0 ? 1 : (file_size_ + chunk_size_ - 1) / chunk_size_;
+    if (chunk_size_ == CHUNK_SIZE_BYTES) {
+        num_chunks_ = static_cast<std::size_t>(
+            calculate_chunk_count(file_size_, false));
+    } else if (chunk_size_ == CHUNK_SIZE_PLAIN_MAX_ENCRYPTED) {
+        num_chunks_ = static_cast<std::size_t>(
+            calculate_chunk_count(file_size_, true));
+    } else {
+        num_chunks_ = file_size_ == 0
+                          ? 1
+                          : file_size_ / chunk_size_ +
+                                (file_size_ % chunk_size_ != 0 ? 1 : 0);
+    }
 
     if (file_size_ == 0) {
         return;
@@ -140,12 +152,12 @@ std::span<const std::byte> FileChunkReader::chunk_view(const std::size_t index) 
     if (index >= num_chunks_) {
         throw std::runtime_error("chunk index out of range");
     }
-    if (!mapped_) {
-        throw std::runtime_error("chunk_view called without active mapping");
-    }
     const std::size_t offset = index * chunk_size_;
     if (offset >= file_size_) {
         return {};
+    }
+    if (!mapped_) {
+        throw std::runtime_error("chunk_view called without active mapping");
     }
     const std::size_t len = (std::min)(chunk_size_, file_size_ - offset);
     return {mapped_ + offset, len};

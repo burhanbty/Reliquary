@@ -12,7 +12,7 @@ an efficient, general-purpose archive or backup tool.
 
 - Tested on Windows 10/11
 - Release configuration builds successfully
-- **169/169 automated tests passing**
+- **214/214 automated tests passing**
 - Successful encode/decode roundtrip with SHA-256 verification
 - Both GUI and CLI applications are available
 
@@ -29,6 +29,7 @@ an efficient, general-purpose archive or backup tool.
 - Stage-level performance profiler
 - Machine-readable JSON benchmark output
 - Configurable reliability profiles
+- Encode preflight estimation and target-disk safety checks
 
 ## Improvements Introduced in VidStoreX
 
@@ -72,6 +73,70 @@ VidStoreX provides three named profiles plus a custom range:
 The CLI exposes these settings through `--reliability-profile` and
 `--repair-percent`. An explicit repair percentage overrides the selected
 profile.
+
+### Encode preflight and disk safety
+
+Before every normal file encode starts, a shared preflight service calculates chunk,
+source/repair/total packet, frame, and video-duration counts with the same
+helpers used by the real encoder. A bounded probe then encodes representative
+input chunks through the production `VideoEncoder`, so codec, pixel format,
+resolution, frame rate, muxer, and FFmpeg settings cannot drift from the real
+encode.
+
+The likely output size includes measured Matroska overhead. Its range is
+derived from the observed compressed bytes-per-frame distribution with a 95%
+Student-t interval; it is not a fixed percentage guess. For small inputs that
+fit entirely inside the probe budget, the bounded encode is exact.
+
+The estimate records the normalized input path, size, and last-write time.
+Immediately before the encoder opens the input, these values are checked
+again and target-disk capacity is re-queried. A changed input produces
+`MS_ERR_PREFLIGHT_STALE`; the caller must run preflight again instead of
+encoding with outdated packet or disk calculations.
+
+Disk space is queried on the nearest existing ancestor of the output path.
+Unknown disk values remain unknown and produce a warning, but do not block
+encoding or require an override. When an output estimate is available, the
+central policy is:
+
+```text
+safety_margin = max(1 GiB, ceil(estimated_output_max / 10))
+required_space = estimated_output_max + safety_margin
+```
+
+The file encoder writes to a unique same-directory partial file and replaces
+the requested target only after FFmpeg closes successfully. The available
+space already excludes an existing target's occupied bytes, so existing
+output size is not credited back: the old target and new partial may coexist
+until commit. The partial is the future final output, not an additional copy,
+so the temporary-space term remains zero. Failed or cancelled encodes remove
+their partial and preserve the old target.
+
+A known insufficient result blocks encode by default. `--allow-low-disk`
+overrides only this known disk blocker and prints the available, required,
+missing, estimated-maximum, and safety-margin values. It cannot override
+invalid input/output paths, stale metadata, invalid reliability values, or
+arithmetic overflow.
+
+If the probe fails, or `--no-probe` is used, deterministic packet/frame
+estimates remain available while output size and required space are explicitly
+unavailable (`null` in JSON). Encoding may continue with a warning because
+disk sufficiency cannot be fully verified. Technical probe errors remain in
+diagnostic output, and probe temporary files are removed automatically.
+
+`--estimate-only` prints the complete preflight report without creating,
+removing, or replacing the requested output. `--estimate-json <path>` writes
+the machine-readable form. In estimate-only mode,
+`--benchmark-json <path>` is an alias for the same estimate schema; during a
+real encode it retains its performance-report meaning. After a successful
+encode, text and benchmark JSON reports compare estimated and actual bytes,
+including absolute/relative error, range membership, preflight duration, and
+actual encode duration.
+
+Output estimates are measurements, not allocation guarantees. FFV1
+compressibility depends on the embedded data, and a bounded statistical
+interval can occasionally miss the final byte count. The safety margin is
+therefore deliberately much larger than the output-size confidence interval.
 
 ## Benchmark Results
 
@@ -120,7 +185,8 @@ Stage timings:
 ```
 
 Use `--benchmark-json <path>` to write the complete report, including packet
-counts, rates, expansion ratio, timings, and reliability settings, as JSON.
+counts, rates, expansion ratio, timings, reliability settings, and estimate
+validation, as JSON.
 
 ## Reliability Profiles
 
@@ -192,7 +258,39 @@ build\Release\media_storage_gui.exe
 ```
 
 The GUI provides file selection, encode/decode controls, reliability
-settings, progress reporting, and performance results.
+settings, progress reporting, performance results, and a compact
+**Preflight Estimate** panel. Selecting a different input/output path or
+changing encryption or reliability settings automatically schedules the
+shared estimate service on a background Qt thread. Custom repair-percentage
+editing is debounced, and request generations prevent an older probe result
+from being applied to newer settings.
+
+The panel shows input size, profile and repair percentage, deterministic
+source/repair/total packet and frame counts, video duration, likely and
+minimum/maximum output sizes, available and required disk space, safety
+margin, probe frame count/duration, and estimation method. Details are
+collapsible so the existing scrollable controls and decode workflow remain
+easy to reach.
+
+A known insufficient-disk result disables Encode by default and exposes the
+explicit **Proceed despite insufficient disk space** option. The option
+requires confirmation, is reset by relevant setting changes, and is passed
+to the central API as a disk-only override. Unknown disk capacity and an
+unavailable output-size probe produce separate warnings and require
+confirmation, but do not automatically block an otherwise valid encode.
+
+Before encode, the GUI checks that the accepted estimate still matches the
+normalized paths, input size/last-write time, reliability, and encryption
+state. Missing, stale, or older estimates are refreshed; `ms_encode` then
+rechecks metadata and disk space immediately before opening the encoder.
+Existing outputs require an explicit overwrite confirmation and retain the
+central same-directory partial/atomic-replace safety path.
+
+After encode, the GUI's performance log reports the central estimate
+validation fields: likely/minimum/maximum estimates, actual bytes,
+absolute/relative error, range membership, preflight duration, and actual
+encode duration. These estimates are measurements rather than guarantees;
+FFV1 size depends on input content and compressibility.
 
 ### CLI
 
@@ -206,6 +304,19 @@ build\Release\media_storage.exe encode input.rar output.mkv --reliability-profil
 build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 7.5
 build\Release\media_storage.exe decode output.mkv restored.rar
 build\Release\media_storage.exe encode input.rar output.mkv --benchmark-json benchmark.json
+build\Release\media_storage.exe encode input.rar output.mkv --estimate-only
+build\Release\media_storage.exe encode input.rar output.mkv --estimate-only --estimate-json estimate.json
+build\Release\media_storage.exe encode input.rar output.mkv --estimate-only --benchmark-json estimate.json
+build\Release\media_storage.exe encode input.rar output.mkv --allow-low-disk
+build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 5 --allow-low-disk
+```
+
+Use `--no-probe` when only deterministic packet/frame counts are wanted.
+This intentionally leaves output-size and required-space values unavailable
+and warns that disk safety could not be fully verified:
+
+```powershell
+build\Release\media_storage.exe encode input.rar output.mkv --estimate-only --no-probe
 ```
 
 Equivalent explicit-path syntax is also available:
@@ -224,6 +335,20 @@ build\Release\media_storage.exe decode output.mkv restored.rar --password "your-
 
 Avoid exposing sensitive passwords in shared terminal history or logs.
 
+### Public C API preflight
+
+`ms_estimate_encode` returns a versioned `ms_encoding_estimate_t` with
+explicit availability flags for output estimates and disk values. A caller
+can pass that estimate to `ms_encode`; the implementation rejects unsupported
+structure versions, stale input metadata, and newly insufficient disk.
+Zero-initialized options retain the default 5% Local reliability behavior.
+
+The API reports version `1.2.0`. The additions to `ms_encode_options_t`,
+`ms_encoding_estimate_t`, and `ms_result_t` change their binary layouts, so
+applications built against an older header must be recompiled. The encoded
+file and packet formats are unchanged, and existing videos remain decodable.
+The shared-library `SOVERSION` is therefore `2`.
+
 ## Project Structure
 
 ```text
@@ -237,7 +362,7 @@ VidStoreX/
 
 ## Testing
 
-The current Windows Release build passes **169/169 tests**:
+The current Windows Release build passes **214/214 tests**:
 
 ```powershell
 ctest --test-dir build -C Release --output-on-failure
@@ -253,12 +378,29 @@ Coverage includes:
 - Encode/decode roundtrips
 - SHA-256 reconstruction verification
 - Human-readable and JSON performance reports
+- Probe-based output estimates, JSON nullability, and disk-safety behavior
+- Stale metadata, disk re-check, low-disk override, safe replacement, and
+  probe/partial cleanup paths
+- End-to-end CLI estimate-only, JSON alias, no-probe, option-order, and
+  disk-known/unknown behavior
+- Estimate-versus-actual validation, zero/unavailable arithmetic, and
+  overflow protection
+- GUI preflight generation acceptance, fingerprint staleness, state
+  transitions, encode eligibility, low-disk override reset, warning states,
+  and shutdown-result rejection
 
 ## Known Limitations
 
 - Video output can still be substantially larger than the source file.
 - FFmpeg encoding and decoding are the main performance bottlenecks.
 - Output size depends on the input content and FFV1 compressibility.
+- A bounded 95% Student-t interval is not a guarantee and can be narrower than
+  small systematic container/position effects; rely on the disk safety margin,
+  not the confidence interval alone.
+- Disk availability can be unknown on unsupported or inaccessible
+  filesystems; encoding then proceeds with an explicit warning.
+- Missing output parent directories are reported as errors rather than
+  automatically created.
 - The 5% Local profile does not guarantee recovery from severe video damage.
 - Resilience on lossy platforms has not yet been benchmarked comprehensively.
 - The project remains experimental.
@@ -268,8 +410,6 @@ Coverage includes:
 - Increase data density per frame
 - Add a dedicated Fast Local Mode
 - Develop balanced and platform-resistant encoding modes
-- Estimate output size before encoding
-- Validate available disk space
 - Add pause and resume support
 - Support streaming decode with lower memory requirements
 - Evaluate more efficient FFmpeg settings

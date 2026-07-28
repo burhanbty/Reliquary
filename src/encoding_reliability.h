@@ -41,6 +41,9 @@ struct EncodingReliabilityEstimate {
 
 [[nodiscard]] uint64_t calculate_source_packet_count(uint64_t encoded_chunk_size);
 
+[[nodiscard]] uint64_t calculate_chunk_count(
+    uint64_t input_size, bool encrypted);
+
 [[nodiscard]] uint64_t calculate_repair_packet_count(
     uint64_t source_packet_count, double repair_ratio);
 

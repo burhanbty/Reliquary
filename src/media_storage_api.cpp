@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -27,8 +28,10 @@
 #include <future>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <omp.h>
+#include <random>
 #include <span>
 #include <sstream>
 #include <string>
@@ -38,6 +41,7 @@
 #include "configuration.h"
 #include "crypto.h"
 #include "decoder.h"
+#include "encoding_preflight.h"
 #include "encoding_reliability.h"
 #include "encoder.h"
 #include "performance_profiler.h"
@@ -45,8 +49,83 @@
 #include "video_decoder.h"
 #include "video_encoder.h"
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+static HashAlgorithm to_internal_hash(ms_hash_algorithm_t algo);
+
 namespace {
     constexpr double bytes_per_mib = 1024.0 * 1024.0;
+
+    class SafeEncodeOutput {
+    public:
+        explicit SafeEncodeOutput(
+            const std::filesystem::path &target)
+            : target_(target) {
+            static std::atomic<uint64_t> sequence{0};
+            std::filesystem::path parent = target_.parent_path();
+            if (parent.empty()) parent = std::filesystem::current_path();
+            const std::string extension = target_.extension().string();
+            const std::string stem = target_.stem().string();
+            std::random_device random;
+            for (unsigned attempt = 0; attempt < 32; ++attempt) {
+                partial_ = parent /
+                    ("." + stem + ".vidstorex-part-" +
+                     std::to_string(random()) + "-" +
+                     std::to_string(sequence.fetch_add(1)) +
+                     extension);
+                std::error_code error;
+                if (!std::filesystem::exists(partial_, error) &&
+                    !error) {
+                    return;
+                }
+            }
+            throw std::runtime_error(
+                "could not allocate a unique partial output path");
+        }
+
+        ~SafeEncodeOutput() {
+            if (!committed_) {
+                std::error_code ignored;
+                std::filesystem::remove(partial_, ignored);
+            }
+        }
+
+        SafeEncodeOutput(const SafeEncodeOutput &) = delete;
+        SafeEncodeOutput &operator=(const SafeEncodeOutput &) = delete;
+
+        [[nodiscard]] const std::filesystem::path &partial_path() const {
+            return partial_;
+        }
+
+        void commit() {
+#if defined(_WIN32)
+            if (!MoveFileExW(
+                    partial_.c_str(), target_.c_str(),
+                    MOVEFILE_REPLACE_EXISTING |
+                        MOVEFILE_WRITE_THROUGH)) {
+                throw std::filesystem::filesystem_error(
+                    "could not replace output file",
+                    partial_, target_,
+                    std::error_code(
+                        static_cast<int>(GetLastError()),
+                        std::system_category()));
+            }
+#else
+            std::filesystem::rename(partial_, target_);
+#endif
+            committed_ = true;
+        }
+
+    private:
+        std::filesystem::path target_;
+        std::filesystem::path partial_;
+        bool committed_ = false;
+    };
 
     constexpr const char *stage_names[MS_PERF_STAGE_COUNT] = {
         "Input file read/open",
@@ -117,6 +196,7 @@ namespace {
 
         profiler.finish();
         *result = {};
+        result->actual_inside_estimated_range = -1;
         result->input_size = input_size;
         result->output_size = output_size;
         result->total_chunks = chunks;
@@ -170,6 +250,50 @@ namespace {
         }
     }
 
+    void fill_estimate_validation(
+        ms_result_t *result,
+        const ms_encoding_estimate_t &estimate,
+        const uint64_t actual_output_bytes,
+        const double preflight_duration_seconds) {
+        if (!result) return;
+        result->actual_output_bytes = actual_output_bytes;
+        result->preflight_duration_seconds =
+            preflight_duration_seconds;
+        result->actual_encode_duration_seconds =
+            result->total_seconds;
+        if (!estimate.output_size_estimate_available) return;
+
+        result->estimate_validation_available = 1;
+        result->estimated_output_bytes =
+            estimate.estimated_output_bytes;
+        result->estimated_output_min_bytes =
+            estimate.estimated_output_min_bytes;
+        result->estimated_output_max_bytes =
+            estimate.estimated_output_max_bytes;
+        result->estimate_absolute_error_bytes =
+            actual_output_bytes >= estimate.estimated_output_bytes
+                ? actual_output_bytes -
+                      estimate.estimated_output_bytes
+                : estimate.estimated_output_bytes -
+                      actual_output_bytes;
+        result->actual_inside_estimated_range =
+            actual_output_bytes >= estimate.estimated_output_min_bytes &&
+                    actual_output_bytes <=
+                        estimate.estimated_output_max_bytes
+                ? 1
+                : 0;
+        if (estimate.estimated_output_bytes != 0) {
+            result->estimate_relative_error_available = 1;
+            result->estimate_relative_error_percent =
+                static_cast<double>(
+                    static_cast<long double>(
+                        result->estimate_absolute_error_bytes) *
+                    100.0L /
+                    static_cast<long double>(
+                        estimate.estimated_output_bytes));
+        }
+    }
+
     void classify_packet(const std::span<const std::byte> packet,
                          uint64_t &source_packets,
                          uint64_t &repair_packets) {
@@ -194,20 +318,229 @@ namespace {
         }
         return reliability;
     }
-}
 
-static std::array<std::byte, 16> make_file_id() {
-    std::array<std::byte, 16> id{};
-    for (int i = 0; i < 16; ++i) {
-        id[i] = static_cast<std::byte>(i);
+    template <std::size_t Capacity>
+    void copy_text(char (&destination)[Capacity], const std::string &source) {
+        static_assert(Capacity > 0);
+        const std::size_t copied =
+            std::min(source.size(), Capacity - 1);
+        std::memcpy(destination, source.data(), copied);
+        destination[copied] = '\0';
     }
-    return id;
+
+    template <std::size_t Capacity>
+    std::string bounded_text(const char (&source)[Capacity]) {
+        const void *terminator = std::memchr(source, '\0', Capacity);
+        const std::size_t length = terminator
+            ? static_cast<const char *>(terminator) - source
+            : Capacity;
+        return {source, length};
+    }
+
+    void copy_preflight_estimate(
+        const EncodingPreflightEstimate &source,
+        ms_encoding_estimate_t &destination) {
+        destination = {};
+        destination.struct_size = sizeof(ms_encoding_estimate_t);
+        destination.struct_version = MS_ENCODING_ESTIMATE_VERSION;
+        destination.input_size_bytes = source.input_size_bytes;
+        destination.input_last_write_time_ticks =
+            source.input_last_write_time_ticks;
+        destination.input_path_fingerprint =
+            source.input_path_fingerprint;
+        destination.repair_percentage = source.repair_percentage;
+        destination.repair_ratio = source.repair_ratio;
+        destination.chunk_count = source.chunk_count;
+        destination.source_packet_count = source.source_packet_count;
+        destination.repair_packet_count = source.repair_packet_count;
+        destination.total_packet_count = source.total_packet_count;
+        destination.estimated_frame_count =
+            source.estimated_frame_count;
+        destination.estimated_video_duration_seconds =
+            source.estimated_video_duration_seconds;
+        destination.output_size_estimate_available =
+            source.output_size_estimate_available ? 1 : 0;
+        destination.estimated_output_bytes =
+            source.estimated_output_bytes.value_or(0);
+        destination.estimated_output_min_bytes =
+            source.estimated_output_min_bytes.value_or(0);
+        destination.estimated_output_max_bytes =
+            source.estimated_output_max_bytes.value_or(0);
+        destination.disk_space_known =
+            source.disk_space_known ? 1 : 0;
+        destination.available_disk_bytes =
+            source.available_disk_bytes.value_or(0);
+        destination.safety_margin_bytes =
+            source.safety_margin_bytes.value_or(0);
+        destination.required_disk_bytes =
+            source.required_disk_bytes.value_or(0);
+        destination.required_disk_space_known =
+            source.required_disk_bytes.has_value() ? 1 : 0;
+        destination.disk_space_sufficient =
+            source.disk_space_sufficient.has_value()
+                ? (*source.disk_space_sufficient ? 1 : 0)
+                : -1;
+        destination.can_start_encoding =
+            source.can_start_encoding ? 1 : 0;
+        destination.low_disk_override_permitted =
+            source.low_disk_override_permitted ? 1 : 0;
+        copy_text(
+            destination.estimation_method, source.estimation_method);
+        destination.probe_frame_count = source.probe_frame_count;
+        destination.probe_duration_seconds =
+            source.probe_duration_seconds;
+        destination.preflight_duration_seconds =
+            source.preflight_duration_seconds;
+        copy_text(destination.warning, source.warning);
+        copy_text(destination.error, source.error);
+    }
+
+    EncodingPreflightEstimate internal_preflight_estimate(
+        const ms_encoding_estimate_t &source) {
+        EncodingPreflightEstimate destination;
+        destination.input_size_bytes = source.input_size_bytes;
+        destination.input_last_write_time_ticks =
+            source.input_last_write_time_ticks;
+        destination.input_path_fingerprint =
+            source.input_path_fingerprint;
+        destination.repair_percentage = source.repair_percentage;
+        destination.repair_ratio = source.repair_ratio;
+        destination.chunk_count = source.chunk_count;
+        destination.source_packet_count =
+            source.source_packet_count;
+        destination.repair_packet_count =
+            source.repair_packet_count;
+        destination.total_packet_count =
+            source.total_packet_count;
+        destination.estimated_frame_count =
+            source.estimated_frame_count;
+        destination.estimated_video_duration_seconds =
+            source.estimated_video_duration_seconds;
+        destination.output_size_estimate_available =
+            source.output_size_estimate_available != 0;
+        if (destination.output_size_estimate_available) {
+            if (source.estimated_output_min_bytes >
+                    source.estimated_output_bytes ||
+                source.estimated_output_bytes >
+                    source.estimated_output_max_bytes) {
+                throw std::invalid_argument(
+                    "invalid output estimate range");
+            }
+            destination.estimated_output_bytes =
+                source.estimated_output_bytes;
+            destination.estimated_output_min_bytes =
+                source.estimated_output_min_bytes;
+            destination.estimated_output_max_bytes =
+                source.estimated_output_max_bytes;
+        }
+        destination.disk_space_known =
+            source.disk_space_known != 0;
+        if (destination.disk_space_known) {
+            destination.available_disk_bytes =
+                source.available_disk_bytes;
+        }
+        if (source.required_disk_space_known) {
+            if (!source.output_size_estimate_available) {
+                throw std::invalid_argument(
+                    "required disk space needs an output estimate");
+            }
+            const auto requirement =
+                calculate_encoding_disk_requirement(
+                    source.estimated_output_max_bytes);
+            if (requirement.safety_margin_bytes !=
+                    source.safety_margin_bytes ||
+                requirement.required_disk_bytes !=
+                    source.required_disk_bytes) {
+                throw std::invalid_argument(
+                    "inconsistent disk requirement");
+            }
+            destination.safety_margin_bytes =
+                source.safety_margin_bytes;
+            destination.required_disk_bytes =
+                source.required_disk_bytes;
+        }
+        if (source.disk_space_sufficient >= 0) {
+            destination.disk_space_sufficient =
+                source.disk_space_sufficient != 0;
+        }
+        destination.can_start_encoding =
+            source.can_start_encoding != 0;
+        destination.low_disk_override_permitted =
+            source.low_disk_override_permitted != 0;
+        destination.estimation_method =
+            bounded_text(source.estimation_method);
+        destination.probe_frame_count =
+            source.probe_frame_count;
+        destination.probe_duration_seconds =
+            source.probe_duration_seconds;
+        destination.preflight_duration_seconds =
+            source.preflight_duration_seconds;
+        destination.warning = bounded_text(source.warning);
+        destination.error = bounded_text(source.error);
+        return destination;
+    }
+
+    EncodingPreflightRequest make_preflight_request(
+        const ms_encode_options_t &options,
+        const bool enable_probe) {
+        const std::span<const std::byte> password =
+            options.password && options.password_len > 0
+                ? std::span<const std::byte>(
+                      reinterpret_cast<const std::byte *>(
+                          options.password),
+                      options.password_len)
+                : std::span<const std::byte>{};
+        return {
+            std::filesystem::path(options.input_path),
+            std::filesystem::path(options.output_path),
+            options.encrypt != 0,
+            password,
+            to_internal_hash(options.hash_algorithm),
+            reliability_from_encode_options(
+                options.repair_ratio,
+                options.repair_ratio_is_set),
+            enable_probe,
+            90,
+        };
+    }
 }
 
 static HashAlgorithm to_internal_hash(const ms_hash_algorithm_t algo) {
     switch (algo) {
         case MS_HASH_XXHASH32: return HashAlgorithm::XXHash32;
         default: return HashAlgorithm::CRC32;
+    }
+}
+
+ms_status_t ms_estimate_encode(
+    const ms_encode_options_t *options,
+    const int enable_probe,
+    ms_encoding_estimate_t *estimate) {
+    if (!options || !estimate || !options->input_path ||
+        !options->output_path || options->input_path[0] == '\0' ||
+        options->output_path[0] == '\0') {
+        return MS_ERR_INVALID_ARGS;
+    }
+    *estimate = {};
+    estimate->struct_size = sizeof(ms_encoding_estimate_t);
+    estimate->struct_version = MS_ENCODING_ESTIMATE_VERSION;
+    estimate->disk_space_sufficient = -1;
+    if (options->encrypt &&
+        (!options->password || options->password_len == 0)) {
+        return MS_ERR_INVALID_ARGS;
+    }
+    try {
+        const auto internal = estimate_encoding_preflight(
+            make_preflight_request(*options, enable_probe != 0));
+        copy_preflight_estimate(internal, *estimate);
+        if (internal.error == "input file was not found") {
+            return MS_ERR_FILE_NOT_FOUND;
+        }
+        return MS_OK;
+    } catch (const std::invalid_argument &) {
+        return MS_ERR_INVALID_ARGS;
+    } catch (...) {
+        return MS_ERR_IO;
     }
 }
 
@@ -218,10 +551,13 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
     if (options->encrypt && (!options->password || options->password_len == 0)) {
         return MS_ERR_INVALID_ARGS;
     }
+    if (result) {
+        *result = {};
+        result->actual_inside_estimated_range = -1;
+    }
 
     const std::string input_path(options->input_path);
     const std::string output_path(options->output_path);
-    PerformanceProfiler profiler;
     EncodingReliabilityOptions reliability;
     try {
         reliability = reliability_from_encode_options(
@@ -233,6 +569,55 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
     if (!std::filesystem::exists(input_path)) {
         return MS_ERR_FILE_NOT_FOUND;
     }
+
+    ms_encoding_estimate_t generated_preflight{};
+    const ms_encoding_estimate_t *preflight =
+        options->preflight_estimate;
+    double preflight_duration_seconds =
+        options->preflight_duration_seconds;
+    if (!preflight) {
+        const auto preflight_started =
+            std::chrono::steady_clock::now();
+        const ms_status_t status =
+            ms_estimate_encode(options, 1, &generated_preflight);
+        if (status != MS_OK) return status;
+        preflight_duration_seconds =
+            std::chrono::duration<double>(
+                std::chrono::steady_clock::now() -
+                preflight_started).count();
+        preflight = &generated_preflight;
+    }
+    if (preflight->struct_version !=
+            MS_ENCODING_ESTIMATE_VERSION ||
+        preflight->struct_size < sizeof(ms_encoding_estimate_t)) {
+        return MS_ERR_INVALID_ARGS;
+    }
+
+    EncodingPreflightEstimate internal_preflight;
+    EncodingStartValidation start_validation;
+    try {
+        internal_preflight =
+            internal_preflight_estimate(*preflight);
+        start_validation =
+            validate_encoding_preflight_for_start(
+                make_preflight_request(*options, false),
+                internal_preflight,
+                options->allow_low_disk == 1);
+    } catch (...) {
+        return MS_ERR_INVALID_ARGS;
+    }
+    if (!start_validation.metadata_matches) {
+        return MS_ERR_PREFLIGHT_STALE;
+    }
+    if (!start_validation.can_start_encoding) {
+        if (start_validation.disk_space_sufficient.has_value() &&
+            !*start_validation.disk_space_sufficient) {
+            return MS_ERR_INSUFFICIENT_DISK;
+        }
+        return MS_ERR_IO;
+    }
+
+    PerformanceProfiler profiler;
 
     const bool encrypt = options->encrypt != 0;
     const std::size_t chunk_size = encrypt ? CHUNK_SIZE_PLAIN_MAX_ENCRYPTED : 0;
@@ -253,7 +638,7 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
         num_chunks = reader.num_chunks();
     }
 
-    const auto file_id = make_file_id();
+    const auto file_id = make_encoding_file_id();
     const Encoder encoder(
         file_id, to_internal_hash(options->hash_algorithm), reliability);
 
@@ -266,101 +651,120 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
         key = derive_key(pw, file_id);
     }
 
-    std::size_t total_packets = 0;
+    uint64_t total_packets = 0;
     uint64_t source_packets = 0;
     uint64_t repair_packets = 0;
     int64_t total_frames = 0;
 
+    uint64_t output_size = 0;
     try {
-        VideoEncoder video_encoder(output_path, &profiler);
+        SafeEncodeOutput safe_output(output_path);
+        {
+            VideoEncoder video_encoder(
+                safe_output.partial_path().string(), &profiler);
 
-        const int batch_size = std::max(1, omp_get_max_threads());
+            const int batch_size = std::max(1, omp_get_max_threads());
 
-        using BatchResults = std::vector<std::pair<std::vector<Packet>, ChunkManifestEntry>>;
+            using BatchResults = std::vector<std::pair<std::vector<Packet>, ChunkManifestEntry>>;
 
-        auto fec_encode_batch = [&](const std::size_t batch_start, const int batch_count) -> BatchResults {
-            BatchResults results(batch_count);
-            bool batch_error = false;
+            auto fec_encode_batch = [&](const std::size_t batch_start, const int batch_count) -> BatchResults {
+                BatchResults results(batch_count);
+                bool batch_error = false;
 
 #pragma omp parallel for schedule(dynamic)
-            for (int j = 0; j < batch_count; ++j) {
-                if (batch_error) continue;
-                try {
-                    const std::size_t i = batch_start + j;
-                    std::span<const std::byte> data_to_encode;
-                    {
-                        ScopedTimer timer(&profiler, PerformanceStage::ChunkCreation);
-                        data_to_encode = reader.chunk_view(i);
+                for (int j = 0; j < batch_count; ++j) {
+                    if (batch_error) continue;
+                    try {
+                        const std::size_t i = batch_start + j;
+                        std::span<const std::byte> data_to_encode;
+                        {
+                            ScopedTimer timer(&profiler, PerformanceStage::ChunkCreation);
+                            data_to_encode = reader.chunk_view(i);
+                        }
+                        std::vector<std::byte> encrypted_buf;
+                        if (encrypt) {
+                            ScopedTimer timer(&profiler, PerformanceStage::Preprocess);
+                            encrypted_buf = encrypt_chunk(
+                                data_to_encode, key, file_id,
+                                static_cast<uint32_t>(i));
+                            data_to_encode = encrypted_buf;
+                        }
+                        const bool is_last = (i == num_chunks - 1);
+                        {
+                            ScopedTimer timer(
+                                &profiler, PerformanceStage::FecRepairGeneration);
+                            results[j] = encoder.encode_chunk(
+                                static_cast<uint32_t>(i), data_to_encode,
+                                is_last, encrypt);
+                        }
+                    } catch (...) {
+                        batch_error = true;
                     }
-                    std::vector<std::byte> encrypted_buf;
-                    if (encrypt) {
-                        ScopedTimer timer(&profiler, PerformanceStage::Preprocess);
-                        encrypted_buf = encrypt_chunk(
-                            data_to_encode, key, file_id,
-                            static_cast<uint32_t>(i));
-                        data_to_encode = encrypted_buf;
+                }
+
+                if (batch_error) throw std::runtime_error("batch FEC encoding failed");
+                return results;
+            };
+
+            const auto first_end = std::min(static_cast<std::size_t>(batch_size), num_chunks);
+            std::future<BatchResults> pending =
+                std::async(std::launch::async, fec_encode_batch,
+                           static_cast<std::size_t>(0), static_cast<int>(first_end));
+
+            for (std::size_t batch_start = 0; batch_start < num_chunks;
+                 batch_start += batch_size) {
+                const std::size_t batch_end =
+                    std::min(batch_start + static_cast<std::size_t>(batch_size),
+                             num_chunks);
+                const int batch_count = static_cast<int>(batch_end - batch_start);
+
+                if (options->progress) {
+                    if (options->progress(static_cast<uint64_t>(batch_start),
+                                          static_cast<uint64_t>(num_chunks),
+                                          options->progress_user) != 0) {
+                        if (pending.valid()) pending.wait();
+                        if (encrypt) secure_zero(std::span<std::byte>(key));
+                        return MS_ERR_ENCODE_FAILED;
                     }
-                    const bool is_last = (i == num_chunks - 1);
-                    {
-                        ScopedTimer timer(
-                            &profiler, PerformanceStage::FecRepairGeneration);
-                        results[j] = encoder.encode_chunk(
-                            static_cast<uint32_t>(i), data_to_encode,
-                            is_last, encrypt);
+                }
+
+                auto results = pending.get();
+
+                if (const std::size_t next_start = batch_start + batch_size; next_start < num_chunks) {
+                    const auto next_end = std::min(
+                        next_start + static_cast<std::size_t>(batch_size), num_chunks);
+                    const int next_count = static_cast<int>(next_end - next_start);
+                    pending = std::async(std::launch::async,
+                                         fec_encode_batch, next_start, next_count);
+                }
+
+                for (int j = 0; j < batch_count; ++j) {
+                    if (results[j].first.size() >
+                        std::numeric_limits<uint64_t>::max() -
+                            total_packets) {
+                        throw std::overflow_error(
+                            "encoded packet count overflow");
                     }
-                } catch (...) {
-                    batch_error = true;
+                    total_packets +=
+                        static_cast<uint64_t>(results[j].first.size());
+                    for (const auto &packet: results[j].first) {
+                        classify_packet(std::span(packet.bytes), source_packets,
+                                        repair_packets);
+                    }
+                    video_encoder.encode_packets(results[j].first);
                 }
             }
 
-            if (batch_error) throw std::runtime_error("batch FEC encoding failed");
-            return results;
-        };
-
-        const auto first_end = std::min(static_cast<std::size_t>(batch_size), num_chunks);
-        std::future<BatchResults> pending =
-            std::async(std::launch::async, fec_encode_batch,
-                       static_cast<std::size_t>(0), static_cast<int>(first_end));
-
-        for (std::size_t batch_start = 0; batch_start < num_chunks;
-             batch_start += batch_size) {
-            const std::size_t batch_end =
-                std::min(batch_start + static_cast<std::size_t>(batch_size),
-                         num_chunks);
-            const int batch_count = static_cast<int>(batch_end - batch_start);
-
-            if (options->progress) {
-                if (options->progress(static_cast<uint64_t>(batch_start),
-                                      static_cast<uint64_t>(num_chunks),
-                                      options->progress_user) != 0) {
-                    if (pending.valid()) pending.wait();
-                    if (encrypt) secure_zero(std::span<std::byte>(key));
-                    return MS_ERR_ENCODE_FAILED;
-                }
-            }
-
-            auto results = pending.get();
-
-            if (const std::size_t next_start = batch_start + batch_size; next_start < num_chunks) {
-                const auto next_end = std::min(
-                    next_start + static_cast<std::size_t>(batch_size), num_chunks);
-                const int next_count = static_cast<int>(next_end - next_start);
-                pending = std::async(std::launch::async,
-                                     fec_encode_batch, next_start, next_count);
-            }
-
-            for (int j = 0; j < batch_count; ++j) {
-                total_packets += results[j].first.size();
-                for (const auto &packet: results[j].first) {
-                    classify_packet(std::span(packet.bytes), source_packets,
-                                    repair_packets);
-                }
-                video_encoder.encode_packets(results[j].first);
-            }
+            video_encoder.finalize();
+            total_frames = video_encoder.frames_written();
+            output_size = std::filesystem::file_size(
+                safe_output.partial_path());
         }
-
-        video_encoder.finalize();
-        total_frames = video_encoder.frames_written();
+        {
+            ScopedTimer timer(
+                &profiler, PerformanceStage::MuxDiskWrite);
+            safe_output.commit();
+        }
     } catch (...) {
         if (encrypt) secure_zero(std::span<std::byte>(key));
         return MS_ERR_ENCODE_FAILED;
@@ -368,13 +772,15 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
 
     if (encrypt) secure_zero(std::span<std::byte>(key));
 
-    const auto output_size = std::filesystem::file_size(output_path);
     profiler.finish();
     fill_result(result, profiler, MS_OPERATION_ENCODE,
                 input_size, output_size, num_chunks, total_packets,
                 source_packets, repair_packets,
                 static_cast<uint64_t>(total_frames),
                 reliability.repair_ratio);
+    fill_estimate_validation(
+        result, *preflight, output_size,
+        preflight_duration_seconds);
 
     return MS_OK;
 }
@@ -556,7 +962,7 @@ ms_status_t ms_stream_encode(const ms_stream_encode_options_t *options, ms_resul
         num_chunks = reader.num_chunks();
     }
 
-    const auto file_id = make_file_id();
+    const auto file_id = make_encoding_file_id();
     const Encoder encoder(
         file_id, to_internal_hash(options->hash_algorithm), reliability);
 
@@ -843,12 +1249,14 @@ const char *ms_status_string(const ms_status_t status) {
         case MS_ERR_DECODE_FAILED: return "decoding failed";
         case MS_ERR_CRYPTO:      return "encryption/decryption error";
         case MS_ERR_INCOMPLETE:  return "incomplete data";
+        case MS_ERR_INSUFFICIENT_DISK: return "insufficient disk space";
+        case MS_ERR_PREFLIGHT_STALE: return "preflight estimate is stale";
         default:                 return "unknown error";
     }
 }
 
 const char *ms_version(void) {
-    return "1.0.0";
+    return "1.2.0";
 }
 
 size_t ms_format_performance_report(const ms_result_t *result,
@@ -888,7 +1296,41 @@ size_t ms_format_performance_report(const ms_result_t *result,
         << "  Frames: " << result->total_frames << "\n"
         << std::fixed << std::setprecision(3)
         << "Rates: " << result->average_frames_per_second << " frames/s, "
-        << result->throughput_mib_per_second << " MiB/s\n"
+        << result->throughput_mib_per_second << " MiB/s\n";
+    if (result->operation == MS_OPERATION_ENCODE) {
+        out << "Estimate validation:\n";
+        if (result->estimate_validation_available) {
+            out << "  Estimated likely output: "
+                << result->estimated_output_bytes << " B\n"
+                << "  Estimated minimum:       "
+                << result->estimated_output_min_bytes << " B\n"
+                << "  Estimated maximum:       "
+                << result->estimated_output_max_bytes << " B\n"
+                << "  Actual output:           "
+                << result->actual_output_bytes << " B\n"
+                << "  Absolute error:          "
+                << result->estimate_absolute_error_bytes << " B\n"
+                << "  Relative error:          ";
+            if (result->estimate_relative_error_available) {
+                out << result->estimate_relative_error_percent << "%\n";
+            } else {
+                out << "unavailable\n";
+            }
+            out << "  Actual inside range:     "
+                << (result->actual_inside_estimated_range == 1
+                        ? "yes"
+                        : "no")
+                << "\n";
+        } else {
+            out << "  Output-size estimate unavailable; "
+                   "accuracy metrics were not calculated.\n";
+        }
+        out << "  Preflight duration:      "
+            << result->preflight_duration_seconds << " s\n"
+            << "  Actual encode duration:  "
+            << result->actual_encode_duration_seconds << " s\n";
+    }
+    out
         << "Stage timings:\n";
 
     for (std::size_t i = 0; i < MS_PERF_STAGE_COUNT; ++i) {
@@ -950,6 +1392,59 @@ ms_status_t ms_write_benchmark_json(const ms_result_t *result,
             << result->total_packets << "\n"
             << "  },\n";
     }
+    if (result->operation == MS_OPERATION_ENCODE) {
+        out << "  \"estimate_validation\": {\n"
+            << "    \"available\": "
+            << (result->estimate_validation_available
+                    ? "true"
+                    : "false")
+            << ",\n"
+            << "    \"estimated_output_bytes\": ";
+        if (result->estimate_validation_available) {
+            out << result->estimated_output_bytes;
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"estimated_output_min_bytes\": ";
+        if (result->estimate_validation_available) {
+            out << result->estimated_output_min_bytes;
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"estimated_output_max_bytes\": ";
+        if (result->estimate_validation_available) {
+            out << result->estimated_output_max_bytes;
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"actual_output_bytes\": "
+            << result->actual_output_bytes
+            << ",\n    \"estimate_absolute_error_bytes\": ";
+        if (result->estimate_validation_available) {
+            out << result->estimate_absolute_error_bytes;
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"estimate_relative_error_percent\": ";
+        if (result->estimate_relative_error_available) {
+            out << result->estimate_relative_error_percent;
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"actual_inside_estimated_range\": ";
+        if (result->actual_inside_estimated_range >= 0) {
+            out << (result->actual_inside_estimated_range
+                        ? "true"
+                        : "false");
+        } else {
+            out << "null";
+        }
+        out << ",\n    \"preflight_duration_seconds\": "
+            << result->preflight_duration_seconds
+            << ",\n    \"actual_encode_duration_seconds\": "
+            << result->actual_encode_duration_seconds
+            << "\n  },\n";
+    }
     out << "  \"chunks\": " << result->total_chunks << ",\n"
         << "  \"packets\": {\n"
         << "    \"total\": " << result->total_packets << ",\n"
@@ -978,6 +1473,126 @@ ms_status_t ms_write_benchmark_json(const ms_result_t *result,
             << ", \"invocations\": " << timing.invocations << "}";
     }
     out << "\n  }\n}\n";
+
+    return out.good() ? MS_OK : MS_ERR_IO;
+}
+
+ms_status_t ms_write_encoding_estimate_json(
+    const ms_encoding_estimate_t *estimate,
+    const char *output_path) {
+    if (!estimate || !output_path || output_path[0] == '\0') {
+        return MS_ERR_INVALID_ARGS;
+    }
+    if (estimate->struct_version != MS_ENCODING_ESTIMATE_VERSION ||
+        estimate->struct_size < sizeof(ms_encoding_estimate_t)) {
+        return MS_ERR_INVALID_ARGS;
+    }
+
+    const auto write_json_string = [](std::ostream &out,
+                                      const char *text) {
+        out << '"';
+        for (const unsigned char character :
+             std::string(text ? text : "")) {
+            switch (character) {
+                case '"': out << "\\\""; break;
+                case '\\': out << "\\\\"; break;
+                case '\b': out << "\\b"; break;
+                case '\f': out << "\\f"; break;
+                case '\n': out << "\\n"; break;
+                case '\r': out << "\\r"; break;
+                case '\t': out << "\\t"; break;
+                default:
+                    if (character < 0x20) {
+                        out << "\\u00" << std::hex << std::setw(2)
+                            << std::setfill('0')
+                            << static_cast<unsigned>(character)
+                            << std::dec << std::setfill(' ');
+                    } else {
+                        out << static_cast<char>(character);
+                    }
+            }
+        }
+        out << '"';
+    };
+    const auto optional_uint = [](std::ostream &out,
+                                  const bool available,
+                                  const uint64_t value) {
+        if (available) out << value;
+        else out << "null";
+    };
+
+    std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
+    if (!out) return MS_ERR_IO;
+
+    out << std::fixed << std::setprecision(9)
+        << "{\n"
+        << "  \"schema_version\": 1,\n"
+        << "  \"input_size_bytes\": "
+        << estimate->input_size_bytes << ",\n"
+        << "  \"repair_percentage\": "
+        << estimate->repair_percentage << ",\n"
+        << "  \"repair_ratio\": "
+        << estimate->repair_ratio << ",\n"
+        << "  \"chunk_count\": " << estimate->chunk_count << ",\n"
+        << "  \"source_packet_count\": "
+        << estimate->source_packet_count << ",\n"
+        << "  \"repair_packet_count\": "
+        << estimate->repair_packet_count << ",\n"
+        << "  \"total_packet_count\": "
+        << estimate->total_packet_count << ",\n"
+        << "  \"estimated_frame_count\": "
+        << estimate->estimated_frame_count << ",\n"
+        << "  \"estimated_video_duration_seconds\": "
+        << estimate->estimated_video_duration_seconds << ",\n"
+        << "  \"estimated_output_bytes\": ";
+    optional_uint(
+        out, estimate->output_size_estimate_available != 0,
+        estimate->estimated_output_bytes);
+    out << ",\n  \"estimated_output_min_bytes\": ";
+    optional_uint(
+        out, estimate->output_size_estimate_available != 0,
+        estimate->estimated_output_min_bytes);
+    out << ",\n  \"estimated_output_max_bytes\": ";
+    optional_uint(
+        out, estimate->output_size_estimate_available != 0,
+        estimate->estimated_output_max_bytes);
+    out << ",\n  \"output_size_estimate_available\": "
+        << (estimate->output_size_estimate_available ? "true" : "false")
+        << ",\n  \"available_disk_bytes\": ";
+    optional_uint(
+        out, estimate->disk_space_known != 0,
+        estimate->available_disk_bytes);
+    out << ",\n  \"disk_space_known\": "
+        << (estimate->disk_space_known ? "true" : "false")
+        << ",\n  \"safety_margin_bytes\": ";
+    optional_uint(
+        out, estimate->required_disk_space_known != 0,
+        estimate->safety_margin_bytes);
+    out << ",\n  \"required_disk_bytes\": ";
+    optional_uint(
+        out, estimate->required_disk_space_known != 0,
+        estimate->required_disk_bytes);
+    out << ",\n  \"disk_space_sufficient\": ";
+    if (estimate->disk_space_sufficient < 0) {
+        out << "null";
+    } else {
+        out << (estimate->disk_space_sufficient ? "true" : "false");
+    }
+    out << ",\n  \"can_start_encoding\": "
+        << (estimate->can_start_encoding ? "true" : "false")
+        << ",\n  \"estimation_method\": ";
+    write_json_string(out, estimate->estimation_method);
+    out << ",\n  \"probe_frame_count\": "
+        << estimate->probe_frame_count
+        << ",\n  \"probe_duration_seconds\": "
+        << estimate->probe_duration_seconds
+        << ",\n  \"preflight_duration_seconds\": "
+        << estimate->preflight_duration_seconds
+        << ",\n  \"warning\": ";
+    write_json_string(out, estimate->warning);
+    out << ",\n  \"error\": ";
+    write_json_string(out, estimate->error);
+    out << "\n}\n";
 
     return out.good() ? MS_OK : MS_ERR_IO;
 }

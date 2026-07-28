@@ -83,6 +83,12 @@ TEST(API, StatusString_AllCodes) {
     EXPECT_STREQ(ms_status_string(MS_ERR_DECODE_FAILED), "decoding failed");
     EXPECT_STREQ(ms_status_string(MS_ERR_CRYPTO), "encryption/decryption error");
     EXPECT_STREQ(ms_status_string(MS_ERR_INCOMPLETE), "incomplete data");
+    EXPECT_STREQ(
+        ms_status_string(MS_ERR_INSUFFICIENT_DISK),
+        "insufficient disk space");
+    EXPECT_STREQ(
+        ms_status_string(MS_ERR_PREFLIGHT_STALE),
+        "preflight estimate is stale");
 }
 
 TEST(API, StatusString_UnknownCode) {

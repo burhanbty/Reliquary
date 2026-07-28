@@ -42,6 +42,8 @@ struct ChunkManifestEntry {
     uint16_t T = 0;
 };
 
+[[nodiscard]] std::array<std::byte, 16> make_encoding_file_id();
+
 class Encoder {
 public:
     using FileId = std::array<std::byte, 16>;

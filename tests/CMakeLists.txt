@@ -25,6 +25,8 @@ add_executable(media_storage_tests
         test_api.cpp
         test_performance_profiler.cpp
         test_encoding_reliability.cpp
+        test_encoding_preflight.cpp
+        test_gui_preflight_model.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE
@@ -49,3 +51,32 @@ endif ()
 
 include(GoogleTest)
 gtest_discover_tests(media_storage_tests)
+
+add_test(
+        NAME CLI.PreflightIntegration
+        COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:media_storage>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_preflight_integration"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_preflight.cmake"
+)
+
+if (TARGET media_storage_gui)
+    add_test(
+            NAME GUI.LaunchSmoke
+            COMMAND $<TARGET_FILE:media_storage_gui>
+                    --smoke-test
+    )
+    set_tests_properties(GUI.LaunchSmoke PROPERTIES TIMEOUT 15)
+
+    add_test(
+            NAME GUI.CloseDuringEstimate
+            COMMAND $<TARGET_FILE:media_storage_gui>
+                    --preflight-smoke-input
+                    "${CMAKE_SOURCE_DIR}/README.md"
+                    --preflight-smoke-output
+                    "${CMAKE_CURRENT_BINARY_DIR}/close-during-estimate.mkv"
+                    --close-during-estimate
+    )
+    set_tests_properties(
+            GUI.CloseDuringEstimate PROPERTIES TIMEOUT 15)
+endif ()

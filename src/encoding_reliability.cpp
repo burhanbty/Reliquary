@@ -84,6 +84,18 @@ uint64_t calculate_source_packet_count(const uint64_t encoded_chunk_size) {
            (padded_size % SYMBOL_SIZE_BYTES != 0 ? 1 : 0);
 }
 
+uint64_t calculate_chunk_count(const uint64_t input_size,
+                               const bool encrypted) {
+    const uint64_t chunk_capacity =
+        encrypted ? CHUNK_SIZE_PLAIN_MAX_ENCRYPTED : CHUNK_SIZE_BYTES;
+    if (chunk_capacity == 0) {
+        throw std::logic_error("chunk capacity must be positive");
+    }
+    if (input_size == 0) return 1;
+    return input_size / chunk_capacity +
+           (input_size % chunk_capacity != 0 ? 1 : 0);
+}
+
 uint64_t calculate_repair_packet_count(const uint64_t source_packet_count,
                                        const double repair_ratio) {
     if (!is_valid_repair_ratio(repair_ratio)) {
@@ -183,9 +195,9 @@ EncodingReliabilityEstimate estimate_encoding_reliability(
     const uint64_t plain_chunk_capacity =
         encrypted ? CHUNK_SIZE_PLAIN_MAX_ENCRYPTED : CHUNK_SIZE_BYTES;
     EncodingReliabilityEstimate estimate;
+    estimate.chunk_count = calculate_chunk_count(input_size, encrypted);
 
     if (input_size == 0) {
-        estimate.chunk_count = 1;
         const uint64_t encoded_size =
             encrypted ? encryption_bytes_per_chunk : 0;
         accumulate_chunk_group(
@@ -193,8 +205,6 @@ EncodingReliabilityEstimate estimate_encoding_reliability(
     } else {
         const uint64_t full_chunk_count = input_size / plain_chunk_capacity;
         const uint64_t remainder = input_size % plain_chunk_capacity;
-        estimate.chunk_count =
-            checked_add(full_chunk_count, remainder == 0 ? 0 : 1);
 
         const uint64_t full_encoded_size =
             plain_chunk_capacity +

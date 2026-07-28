@@ -28,6 +28,14 @@
 
 static std::once_flag ensure_init;
 
+std::array<std::byte, 16> make_encoding_file_id() {
+    std::array<std::byte, 16> id{};
+    for (std::size_t i = 0; i < id.size(); ++i) {
+        id[i] = static_cast<std::byte>(i);
+    }
+    return id;
+}
+
 static void ensureWirehairInit() {
     std::call_once(ensure_init, [] {
         if (const WirehairResult result = wirehair_init(); result != Wirehair_Success) {

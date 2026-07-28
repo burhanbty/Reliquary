@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -25,7 +24,6 @@
 #include "configuration.h"
 #include "encoding_reliability.h"
 #include "media_storage.h"
-#include "video_encoder.h"
 
 static std::string format_size(const uint64_t bytes) {
     const char *units[] = {"B", "KB", "MB", "GB"};
@@ -59,6 +57,135 @@ static bool print_performance_report(const ms_result_t &result,
         std::cout << "Benchmark JSON: " << json_path << "\n";
     }
     return true;
+}
+
+static void print_encoding_estimate(
+    const ms_encoding_estimate_t &estimate,
+    const std::string &reliability_profile) {
+    std::cout << "\nPreflight estimate:\n"
+              << "  Input size: "
+              << format_size(estimate.input_size_bytes)
+              << " (" << estimate.input_size_bytes << " bytes)\n"
+              << "  Reliability profile: "
+              << reliability_profile << "\n"
+              << std::fixed << std::setprecision(2)
+              << "  Repair percentage: "
+              << estimate.repair_percentage << "%\n"
+              << std::setprecision(6)
+              << "  Repair ratio: " << estimate.repair_ratio << "\n"
+              << "  Source packets: "
+              << estimate.source_packet_count << "\n"
+              << "  Repair packets: "
+              << estimate.repair_packet_count << "\n"
+              << "  Total packets: "
+              << estimate.total_packet_count << "\n"
+              << "  Estimated frames: "
+              << estimate.estimated_frame_count << "\n"
+              << std::setprecision(2)
+              << "  Estimated video duration: "
+              << estimate.estimated_video_duration_seconds << " s\n";
+    if (estimate.output_size_estimate_available) {
+        std::cout << "  Estimated likely output: "
+                  << format_size(estimate.estimated_output_bytes)
+                  << " (" << estimate.estimated_output_bytes
+                  << " bytes)\n"
+                  << "  Estimated output minimum: "
+                  << format_size(estimate.estimated_output_min_bytes)
+                  << "\n"
+                  << "  Estimated output maximum: "
+                  << format_size(estimate.estimated_output_max_bytes)
+                  << "\n";
+    } else {
+        std::cout
+            << "  Estimated likely output: unavailable\n"
+            << "  Estimated output minimum: unavailable\n"
+            << "  Estimated output maximum: unavailable\n";
+    }
+    std::cout << "  Probe frame count: "
+              << estimate.probe_frame_count << "\n"
+              << "  Probe duration: "
+              << estimate.probe_duration_seconds << " s\n"
+              << "  Estimation method: "
+              << estimate.estimation_method << "\n";
+    if (estimate.disk_space_known) {
+        std::cout << "  Available disk: "
+                  << format_size(estimate.available_disk_bytes)
+                  << " (" << estimate.available_disk_bytes
+                  << " bytes)\n";
+    } else {
+        std::cout << "  Available disk: unknown\n";
+    }
+    const char *disk_status =
+        estimate.disk_space_sufficient < 0
+            ? "unknown"
+            : (estimate.disk_space_sufficient
+                   ? "sufficient"
+                   : "insufficient");
+    std::cout << "  Disk space status: " << disk_status << "\n";
+    if (estimate.required_disk_space_known) {
+        std::cout << "  Safety margin: "
+                  << format_size(estimate.safety_margin_bytes)
+                  << " (" << estimate.safety_margin_bytes
+                  << " bytes)\n"
+                  << "  Required disk: "
+                  << format_size(estimate.required_disk_bytes)
+                  << " (" << estimate.required_disk_bytes
+                  << " bytes)\n";
+    } else {
+        std::cout
+            << "  Safety margin: unavailable\n"
+            << "  Required disk: unavailable\n";
+    }
+    std::cout << "  Can start encoding: "
+              << (estimate.can_start_encoding ? "yes" : "no")
+              << "\n"
+              << "  Preflight duration: "
+              << estimate.preflight_duration_seconds << " s\n"
+              << "  Warning: "
+              << (estimate.warning[0] != '\0'
+                      ? estimate.warning
+                      : "none")
+              << "\n"
+              << "  Error: "
+              << (estimate.error[0] != '\0'
+                      ? estimate.error
+                      : "none")
+              << "\n";
+}
+
+static void print_insufficient_disk_details(
+    const ms_encoding_estimate_t &estimate,
+    const bool overridden) {
+    const uint64_t missing =
+        estimate.required_disk_bytes >
+                estimate.available_disk_bytes
+            ? estimate.required_disk_bytes -
+                  estimate.available_disk_bytes
+            : 0;
+    std::ostream &out = std::cerr;
+    out << (overridden
+                ? "WARNING: --allow-low-disk explicitly overrides "
+                  "a known insufficient-disk result.\n"
+                : "Error: insufficient disk space; encoding will not "
+                  "start.\n")
+        << "  Available space: "
+        << format_size(estimate.available_disk_bytes)
+        << " (" << estimate.available_disk_bytes << " bytes)\n"
+        << "  Required space: "
+        << format_size(estimate.required_disk_bytes)
+        << " (" << estimate.required_disk_bytes << " bytes)\n"
+        << "  Missing space: " << format_size(missing)
+        << " (" << missing << " bytes)\n"
+        << "  Estimated output maximum: "
+        << format_size(estimate.estimated_output_max_bytes)
+        << " (" << estimate.estimated_output_max_bytes << " bytes)\n"
+        << "  Safety margin: "
+        << format_size(estimate.safety_margin_bytes)
+        << " (" << estimate.safety_margin_bytes << " bytes)\n";
+    if (overridden) {
+        out << "Proceeding because the user consciously requested "
+               "the low-disk override.\n";
+    }
 }
 
 static int encode_progress(const uint64_t current, const uint64_t total, void *) {
@@ -96,6 +223,7 @@ static void print_usage(const char *program) {
             << "  " << program <<
             " encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>]\n"
             << "    [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>]\n"
+            << "    [--estimate-only] [--estimate-json <estimate.json>] [--no-probe] [--allow-low-disk]\n"
             << "    [--benchmark-json <report.json>]\n"
             << "  " << program << " decode --input <video> --output <file> [--password <pwd>]"
             << " [--benchmark-json <report.json>]\n"
@@ -108,26 +236,14 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
                      const bool encrypt, const std::string &password,
                      const ms_hash_algorithm_t hash_algo,
                      const EncodingReliabilityOptions &reliability,
-                     const std::string &benchmark_json) {
+                     const std::string &benchmark_json,
+                     const std::string &estimate_json,
+                     const bool estimate_only,
+                     const bool enable_probe,
+                     const bool allow_low_disk,
+                     const std::string &reliability_profile) {
     std::cout << "Input: " << input_path << "\n";
     std::cout << "Output: " << output_path << "\n";
-    try {
-        const auto estimate = estimate_encoding_reliability(
-            std::filesystem::file_size(input_path), encrypt, reliability,
-            static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
-            FRAME_FPS);
-        std::cout << std::fixed << std::setprecision(2)
-                  << "Repair: "
-                  << repair_ratio_to_percentage(reliability.repair_ratio)
-                  << "%  Estimated packets: "
-                  << estimate.source_packet_count << " source + "
-                  << estimate.repair_packet_count << " repair = "
-                  << estimate.total_packet_count << ", frames: "
-                  << estimate.frame_count << ", video: "
-                  << estimate.video_duration_seconds << " s\n";
-    } catch (const std::exception &) {
-        // The encode API below reports the authoritative file/argument error.
-    }
 
     ms_encode_options_t opts{};
     opts.input_path = input_path.c_str();
@@ -141,10 +257,71 @@ static int do_encode(const std::string &input_path, const std::string &output_pa
     opts.repair_ratio = reliability.repair_ratio;
     opts.repair_ratio_is_set = 1;
 
+    ms_encoding_estimate_t estimate{};
+    if (const ms_status_t status =
+            ms_estimate_encode(
+                &opts, enable_probe ? 1 : 0, &estimate);
+        status != MS_OK) {
+        std::cerr << "Preflight failed: "
+                  << ms_status_string(status) << "\n";
+        return 1;
+    }
+    print_encoding_estimate(estimate, reliability_profile);
+    if (!estimate_json.empty()) {
+        if (const ms_status_t status =
+                ms_write_encoding_estimate_json(
+                    &estimate, estimate_json.c_str());
+            status != MS_OK) {
+            std::cerr << "Error writing estimate JSON: "
+                      << ms_status_string(status) << "\n";
+            return 1;
+        }
+        std::cout << "Estimate JSON: " << estimate_json << "\n";
+    }
+    if (estimate_only && !benchmark_json.empty() &&
+        benchmark_json != estimate_json) {
+        if (const ms_status_t status =
+                ms_write_encoding_estimate_json(
+                    &estimate, benchmark_json.c_str());
+            status != MS_OK) {
+            std::cerr << "Error writing estimate JSON through "
+                         "--benchmark-json: "
+                      << ms_status_string(status) << "\n";
+            return 1;
+        }
+        std::cout
+            << "Estimate JSON (--benchmark-json alias): "
+            << benchmark_json << "\n";
+    }
+
+    const bool low_disk_only =
+        estimate.low_disk_override_permitted != 0;
+    if (low_disk_only) {
+        print_insufficient_disk_details(
+            estimate, allow_low_disk);
+    }
+    if (!estimate.can_start_encoding &&
+        !(low_disk_only && allow_low_disk)) {
+        if (estimate_only && low_disk_only) return 0;
+        return 1;
+    }
+    if (estimate_only) return 0;
+    opts.preflight_estimate = &estimate;
+    opts.preflight_duration_seconds =
+        estimate.preflight_duration_seconds;
+    opts.allow_low_disk = allow_low_disk ? 1 : 0;
+
     ms_result_t result{};
     if (const ms_status_t status = ms_encode(&opts, &result); status != MS_OK) {
         std::cout << "\n";
         std::cerr << "Error: " << ms_status_string(status) << "\n";
+        if (status == MS_ERR_PREFLIGHT_STALE) {
+            std::cerr
+                << "The input changed after estimation; rerun the "
+                   "command to obtain a fresh preflight estimate.\n";
+        } else if (status == MS_ERR_INSUFFICIENT_DISK) {
+            print_insufficient_disk_details(estimate, false);
+        }
         return 1;
     }
 
@@ -289,6 +466,10 @@ int main(const int argc, char *argv[]) {
     int stream_height = FRAME_HEIGHT_STREAM;
     int stream_fps = FRAME_FPS;
     std::string benchmark_json;
+    std::string estimate_json;
+    bool estimate_only = false;
+    bool enable_probe = true;
+    bool allow_low_disk = false;
     std::optional<ReliabilityProfile> reliability_profile;
     std::optional<double> repair_percentage;
 
@@ -322,6 +503,14 @@ int main(const int argc, char *argv[]) {
             }
         } else if (arg == "--benchmark-json" && i + 1 < argc) {
             benchmark_json = argv[++i];
+        } else if (arg == "--estimate-json" && i + 1 < argc) {
+            estimate_json = argv[++i];
+        } else if (arg == "--estimate-only") {
+            estimate_only = true;
+        } else if (arg == "--no-probe") {
+            enable_probe = false;
+        } else if (arg == "--allow-low-disk") {
+            allow_low_disk = true;
         } else if (arg == "--repair-percent" && i + 1 < argc) {
             try {
                 repair_percentage = parse_repair_percentage(argv[++i]);
@@ -363,9 +552,32 @@ int main(const int argc, char *argv[]) {
         std::cerr << "Error: repair options apply only to encode operations\n";
         return 1;
     }
+    if (command != "encode" &&
+        (estimate_only || !estimate_json.empty() || !enable_probe ||
+         allow_low_disk)) {
+        std::cerr
+            << "Error: estimate options apply only to file encode\n";
+        return 1;
+    }
     const EncodingReliabilityOptions reliability =
         resolve_reliability_options(
             reliability_profile, repair_percentage);
+    std::string reliability_label = "Local / Fast";
+    if (repair_percentage.has_value()) {
+        reliability_label = "Custom";
+    } else if (reliability_profile.has_value()) {
+        switch (*reliability_profile) {
+            case ReliabilityProfile::Local:
+                reliability_label = "Local / Fast";
+                break;
+            case ReliabilityProfile::Balanced:
+                reliability_label = "Balanced";
+                break;
+            case ReliabilityProfile::Durable:
+                reliability_label = "Durable";
+                break;
+        }
+    }
 
     if (command == "encode") {
         if (input_path.empty() || output_path.empty()) {
@@ -379,7 +591,9 @@ int main(const int argc, char *argv[]) {
         }
         return do_encode(input_path, output_path, encrypt, password, hash_algo,
                          reliability,
-                         benchmark_json);
+                         benchmark_json, estimate_json, estimate_only,
+                         enable_probe, allow_low_disk,
+                         reliability_label);
     } else if (command == "decode") {
         if (input_path.empty() || output_path.empty()) {
             std::cerr << "Error: both --input and --output must be specified\n";

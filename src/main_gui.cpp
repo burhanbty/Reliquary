@@ -15,11 +15,33 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <QApplication>
+#include <QLineEdit>
+#include <QTimer>
 #include <QStyleFactory>
 
 #include "drive_manager_ui.h"
 
 int main(int argc, char *argv[]) {
+    bool smokeTest = false;
+    bool closeDuringEstimate = false;
+    QString preflightSmokeInput;
+    QString preflightSmokeOutput;
+    for (int i = 1; i < argc; ++i) {
+        const QString argument = QString::fromLocal8Bit(argv[i]);
+        if (argument == "--smoke-test") {
+            smokeTest = true;
+        } else if (argument == "--close-during-estimate") {
+            closeDuringEstimate = true;
+        } else if (argument == "--preflight-smoke-input" &&
+                   i + 1 < argc) {
+            preflightSmokeInput =
+                QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--preflight-smoke-output" &&
+                   i + 1 < argc) {
+            preflightSmokeOutput =
+                QString::fromLocal8Bit(argv[++i]);
+        }
+    }
     QApplication app(argc, argv);
     
     // Set application properties
@@ -44,6 +66,28 @@ int main(int argc, char *argv[]) {
     // Create and show the main window
     DriveManagerUI window;
     window.show();
+
+    if (!preflightSmokeInput.isEmpty() &&
+        !preflightSmokeOutput.isEmpty()) {
+        window.findChild<QLineEdit *>("inputFileEdit")
+            ->setText(preflightSmokeInput);
+        window.findChild<QLineEdit *>("outputFileEdit")
+            ->setText(preflightSmokeOutput);
+    }
+
+    // Deterministic, non-interactive launch check used by CTest. This only
+    // exercises application/window construction and never touches files.
+    if (smokeTest) {
+        QTimer::singleShot(250, &app, [&app, &window]() {
+            window.close();
+            app.exit(0);
+        });
+    } else if (closeDuringEstimate) {
+        QTimer::singleShot(10, &app, [&app, &window]() {
+            window.close();
+            app.exit(0);
+        });
+    }
     
     return QApplication::exec();
 }
