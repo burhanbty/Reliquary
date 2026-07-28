@@ -1,340 +1,288 @@
-[![CodeFactor](https://www.codefactor.io/repository/github/pulsebeat02/yt-media-storage/badge)](https://www.codefactor.io/repository/github/pulsebeat02/yt-media-storage)
-[![Build](https://github.com/pulsebeat02/yt-media-storage/actions/workflows/build.yml/badge.svg)](https://github.com/PulseBeat02/yt-media-storage/actions)
+# VidStoreX
 
-# Media Storage
+VidStoreX is an experimental C++ application that encodes files into video
+frames and reconstructs the original data without loss. It combines FFmpeg,
+Qt 6, libsodium, CMake, and vcpkg to explore data-to-video storage and
+recovery through both graphical and command-line interfaces.
 
-**Explanation Videos**:
+VidStoreX is a research and engineering project. It is not a replacement for
+an efficient, general-purpose archive or backup tool.
 
-- https://youtu.be/l03Os5uwWmk?si=xgZPNMrvs_aDcWE5
-- https://youtu.be/Qmds7-mwCMg?si=04TzoLp7p-LdRyLX
+## Current Status
 
-**YC Hacker News**: https://news.ycombinator.com/item?id=47012964
+- Tested on Windows 10/11
+- Release configuration builds successfully
+- **169/169 automated tests passing**
+- Successful encode/decode roundtrip with SHA-256 verification
+- Both GUI and CLI applications are available
 
-Stores files onto any video or streaming platform (YouTube, Twitch, etc.) by encoding them into lossless video and
-decoding
-them back to the original file. Supports both a command-line interface and a graphical user interface.
+## Main Features
 
-## Features
+- Encode a file into FFV1 video frames
+- Recover the original file from an encoded video
+- Optional password-based encryption with libsodium
+- FFmpeg-based video encoding and decoding
+- Qt 6 desktop GUI
+- Command-line interface
+- Forward error correction (FEC) and repair packets
+- SHA-256 integrity verification
+- Stage-level performance profiler
+- Machine-readable JSON benchmark output
+- Configurable reliability profiles
 
-- **File Encoding/Decoding**: Encode any file into a lossless video (FFV1/MKV) and then decode it back to the original
-  file
-- **Live Streaming**: Stream-encode files to Twitch/YouTube via RTMP (H.264) and decode them back from the stream or VOD
-- **Fountain Codes**: Uses [Wirehair](https://github.com/catid/wirehair) fountain codes for redundancy and repair
-- **Optional Encryption**: Encrypt files with a password using libsodium (XChaCha20-Poly1305)
-- **Selectable Checksum**: Choose between CRC32 (default) and [xxHash32](https://github.com/Cyan4973/xxHash) for packet
-  integrity verification
-- **Batch Processing**: Queue multiple files for batch encoding (GUI)
-- **Progress Tracking**: Real-time progress bars and status updates (GUI)
+## Improvements Introduced in VidStoreX
 
-## CI/CD Pipeline
+### Performance profiling
 
-Visit [GitHub Releases](https://github.com/PulseBeat02/yt-media-storage/releases), and click to download
-artifacts.
+VidStoreX adds a shared performance-reporting system for GUI and CLI
+operations:
 
-## Requirements
+- Monotonic measurements based on `std::chrono::steady_clock`
+- Thread-safe atomic duration and invocation counters
+- RAII-based `ScopedTimer` instrumentation
+- Separate measurements for encode and decode stages
+- A common human-readable report format for GUI and CLI workflows
+- JSON export through `--benchmark-json`
 
-- CMake 3.22
-- C++23 compiler
-- FFmpeg (with libx264 for streaming)
-- libsodium
-- OpenMP
-- Qt6 (Core and Widgets)
+The profiler separates work such as FEC generation, packet-to-frame
+conversion, FFmpeg processing, muxing, demuxing, recovery, and disk I/O.
+Timings from parallel stages represent accumulated work time, so their
+percentages can overlap and may add up to more than 100%.
 
-## Installation
+### Reliability calculation fix
 
-### Ubuntu/Debian
+The previous calculation passed `5.00` into an API that expected a ratio.
+Instead of 5%, the value was therefore interpreted as `5x`, producing
+approximately 500% repair packets.
 
-```bash
-sudo apt update
-sudo apt install cmake build-essential pkg-config qt6-base-dev \
-  libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev \
-  libsodium-dev libomp-dev ffmpeg
+VidStoreX centralizes percentage-to-ratio conversion at the CLI and GUI
+boundaries. The default is now 5% (`0.05` internally), and validation rejects
+negative values, NaN, infinity, percentages above 500%, and packet-count
+overflow.
+
+### Reliability profiles
+
+VidStoreX provides three named profiles plus a custom range:
+
+- **Local / Fast:** 5%
+- **Balanced:** 20%
+- **Durable:** 50%
+- **Custom:** 0–500%
+
+The CLI exposes these settings through `--reliability-profile` and
+`--repair-percent`. An explicit repair percentage overrides the selected
+profile.
+
+## Benchmark Results
+
+The following results are from a real **68,185,385-byte** input-file test.
+
+| Metric | Before repair fix | After repair fix |
+|---|---:|---:|
+| Repair percentage / effective behavior | 500% | 5% |
+| Source packets | 266,350 | 266,350 |
+| Repair packets | 1,331,750 | 13,331 |
+| Total packets | 1,598,100 | 279,681 |
+| Frames | 30,733 | 5,379 |
+| Encode time | 486.7 s | 85.4 s |
+| Output size | 57,614,108,874 bytes | 10,076,530,323 bytes |
+| Expansion ratio | 844.963x | 147.781x |
+| Decode time | — | 75.6 s |
+| SHA-256 match | — | `true` |
+
+The corrected 5% configuration delivered:
+
+- Approximately **5.7x faster encoding**
+- Approximately **82.5% fewer frames**
+- Approximately **82.5% fewer total packets**
+- A complete lossless roundtrip, confirmed by SHA-256
+
+Output size varies with the input data and how effectively FFV1 can compress
+the generated frames. These results describe this test case and should not be
+treated as universal performance guarantees.
+
+## Performance Report Example
+
+Every successful encode or decode prints a stage-level report. The following
+abridged example shows the report shape while using the headline values from
+the corrected benchmark:
+
+```text
+=== Performance report (encode) ===
+Input / output: 68185385 B -> 10076530323 B  (ratio 147.781x)
+Rates: 62.986 frames/s, 0.762 MiB/s
+Stage timings:
+  FEC / repair packet generation    ...
+  Packets to frames                 ...
+  FFmpeg video encoding             ...
+  Mux and disk write                ...
+  Total wall time             85.400000 s    100.00%
 ```
 
-> **WSL:** if CMake reports `Could NOT find PkgConfig` and the error has Strawberry, WSL is using Windows'
-`pkg-config.exe` from inherited `PATH`. Pass `-DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config` to CMake.
+Use `--benchmark-json <path>` to write the complete report, including packet
+counts, rates, expansion ratio, timings, and reliability settings, as JSON.
 
-### Fedora/CentOS
+## Reliability Profiles
 
-```bash
-sudo dnf install cmake gcc-c++ qt6-qtbase-devel ffmpeg-devel libsodium-devel libgomp
-```
+| Profile | Repair | Intended use | Trade-off |
+|---|---:|---|---|
+| Local / Fast | 5% | Clean local storage and controlled transfers | Fastest processing and smallest output, but less recovery capacity for damaged or lossy video |
+| Balanced | 20% | General-purpose experiments | More packets, larger output, and longer processing in exchange for higher packet-loss tolerance |
+| Durable | 50% | Higher-risk storage or transfer scenarios | Highest time and size cost among the presets, with the most repair data |
+| Custom | 0–500% | Controlled testing and workload-specific tuning | The operator is responsible for balancing overhead and recovery capacity |
 
-### Arch Linux
+These profiles have not yet been comprehensively validated on YouTube or
+other lossy/recompressing platforms. They describe repair-packet overhead,
+not a guarantee that a video will survive any particular platform or level of
+damage.
 
-```bash
-sudo pacman -S cmake qt6-base ffmpeg libsodium openmp
-```
+## Build Requirements
 
-### macOS (Homebrew)
+The verified Windows build uses:
 
-```bash
-brew install cmake qt@6 ffmpeg libsodium libomp
-```
+- Windows 10 or Windows 11
+- Visual Studio Build Tools 2022
+- MSVC v143 toolset
+- Windows SDK
+- CMake 3.22 or newer
+- Git
+- [vcpkg](https://github.com/microsoft/vcpkg)
 
-### Windows (vcpkg)
+The project requires a C++23 compiler. Its vcpkg manifest installs FFmpeg and
+libsodium; the `gui` feature adds Qt 6.
+
+## Build Instructions
+
+Clone the repository and its submodules:
 
 ```powershell
-vcpkg install ffmpeg libsodium qt6-base gtest --triplet x64-windows
+git clone --recurse-submodules https://github.com/burhanbty/VidStoreX.git
+cd VidStoreX
 ```
 
-Then configure with the toolchain file:
+Configure a 64-bit Windows build. Replace `C:/vcpkg` if vcpkg is installed
+elsewhere:
 
 ```powershell
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_FEATURES=gui -DBUILD_TESTS=ON
 ```
 
-Or install Qt6 separately via the [Qt Online Installer](https://www.qt.io/download-qt-installer) and FFmpeg/libsodium
-via vcpkg. When using the installer, point CMake at the install prefix:
+Build and run the test suite:
 
 ```powershell
-cmake -B build -DCMAKE_PREFIX_PATH="C:/Qt/XXX/msvcXXX_64"
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-## Building
+Deploy the Qt runtime beside the GUI executable before distributing or
+running it outside the development environment:
 
-```bash
-cmake -B build
-cmake --build build
-```
-
-This produces two executables and one shared library:
-
-- `media_storage` — Command-line interface
-- `media_storage_gui` — Graphical user interface
-- `libmedia_storage.so` / `media_storage.dll` — Embeddable shared library
-
-## Testing
-
-Tests use [Google Test](https://github.com/google/googletest).
-
-```bash
-cmake -B build -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build
-```
-
-Or run the test binary directly for verbose output:
-
-```bash
-./build/tests/media_storage_tests
+```powershell
+& "C:\Users\<USERNAME>\VidStoreX\build\vcpkg_installed\x64-windows\tools\Qt6\bin\windeployqt.exe" --release "C:\Users\<USERNAME>\VidStoreX\build\Release\media_storage_gui.exe"
 ```
 
 ## Usage
 
-### CLI
-
-#### Lossless Video (Local Files)
-
-```
-./media_storage encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]
-./media_storage decode --input <video> --output <file> [--password <pwd>] [--benchmark-json <report.json>]
-```
-
-#### Live Streaming (Twitch / YouTube)
-
-```
-./media_storage stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]
-./media_storage stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]
-```
-
-Stream-decode supports a 30-second retry window, so you can start it before the encoder begins streaming.
-
-**Example — stream to Twitch at 1080p:**
-
-```bash
-# Terminal 1: start decoder first (waits for stream)
-./media_storage stream-decode --url stream_playback_url --output decoded.bin
-```
-
-```bash
-# Terminal 2: start encoder
-# You must use yt-dlp to get the raw Twitch or YouTube Stream URL
-./media_storage stream-encode --input myfile.bin --url rtmp://... --width 1920 --height 1080 --bitrate 8000
-```
-
-#### Options
-
-| Flag         | Short | Description                                                     |
-|--------------|-------|-----------------------------------------------------------------|
-| `--input`    | `-i`  | Input file path (required for encode)                           |
-| `--output`   | `-o`  | Output file path (required for decode)                          |
-| `--url`      | `-u`  | RTMP stream URL (streaming only)                                |
-| `--bitrate`  | `-b`  | Stream bitrate in kbps (default: 8000 for 1080p)                |
-| `--width`    |       | Stream video width (default: 1920)                              |
-| `--height`   |       | Stream video height (default: 1080)                             |
-| `--fps`      |       | Stream video frames-per-second (default: 30)                    |
-| `--encrypt`  | `-e`  | Enable encryption (encode only)                                 |
-| `--password` | `-p`  | Password for encryption/decryption                              |
-| `--hash`     | `-H`  | Checksum algorithm: `crc32` (default) or `xxhash` (encode only) |
-| `--reliability-profile` | | Repair profile: `local` (5%), `balanced` (20%), or `durable` (50%) |
-| `--repair-percent` | | Custom repair percentage from 0 through 500; overrides the profile |
-| `--benchmark-json` | | Write the performance report as machine-readable JSON           |
-
-The checksum algorithm is embedded in each packet's flags, so `decode` automatically detects which algorithm was used —
-no need to specify it again.
-
-Repair settings affect encoding only. The default is `local`, which emits
-approximately 5 repair packets per 100 source packets. Higher values improve
-damage tolerance but increase packet count, frames, encoding time, and output
-size. A custom percentage takes precedence over a selected profile:
-
-```bash
-# Default local/fast profile (5%)
-./media_storage encode --input archive.rar --output archive.mkv
-
-# Balanced profile (20%)
-./media_storage encode archive.rar archive.mkv --reliability-profile balanced
-
-# Custom 7.5%, overriding the durable profile
-./media_storage encode archive.rar archive.mkv \
-  --reliability-profile durable --repair-percent 7.5
-```
-
-Internally repair values are always ratios (`0.05` means 5%). Percentage-to-
-ratio conversion occurs only at CLI/GUI boundaries.
-
-Every successful encode/decode prints a performance report with input/output
-sizes, source and repair packet counts, frame rate, MiB/s throughput, size
-ratio, total wall time, and per-stage timings. Encode stages cover input
-open/mapping, preprocessing/encryption, chunking, FEC generation, frame
-conversion, FFmpeg encoding, and mux/output writes. Decode stages cover
-read/demux, frame decoding, packet extraction, FEC recovery,
-postprocessing/decryption, and output writes.
-
-Parallel stage durations are accumulated work time. They are divided by total
-wall time for the reported percentages, so overlapping parallel stages can
-sum to more than 100%.
-
-The encode report and benchmark JSON also include the selected repair
-percentage and ratio, source/repair/total packet counts, and the observed
-repair/source ratio. Before encoding, the GUI and CLI show deterministic
-packet, frame, and video-duration estimates based on the same chunk and frame
-capacity calculations used by the encoder.
-
 ### GUI
 
-```
-./media_storage_gui
-```
+Launch the Release GUI from PowerShell:
 
-#### Single File Operations
-
-1. **Encode a file to video**:
-    - Click "Browse..." next to "Input File" to select the file you want to encode
-    - Click "Browse..." next to "Output File" to choose where to save the video
-    - Click "Encode to Video" to start the process
-
-2. **Decode a video to file**:
-    - Click "Browse..." next to "Input File" to select the video file
-    - Click "Browse..." next to "Output File" to choose where to save the decoded file
-    - Click "Decode from Video" to start the process
-
-#### Batch Operations
-
-1. Click "Add Files" to add multiple files to the batch queue
-2. Select an output directory for all encoded videos
-3. Click "Batch Encode All" to process all files in sequence
-
-#### Streaming
-
-1. Select a platform (Twitch, YouTube, or Custom)
-2. Enter your stream key
-3. Choose a resolution (1080p, 1440p, or 4K), and change bitrate if needed
-4. Select an input file and click "Stream Encode" to start streaming
-5. To decode a stream, enter the stream URL and click "Stream Decode"
-
-#### Monitoring
-
-- The progress bar shows the current operation progress
-- Status label displays current operation status
-- Logs panel provides detailed information about each step
-- All operations run in separate threads to keep the UI responsive
-
-### Library (Embedding in Your App)
-
-The shared library exposes a C API (`media_storage.h`) so you can integrate encoding/decoding. Link against
-`libmedia_storage` and include the header:
-
-```c
-#include <media_storage.h>
-
-int progress(uint64_t current, uint64_t total, void *user) {
-    printf("Progress: %llu / %llu\n", current, total);
-    return 0; // return non-zero to cancel
-}
-
-int main(void) {
-    ms_encode_options_t opts = {0};
-    opts.input_path  = "myfile.bin";
-    opts.output_path = "myfile.mkv";
-    opts.hash_algorithm = MS_HASH_CRC32;
-    opts.progress = progress;
-
-    ms_result_t result;
-    ms_status_t status = ms_encode(&opts, &result);
-    if (status != MS_OK) {
-        fprintf(stderr, "Error: %s\n", ms_status_string(status));
-        return 1;
-    }
-
-    printf("Encoded %llu bytes -> %llu bytes (%llu frames)\n",
-           result.input_size, result.output_size, result.total_frames);
-    return 0;
-}
+```powershell
+build\Release\media_storage_gui.exe
 ```
 
-#### CMake Integration
+The GUI provides file selection, encode/decode controls, reliability
+settings, progress reporting, and performance results.
 
-After installing with `cmake --install build`, use `find_package`:
+### CLI
 
-```cmake
-find_package(media_storage REQUIRED)
-target_link_libraries(your_app PRIVATE media_storage::media_storage_lib)
+The CLI accepts either positional input/output paths or explicit
+`--input`/`--output` flags. The following positional examples are supported
+by the current implementation:
+
+```powershell
+build\Release\media_storage.exe encode input.rar output.mkv
+build\Release\media_storage.exe encode input.rar output.mkv --reliability-profile balanced
+build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 7.5
+build\Release\media_storage.exe decode output.mkv restored.rar
+build\Release\media_storage.exe encode input.rar output.mkv --benchmark-json benchmark.json
 ```
 
-Or add this repository as a subdirectory:
+Equivalent explicit-path syntax is also available:
 
-```cmake
-add_subdirectory(media-storage)
-target_link_libraries(your_app PRIVATE media_storage_lib)
+```powershell
+build\Release\media_storage.exe encode --input input.rar --output output.mkv
+build\Release\media_storage.exe decode --input output.mkv --output restored.rar
 ```
 
-## Technical Details
+For password-based encryption:
 
-- **Encoding**: Files are chunked, encoded with fountain codes, and embedded into video frames
-- **Decoding**: Packets are extracted from video frames and reconstructed into the original file
-  - The extracted packets in each frame are checked against a magic value; frames which do not match are *skipped*
-- **Lossless Format**: FFV1 codec in MKV container at 3840x2160, 30 FPS
-- **Streaming Format**: H.264 (libx264) in FLV container via RTMP, with configurable resolution and bitrate
-- **Encryption**: Optional XChaCha20-Poly1305 via libsodium
-- **Checksums**: CRC32-MPEG2 (default) or xxHash32 per packet; algorithm is stored in the packet flags for
-  self-describing decode
+```powershell
+build\Release\media_storage.exe encode input.rar output.mkv --encrypt --password "your-password"
+build\Release\media_storage.exe decode output.mkv restored.rar --password "your-password"
+```
 
-## Troubleshooting
+Avoid exposing sensitive passwords in shared terminal history or logs.
 
-### Build Issues
+## Project Structure
 
-- **Qt6 not found**: Ensure Qt6 development packages are installed
-- **FFmpeg libraries missing**: Install FFmpeg development packages
-- **libsodium missing**: Install libsodium development packages
-- **OpenMP errors**: Install OpenMP development packages
+```text
+VidStoreX/
+├── include/          Public C API
+├── src/              Core codec, FFmpeg, profiler, CLI, and Qt GUI sources
+├── tests/            GoogleTest unit, integration, and roundtrip tests
+├── CMakeLists.txt    Root build and installation configuration
+└── vcpkg.json        Dependency manifest and optional GUI feature
+```
 
-### Runtime Issues
+## Testing
 
-- **Cannot open input file**: Check file permissions and paths
-- **Encoding fails**: Ensure sufficient disk space for output video
-- **Decoding fails**: Verify the input file is a valid encoded video
-- **Encode Error: failed to write header**: Make sure you have at least FFMPEG version 8 in-order to use FFV1 encoder on
-  mp4. Otherwise, use mkv instead.
+The current Windows Release build passes **169/169 tests**:
 
-### Memory Usage
+```powershell
+ctest --test-dir build -C Release --output-on-failure
+```
 
-- **Encoding** streams chunks and uses only a few MB of RAM regardless of input file size.
-- **Decoding** holds all decoded chunks in memory before writing the output file.
+Coverage includes:
 
-## License
+- Unit tests for integrity, chunking, codec, encryption, streaming, and API behavior
+- Repair-packet calculations
+- Reliability-profile selection and overrides
+- CLI repair-option validation
+- Negative, NaN, infinity, upper-bound, and overflow error paths
+- Encode/decode roundtrips
+- SHA-256 reconstruction verification
+- Human-readable and JSON performance reports
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
-License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
-version.
+## Known Limitations
+
+- Video output can still be substantially larger than the source file.
+- FFmpeg encoding and decoding are the main performance bottlenecks.
+- Output size depends on the input content and FFV1 compressibility.
+- The 5% Local profile does not guarantee recovery from severe video damage.
+- Resilience on lossy platforms has not yet been benchmarked comprehensively.
+- The project remains experimental.
+
+## Roadmap
+
+- Increase data density per frame
+- Add a dedicated Fast Local Mode
+- Develop balanced and platform-resistant encoding modes
+- Estimate output size before encoding
+- Validate available disk space
+- Add pause and resume support
+- Support streaming decode with lower memory requirements
+- Evaluate more efficient FFmpeg settings
+- Build a platform-recompression benchmark suite
+
+## Upstream Project and Credits
+
+VidStoreX is based on and forked from
+[yt-media-storage](https://github.com/PulseBeat02/yt-media-storage) by
+[Brandon Li (PulseBeat02)](https://brandonli.me/). The upstream authorship
+and copyright notices remain in the source files.
+
+VidStoreX is distributed under the **GNU General Public License, version 3 or
+later (GPL-3.0-or-later)**. See [LICENSE.txt](LICENSE.txt) for the complete
+license text. Existing copyright and third-party notices are retained in the
+repository.
