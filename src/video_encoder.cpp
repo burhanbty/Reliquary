@@ -46,7 +46,16 @@ std::size_t max_packet_bytes_per_frame() {
 
 VideoEncoder::VideoEncoder(const std::string &output_path,
                            PerformanceProfiler *profiler)
-    : profiler_(profiler) {
+    : VideoEncoder(output_path, ResilientVideoConfig{}, profiler) {
+}
+
+VideoEncoder::VideoEncoder(const std::string &output_path,
+                           const ResilientVideoConfig &config,
+                           PerformanceProfiler *profiler)
+    : profiler_(profiler), config_(config) {
+    if (!config_.valid()) {
+        throw std::invalid_argument("Invalid resilient video configuration");
+    }
     try {
         init_encoder(output_path);
     } catch (...) {
@@ -84,9 +93,11 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
         throw std::runtime_error("Failed to create output context");
     }
 
-    const AVCodec *codec = avcodec_find_encoder_by_name(VIDEO_CODEC.c_str());
+    const AVCodec *codec =
+        avcodec_find_encoder_by_name(config_.codec.c_str());
     if (!codec) {
-        throw std::runtime_error("Failed to find encoder: " + VIDEO_CODEC);
+        throw std::runtime_error(
+            "Failed to find encoder: " + config_.codec);
     }
 
     stream = avformat_new_stream(format_ctx, nullptr);
@@ -99,11 +110,11 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
         throw std::runtime_error("Failed to allocate codec context");
     }
 
-    codec_ctx->width = FRAME_WIDTH;
-    codec_ctx->height = FRAME_HEIGHT;
-    codec_ctx->time_base = {1, FRAME_FPS};
-    codec_ctx->framerate = {FRAME_FPS, 1};
-    codec_ctx->gop_size = 30;
+    codec_ctx->width = config_.width;
+    codec_ctx->height = config_.height;
+    codec_ctx->time_base = {1, config_.fps};
+    codec_ctx->framerate = {config_.fps, 1};
+    codec_ctx->gop_size = config_.fps;
     codec_ctx->max_b_frames = 0;
     codec_ctx->pix_fmt = AV_PIX_FMT_GRAY8;
     codec_ctx->thread_count = 0;
@@ -149,7 +160,7 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
         throw std::runtime_error("Failed to allocate packet");
     }
 
-    layout_ = compute_frame_layout();
+    layout_ = compute_frame_layout(config_.width, config_.height);
     frame_data_buffer.reserve(layout_.bytes_per_frame);
 
     {
@@ -174,7 +185,14 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
 }
 
 int VideoEncoder::packets_per_frame() {
-    const auto layout = compute_frame_layout();
+    return packets_per_frame(ResilientVideoConfig{});
+}
+
+int VideoEncoder::packets_per_frame(
+    const ResilientVideoConfig &config) {
+    if (!config.valid()) return 0;
+    const auto layout =
+        compute_frame_layout(config.width, config.height);
     constexpr std::size_t packet_size = HEADER_SIZE_V2 + SYMBOL_SIZE_BYTES;
     return static_cast<int>(layout.bytes_per_frame / packet_size);
 }
@@ -199,8 +217,10 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
 
     uint8_t *dst_base = frame->data[0];
     const int dst_stride = frame->linesize[0];
-    for (int y = 0; y < FRAME_HEIGHT; ++y)
-        std::memset(dst_base + y * dst_stride, 128, FRAME_WIDTH);
+    for (int y = 0; y < config_.height; ++y)
+        std::memset(
+            dst_base + y * dst_stride, 128,
+            static_cast<std::size_t>(config_.width));
 
 #pragma omp parallel for schedule(static)
     for (int block_idx = 0; block_idx < active_blocks; ++block_idx) {
@@ -342,10 +362,10 @@ void VideoEncoder::encode_gray8_frame(
         }
         const auto *source =
             reinterpret_cast<const uint8_t *>(pixels.data());
-        for (int y = 0; y < FRAME_HEIGHT; ++y) {
+        for (int y = 0; y < config_.height; ++y) {
             std::memcpy(frame->data[0] + y * frame->linesize[0],
-                        source + static_cast<std::size_t>(y) * FRAME_WIDTH,
-                        FRAME_WIDTH);
+                        source + static_cast<std::size_t>(y) * config_.width,
+                        static_cast<std::size_t>(config_.width));
         }
     }
     encode_frame();

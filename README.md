@@ -12,7 +12,8 @@ an efficient, general-purpose archive or backup tool.
 
 - Tested on Windows 10/11
 - Release configuration builds successfully
-- **229/229 automated tests passing**
+- **256 automated tests registered** (run the Release test command below
+  to verify the current machine)
 - Successful encode/decode roundtrip with SHA-256 verification
 - Both GUI and CLI applications are available
 
@@ -73,6 +74,111 @@ same-directory partial file. Only a completely verified output is atomically
 committed.
 
 ## Improvements Introduced in VidStoreX
+
+### YouTube Test Lab
+
+The separate **YouTube Test Lab** measures how much Resilient-mode data can
+be recovered after a lossy processing roundtrip. It does not alter the
+VidStoreX packet format, and it does not support Fast Local: **Fast Local is
+not designed for lossy YouTube processing.**
+
+The GUI has a dedicated Test Lab tab. The CLI exposes the same workflow:
+
+```powershell
+media_storage testlab generate --preset quick --output C:\vsx-lab
+media_storage testlab generate --preset full --output C:\vsx-lab
+media_storage testlab simulate --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --profile yt-sim-1080p-medium
+media_storage testlab analyze --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --case yt001 --video C:\Downloads\returned.mp4
+media_storage testlab report --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --format markdown
+```
+
+`--estimate-only` performs generation preflight without creating a suite.
+Custom generation can repeat `--repair-percent`, `--reliability-profile`,
+`--input-size`, `--data-type`, and `--resolution`. A cancelled or interrupted
+suite can be continued with:
+
+```powershell
+media_storage testlab resume --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json
+```
+
+The default Quick matrix has six cases: 64 KiB deterministic random data,
+5%/20%/50% repair, and 1080p/4K. The Full matrix has 36 unique cases:
+5%/20%/50%, the current/1080p/1440p/4K resolutions (duplicates removed),
+and these input variants:
+
+- 64 KiB compressible
+- 64 KiB random
+- 256 KiB random
+- 1 MiB random
+
+Payloads are generated in bounded blocks from a recorded fixed seed. Their
+SHA-256 hashes are stored in the manifest, so the same payload can be
+regenerated without holding the whole file in memory.
+
+Each case first creates a Resilient FFV1/GRAY8/Matroska master using a
+central `ResilientVideoConfig`. It then creates a progressive H.264,
+YUV 4:2:0, MP4 upload candidate with FFmpeg. The candidate is immediately
+decoded by VidStoreX and compared with the payload SHA-256. A candidate is
+marked ready only if that local exact-recovery check succeeds.
+
+Local simulation profiles are:
+
+- `yt-sim-1080p-light`
+- `yt-sim-1080p-medium`
+- `yt-sim-1080p-heavy`
+- `yt-sim-720p-downscale`
+- `yt-sim-4k-medium`
+
+These profiles are controlled FFmpeg transcodes for quick feedback. **They
+are not a guaranteed copy or predictor of YouTube's processing.** Reports
+always distinguish `Source: Local simulation` from
+`Source: Real YouTube roundtrip`.
+
+The real YouTube workflow remains deliberately manual:
+
+1. Generate a suite and use only candidates marked ready.
+2. Upload the candidate to your own YouTube account as **Private** or
+   **Unlisted**.
+3. Wait for YouTube processing to finish.
+4. Download your own processed video.
+5. Import it in the Test Lab tab or pass it to `testlab analyze`.
+
+VidStoreX performs no YouTube login, API upload, or automatic download.
+Filename case-ID detection is attempted; `--case` or GUI selection handles
+renamed downloads. Imported videos are inspected through the linked FFmpeg
+libraries, with no required `ffprobe.exe` process.
+
+Every suite is portable and uses this layout:
+
+```text
+youtube_test_lab/<suite-id>/
+  manifest.json
+  cases/
+  generated/
+  imported/
+  restored/
+  reports/
+```
+
+The versioned manifest stores relative paths, matrix inputs, seeds, source
+and repair counts, frame/video configuration, master/candidate hashes,
+processing state, technical video data, and results. Manifest and JSON/CSV/
+Markdown report replacement is atomic. Video and payload writers use unique
+partial files that are removed on failure. Generation saves state after each
+case; resume skips completed cases.
+
+Packet recovery telemetry includes frames read, frames containing a detected
+pattern, extracted/valid/invalid/duplicate packets, source/repair packets,
+recovered/missing chunks, the required packet threshold, decode failure
+stage, elapsed time, and final SHA-256 status. These are observations, not
+performance guarantees. Actual YouTube results can vary by account, region,
+codec assignment, source resolution, and changes to YouTube processing.
+
+Before generation, the Test Lab reports case count, frames, duration,
+conservative master/candidate space, free disk space, and a safety margin.
+Insufficient disk blocks generation unless the user explicitly supplies the
+existing-style `--allow-low-disk` override. The Full matrix should be started
+only after reviewing that estimate.
 
 ### Performance profiling
 

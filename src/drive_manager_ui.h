@@ -39,6 +39,9 @@
 #include <QCheckBox>
 #include <QToolButton>
 #include <QDateTime>
+#include <QProcess>
+#include <QTableWidget>
+#include <QTabWidget>
 
 #include <memory>
 #include <optional>
@@ -252,6 +255,10 @@ private:
         const EncodingReliabilityEstimate &estimate,
         const EncodingReliabilityOptions &options) const;
 
+    void startTestLabProcess(const QStringList &arguments);
+
+    void refreshTestLabDashboard();
+
     // UI Components
     QWidget *centralWidget;
     QSplitter *mainSplitter;
@@ -338,6 +345,26 @@ private:
     // Settings
     QComboBox *qualityCombo;
     QComboBox *codecCombo;
+
+    // YouTube Test Lab
+    QTabWidget *mainTabs = nullptr;
+    QComboBox *testLabPresetCombo = nullptr;
+    QLineEdit *testLabOutputEdit = nullptr;
+    QLineEdit *testLabManifestEdit = nullptr;
+    QComboBox *testLabSimulationCombo = nullptr;
+    QLineEdit *testLabVideoEdit = nullptr;
+    QLineEdit *testLabCaseEdit = nullptr;
+    QLabel *testLabEstimateLabel = nullptr;
+    QProgressBar *testLabProgress = nullptr;
+    QTableWidget *testLabResults = nullptr;
+    QPushButton *testLabGenerateButton = nullptr;
+    QPushButton *testLabResumeButton = nullptr;
+    QPushButton *testLabSimulateButton = nullptr;
+    QPushButton *testLabAnalyzeButton = nullptr;
+    QPushButton *testLabReportButton = nullptr;
+    QPushButton *testLabCancelButton = nullptr;
+    QProcess *testLabProcess = nullptr;
+    QString testLabCancelFile;
 
     // Worker thread
     std::unique_ptr<WorkerThread> workerThread;

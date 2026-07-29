@@ -18,7 +18,15 @@
 #include "encoding_reliability.h"
 #include "media_storage.h"
 #include "video_encoder.h"
+#include "youtube_test_lab.h"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QHeaderView>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QFile>
 #include <QApplication>
 #include <QMainWindow>
 #include <QMenuBar>
@@ -351,6 +359,13 @@ DriveManagerUI::~DriveManagerUI() {
     if (workerThread && workerThread->isRunning()) {
         workerThread->requestInterruption();
         workerThread->wait();
+    }
+    if (testLabProcess &&
+        testLabProcess->state() != QProcess::NotRunning) {
+        QFile cancel(testLabCancelFile);
+        if (cancel.open(QIODevice::WriteOnly)) cancel.close();
+        if (!testLabProcess->waitForFinished(10000))
+            testLabProcess->kill();
     }
     saveSettings();
 }
@@ -691,9 +706,194 @@ void DriveManagerUI::setupUI() {
     mainSplitter->addWidget(rightPanel);
     mainSplitter->setSizes({600, 600});
 
+    // Main application tabs
+    mainTabs = new QTabWidget(centralWidget);
+    mainTabs->addTab(mainSplitter, "Storage");
+
+    auto *testLabPage = new QWidget();
+    auto *testLabLayout = new QVBoxLayout(testLabPage);
+    auto *testLabNotice = new QLabel(
+        "<b>YouTube Test Lab</b><br>"
+        "Creates Resilient test videos for a manual Private/Unlisted "
+        "YouTube roundtrip. It never signs in, uploads, or downloads. "
+        "Local simulation is fast feedback only and is <b>not</b> a "
+        "guaranteed copy of YouTube processing.");
+    testLabNotice->setWordWrap(true);
+    testLabLayout->addWidget(testLabNotice);
+
+    auto *testLabGenerateGroup =
+        new QGroupBox("A. Generate Test Suite");
+    auto *testLabGenerateLayout =
+        new QGridLayout(testLabGenerateGroup);
+    testLabPresetCombo = new QComboBox();
+    testLabPresetCombo->addItems({"Quick Test", "Full Matrix"});
+    testLabOutputEdit = new QLineEdit();
+    testLabOutputEdit->setPlaceholderText(
+        "Suite parent output directory");
+    auto *testLabOutputBrowse = new QPushButton("Browse...");
+    testLabEstimateLabel = new QLabel(
+        "Quick: 6 cases (64 KiB random, 5/20/50%, 1080p + 4K)");
+    testLabEstimateLabel->setWordWrap(true);
+    testLabGenerateButton = new QPushButton("Generate");
+    testLabResumeButton = new QPushButton("Resume Incomplete");
+    testLabGenerateLayout->addWidget(new QLabel("Preset:"), 0, 0);
+    testLabGenerateLayout->addWidget(testLabPresetCombo, 0, 1, 1, 2);
+    testLabGenerateLayout->addWidget(new QLabel("Output:"), 1, 0);
+    testLabGenerateLayout->addWidget(testLabOutputEdit, 1, 1);
+    testLabGenerateLayout->addWidget(testLabOutputBrowse, 1, 2);
+    testLabGenerateLayout->addWidget(testLabEstimateLabel, 2, 0, 1, 3);
+    testLabGenerateLayout->addWidget(testLabGenerateButton, 3, 1);
+    testLabGenerateLayout->addWidget(testLabResumeButton, 3, 2);
+    testLabLayout->addWidget(testLabGenerateGroup);
+
+    auto *testLabRoundtripGroup =
+        new QGroupBox("B–C. Simulate or Import Processed Video");
+    auto *testLabRoundtripLayout =
+        new QGridLayout(testLabRoundtripGroup);
+    testLabManifestEdit = new QLineEdit();
+    testLabManifestEdit->setPlaceholderText("manifest.json");
+    auto *testLabManifestBrowse = new QPushButton("Manifest...");
+    testLabSimulationCombo = new QComboBox();
+    for (const auto &profile :
+         youtube_test_lab::simulation_profiles())
+        testLabSimulationCombo->addItem(
+            QString::fromStdString(profile.name));
+    testLabVideoEdit = new QLineEdit();
+    testLabVideoEdit->setPlaceholderText(
+        "Downloaded YouTube video");
+    auto *testLabVideoBrowse = new QPushButton("Video...");
+    testLabCaseEdit = new QLineEdit();
+    testLabCaseEdit->setPlaceholderText(
+        "Optional case ID; filename auto-detection is attempted");
+    testLabSimulateButton = new QPushButton("Run Local Simulation");
+    testLabAnalyzeButton = new QPushButton("Analyze Real Roundtrip");
+    testLabReportButton = new QPushButton("Refresh Reports");
+    testLabCancelButton = new QPushButton("Cancel");
+    testLabCancelButton->setEnabled(false);
+    testLabProgress = new QProgressBar();
+    testLabProgress->setRange(0, 100);
+    testLabRoundtripLayout->addWidget(new QLabel("Manifest:"), 0, 0);
+    testLabRoundtripLayout->addWidget(testLabManifestEdit, 0, 1);
+    testLabRoundtripLayout->addWidget(testLabManifestBrowse, 0, 2);
+    testLabRoundtripLayout->addWidget(new QLabel("Simulation:"), 1, 0);
+    testLabRoundtripLayout->addWidget(testLabSimulationCombo, 1, 1, 1, 2);
+    testLabRoundtripLayout->addWidget(new QLabel("Returned video:"), 2, 0);
+    testLabRoundtripLayout->addWidget(testLabVideoEdit, 2, 1);
+    testLabRoundtripLayout->addWidget(testLabVideoBrowse, 2, 2);
+    testLabRoundtripLayout->addWidget(new QLabel("Case:"), 3, 0);
+    testLabRoundtripLayout->addWidget(testLabCaseEdit, 3, 1, 1, 2);
+    testLabRoundtripLayout->addWidget(testLabSimulateButton, 4, 0);
+    testLabRoundtripLayout->addWidget(testLabAnalyzeButton, 4, 1);
+    testLabRoundtripLayout->addWidget(testLabReportButton, 4, 2);
+    testLabRoundtripLayout->addWidget(testLabProgress, 5, 0, 1, 2);
+    testLabRoundtripLayout->addWidget(testLabCancelButton, 5, 2);
+    testLabLayout->addWidget(testLabRoundtripGroup);
+
+    auto *testLabInstructions = new QLabel(
+        "<b>Manual YouTube steps:</b> upload only candidates marked "
+        "ready, choose Private or Unlisted, wait for processing, download "
+        "your own video, then import it here. Fast Local is not designed "
+        "for lossy YouTube processing.");
+    testLabInstructions->setWordWrap(true);
+    testLabLayout->addWidget(testLabInstructions);
+
+    testLabResults = new QTableWidget(0, 9);
+    testLabResults->setHorizontalHeaderLabels({
+        "Case", "Resolution", "Reliability", "Input",
+        "Upload", "Returned", "Packets", "SHA-256", "Status"});
+    testLabResults->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents);
+    testLabResults->horizontalHeader()->setStretchLastSection(true);
+    testLabLayout->addWidget(testLabResults, 1);
+    mainTabs->addTab(testLabPage, "YouTube Test Lab");
+
+    connect(testLabPresetCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](const int index) {
+                testLabEstimateLabel->setText(
+                    index == 0
+                        ? "Quick: 6 cases (64 KiB random, "
+                          "5/20/50%, 1080p + 4K)"
+                        : "Full: 36 cases after de-duplicating the "
+                          "current production resolution. Review disk "
+                          "preflight before generation.");
+            });
+    connect(testLabOutputBrowse, &QPushButton::clicked, this, [this] {
+        const QString directory = QFileDialog::getExistingDirectory(
+            this, "Test Lab output directory");
+        if (!directory.isEmpty()) testLabOutputEdit->setText(directory);
+    });
+    connect(testLabManifestBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, "Select Test Lab manifest", {},
+            "JSON manifest (manifest.json)");
+        if (!path.isEmpty()) {
+            testLabManifestEdit->setText(path);
+            refreshTestLabDashboard();
+        }
+    });
+    connect(testLabVideoBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, "Select downloaded YouTube video", {},
+            "Video files (*.mp4 *.mkv *.webm);;All files (*)");
+        if (!path.isEmpty()) testLabVideoEdit->setText(path);
+    });
+    connect(testLabGenerateButton, &QPushButton::clicked, this, [this] {
+        if (testLabOutputEdit->text().isEmpty()) {
+            QMessageBox::warning(
+                this, "YouTube Test Lab", "Select an output directory.");
+            return;
+        }
+        startTestLabProcess({
+            "testlab", "generate", "--preset",
+            testLabPresetCombo->currentIndex() == 0 ? "quick" : "full",
+            "--output", testLabOutputEdit->text()});
+    });
+    connect(testLabResumeButton, &QPushButton::clicked, this, [this] {
+        if (testLabManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "testlab", "resume", "--suite",
+            testLabManifestEdit->text()});
+    });
+    connect(testLabSimulateButton, &QPushButton::clicked, this, [this] {
+        if (testLabManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "testlab", "simulate", "--suite",
+            testLabManifestEdit->text(), "--profile",
+            testLabSimulationCombo->currentText()});
+    });
+    connect(testLabAnalyzeButton, &QPushButton::clicked, this, [this] {
+        if (testLabManifestEdit->text().isEmpty() ||
+            testLabVideoEdit->text().isEmpty()) return;
+        QStringList args{
+            "testlab", "analyze", "--suite",
+            testLabManifestEdit->text(), "--video",
+            testLabVideoEdit->text()};
+        if (!testLabCaseEdit->text().isEmpty())
+            args << "--case" << testLabCaseEdit->text();
+        startTestLabProcess(args);
+    });
+    connect(testLabReportButton, &QPushButton::clicked, this, [this] {
+        if (testLabManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "testlab", "report", "--suite",
+            testLabManifestEdit->text(), "--format", "markdown"});
+    });
+    connect(testLabCancelButton, &QPushButton::clicked, this, [this] {
+        if (testLabProcess &&
+            testLabProcess->state() != QProcess::NotRunning) {
+            QFile cancel(testLabCancelFile);
+            if (cancel.open(QIODevice::WriteOnly)) cancel.close();
+            testLabCancelButton->setEnabled(false);
+            logMessage(
+                "[Test Lab] Cancellation requested; finishing the "
+                "current safe boundary.");
+        }
+    });
+
     // Main layout
     auto *mainLayout = new QHBoxLayout(centralWidget);
-    mainLayout->addWidget(mainSplitter);
+    mainLayout->addWidget(mainTabs);
 }
 
 void DriveManagerUI::setupMenuBar() {
@@ -1750,6 +1950,143 @@ void DriveManagerUI::onStatusUpdated(const QString &status) const {
 
 void DriveManagerUI::onLogMessage(const QString &message) const {
     logMessage(message);
+}
+
+void DriveManagerUI::startTestLabProcess(
+    const QStringList &arguments) {
+    if (testLabProcess &&
+        testLabProcess->state() != QProcess::NotRunning) {
+        QMessageBox::information(
+            this, "YouTube Test Lab",
+            "A Test Lab operation is already running.");
+        return;
+    }
+    if (!testLabProcess) {
+        testLabProcess = new QProcess(this);
+        testLabProcess->setProcessChannelMode(
+            QProcess::MergedChannels);
+        connect(testLabProcess, &QProcess::readyReadStandardOutput,
+                this, [this] {
+            const QString output = QString::fromLocal8Bit(
+                testLabProcess->readAllStandardOutput());
+            for (const QString &line :
+                 output.split('\n', Qt::SkipEmptyParts)) {
+                logMessage("[Test Lab] " + line.trimmed());
+                const QString marker = "Suite generated: ";
+                const int position = line.indexOf(marker);
+                if (position >= 0)
+                    testLabManifestEdit->setText(
+                        line.mid(position + marker.size()).trimmed());
+            }
+        });
+        connect(
+            testLabProcess,
+            QOverload<int, QProcess::ExitStatus>::of(
+                &QProcess::finished),
+            this, [this](const int exitCode,
+                         QProcess::ExitStatus status) {
+                testLabProgress->setRange(0, 100);
+                testLabProgress->setValue(
+                    status == QProcess::NormalExit &&
+                    exitCode == 0 ? 100 : 0);
+                testLabCancelButton->setEnabled(false);
+                QFile::remove(testLabCancelFile);
+                testLabGenerateButton->setEnabled(true);
+                testLabResumeButton->setEnabled(true);
+                testLabSimulateButton->setEnabled(true);
+                testLabAnalyzeButton->setEnabled(true);
+                testLabReportButton->setEnabled(true);
+                refreshTestLabDashboard();
+            });
+    }
+    const QString executable =
+        QCoreApplication::applicationDirPath() +
+#if defined(_WIN32)
+        "/media_storage.exe";
+#else
+        "/media_storage";
+#endif
+    testLabCancelFile =
+        QDir::tempPath() + "/vidstorex-testlab-cancel-" +
+        QString::number(QCoreApplication::applicationPid());
+    QFile::remove(testLabCancelFile);
+    QStringList processArguments = arguments;
+    processArguments << "--cancel-file" << testLabCancelFile;
+    testLabProgress->setRange(0, 0);
+    testLabCancelButton->setEnabled(true);
+    testLabGenerateButton->setEnabled(false);
+    testLabResumeButton->setEnabled(false);
+    testLabSimulateButton->setEnabled(false);
+    testLabAnalyzeButton->setEnabled(false);
+    testLabReportButton->setEnabled(false);
+    logMessage(
+        "[Test Lab] Starting: " + arguments.join(' '));
+    testLabProcess->start(executable, processArguments);
+}
+
+void DriveManagerUI::refreshTestLabDashboard() {
+    if (!testLabResults || !testLabManifestEdit ||
+        testLabManifestEdit->text().isEmpty())
+        return;
+    QFile file(testLabManifestEdit->text());
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QJsonParseError error;
+    const QJsonDocument document =
+        QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError ||
+        !document.isObject())
+        return;
+    const QJsonArray cases =
+        document.object().value("cases").toArray();
+    testLabResults->setRowCount(cases.size());
+    for (int row = 0; row < cases.size(); ++row) {
+        const QJsonObject item = cases.at(row).toObject();
+        const QJsonObject video = item.value("video").toObject();
+        const QJsonArray results = item.value("results").toArray();
+        QJsonObject result;
+        if (!results.isEmpty())
+            result = results.last().toObject();
+        const QJsonObject telemetry =
+            result.value("telemetry").toObject();
+        const QString resolution =
+            QString("%1x%2")
+                .arg(video.value("width").toInt())
+                .arg(video.value("height").toInt());
+        const QString packets = results.isEmpty()
+            ? "-"
+            : QString("%1 (%2%)")
+                .arg(telemetry.value("valid_packets")
+                         .toVariant().toULongLong())
+                .arg(result.value("packet_recovery_percentage")
+                         .toDouble(), 0, 'f', 2);
+        const QStringList values{
+            item.value("test_case_id").toString(),
+            resolution,
+            item.value("reliability_profile").toString(),
+            QString::number(
+                item.value("input_size").toVariant().toULongLong()),
+            QString::number(
+                item.value("upload_candidate_size")
+                    .toVariant().toULongLong()),
+            results.isEmpty()
+                ? "-"
+                : QString::number(
+                    result.value("downloaded_video_size")
+                        .toVariant().toULongLong()),
+            packets,
+            results.isEmpty()
+                ? "-"
+                : (result.value("sha256_match").toBool()
+                       ? "Yes" : "No"),
+            results.isEmpty()
+                ? item.value("processing_state").toString()
+                : result.value("final_status").toString()
+        };
+        for (int column = 0; column < values.size(); ++column)
+            testLabResults->setItem(
+                row, column,
+                new QTableWidgetItem(values.at(column)));
+    }
 }
 
 void DriveManagerUI::resetProgress() {

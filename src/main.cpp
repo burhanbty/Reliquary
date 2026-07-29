@@ -14,16 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <fstream>
 
 #include "configuration.h"
 #include "encoding_reliability.h"
 #include "media_storage.h"
+#include "safe_output.h"
+#include "youtube_test_lab.h"
 
 static std::string format_size(const uint64_t bytes) {
     const char *units[] = {"B", "KB", "MB", "GB"};
@@ -246,6 +253,369 @@ static void print_usage(const char *program) {
             << "  " << program <<
             " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]\n"
             << "  " << program << " stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]\n";
+    std::cerr
+        << "  " << program
+        << " testlab generate --preset <quick|full> --output <folder>\n"
+        << "    [--repair-percent <0..500>] [--input-size <64KiB|256KiB|1MiB>]\n"
+        << "    [--data-type <random|compressible>] [--resolution <1080p|1440p|2160p>]\n"
+        << "    [--allow-low-disk]\n"
+        << "  " << program
+        << " testlab simulate --suite <manifest.json> --profile <yt-sim-profile>\n"
+        << "  " << program
+        << " testlab resume --suite <manifest.json> [--allow-low-disk]\n"
+        << "  " << program
+        << " testlab analyze --suite <manifest.json> [--case <case-id>] --video <downloaded.mp4>\n"
+        << "  " << program
+        << " testlab report --suite <manifest.json> --format <json|csv|markdown>\n"
+        << "\nTest Lab only supports Resilient mode. Local simulation is not "
+           "a guaranteed copy of YouTube processing.\n";
+}
+
+static uint64_t parse_testlab_size(const std::string &value) {
+    std::size_t used = 0;
+    const uint64_t number = std::stoull(value, &used);
+    std::string suffix = value.substr(used);
+    for (char &c : suffix)
+        c = static_cast<char>(std::tolower(
+            static_cast<unsigned char>(c)));
+    uint64_t multiplier = 1;
+    if (suffix == "kib" || suffix == "kb") multiplier = 1024;
+    else if (suffix == "mib" || suffix == "mb")
+        multiplier = 1024 * 1024;
+    else if (!suffix.empty() && suffix != "b")
+        throw std::invalid_argument("invalid size suffix");
+    if (number > std::numeric_limits<uint64_t>::max() / multiplier)
+        throw std::overflow_error("input size overflow");
+    return number * multiplier;
+}
+
+static std::pair<int, int> parse_testlab_resolution(
+    const std::string &value) {
+    if (value == "1080p") return {1920, 1080};
+    if (value == "1440p") return {2560, 1440};
+    if (value == "2160p" || value == "4k") return {3840, 2160};
+    const auto x = value.find('x');
+    if (x == std::string::npos)
+        throw std::invalid_argument("invalid resolution");
+    const int width = std::stoi(value.substr(0, x));
+    const int height = std::stoi(value.substr(x + 1));
+    if (width <= 0 || height <= 0 ||
+        width % 8 != 0 || height % 8 != 0)
+        throw std::invalid_argument("invalid resolution");
+    return {width, height};
+}
+
+static int do_testlab(const int argc, char *argv[]) {
+    using namespace youtube_test_lab;
+    if (argc < 3) {
+        std::cerr << "Error: missing testlab subcommand\n";
+        print_usage(argv[0]);
+        return 1;
+    }
+    const std::string subcommand = argv[2];
+    std::string preset = "quick";
+    std::string output;
+    std::string suite;
+    std::string profile = "yt-sim-1080p-medium";
+    std::string case_id;
+    std::string video;
+    std::string format = "markdown";
+    std::string cancel_file;
+    bool allow_low_disk = false;
+    bool estimate_only = false;
+    bool custom_repair = false;
+    bool custom_size = false;
+    bool custom_type = false;
+    bool custom_resolution = false;
+    MatrixOptions matrix;
+    for (int i = 3; i < argc; ++i) {
+        const std::string arg = argv[i];
+        auto require_value = [&](const char *name) -> std::string {
+            if (i + 1 >= argc)
+                throw std::invalid_argument(
+                    std::string("missing value for ") + name);
+            return argv[++i];
+        };
+        if (arg == "--preset") preset = require_value("--preset");
+        else if (arg == "--output") output = require_value("--output");
+        else if (arg == "--suite") suite = require_value("--suite");
+        else if (arg == "--profile" ||
+                 arg == "--simulation-profile")
+            profile = require_value(arg.c_str());
+        else if (arg == "--case") case_id = require_value("--case");
+        else if (arg == "--video") video = require_value("--video");
+        else if (arg == "--format") format = require_value("--format");
+        else if (arg == "--cancel-file")
+            cancel_file = require_value("--cancel-file");
+        else if (arg == "--allow-low-disk") allow_low_disk = true;
+        else if (arg == "--estimate-only") estimate_only = true;
+        else if (arg == "--mode") {
+            const auto mode = require_value("--mode");
+            if (mode == "fast-local")
+                throw std::invalid_argument(
+                    "Fast Local is not designed for lossy YouTube processing.");
+            if (mode != "resilient")
+                throw std::invalid_argument("invalid Test Lab mode");
+        } else if (arg == "--repair-percent") {
+            if (!custom_repair) matrix.repair_percentages.clear();
+            matrix.repair_percentages.push_back(
+                parse_repair_percentage(require_value("--repair-percent")));
+            custom_repair = true;
+        } else if (arg == "--reliability-profile") {
+            if (!custom_repair) matrix.repair_percentages.clear();
+            const auto resolved = reliability_options_for_profile(
+                parse_reliability_profile(
+                    require_value("--reliability-profile")));
+            matrix.repair_percentages.push_back(
+                repair_ratio_to_percentage(resolved.repair_ratio));
+            custom_repair = true;
+        } else if (arg == "--input-size") {
+            if (!custom_size) matrix.input_sizes.clear();
+            matrix.input_sizes.push_back(
+                parse_testlab_size(require_value("--input-size")));
+            custom_size = true;
+        } else if (arg == "--data-type") {
+            if (!custom_type) matrix.data_types.clear();
+            const auto value = require_value("--data-type");
+            if (value == "random")
+                matrix.data_types.push_back(DataType::Random);
+            else if (value == "compressible")
+                matrix.data_types.push_back(DataType::Compressible);
+            else
+                throw std::invalid_argument("invalid data type");
+            custom_type = true;
+        } else if (arg == "--resolution") {
+            if (!custom_resolution) matrix.resolutions.clear();
+            matrix.resolutions.push_back(
+                parse_testlab_resolution(
+                    require_value("--resolution")));
+            custom_resolution = true;
+        } else {
+            throw std::invalid_argument(
+                "unknown testlab option: " + arg);
+        }
+    }
+
+    try {
+        const auto continue_running = [&] {
+            return cancel_file.empty() ||
+                !std::filesystem::exists(cancel_file);
+        };
+        if (subcommand == "generate") {
+            if (output.empty())
+                throw std::invalid_argument(
+                    "--output is required for testlab generate");
+            if (preset != "quick" && preset != "full")
+                throw std::invalid_argument(
+                    "invalid preset; expected quick or full");
+            MatrixOptions defaults =
+                preset == "quick" ? quick_matrix() : full_matrix();
+            if (!custom_repair)
+                matrix.repair_percentages =
+                    defaults.repair_percentages;
+            if (!custom_size)
+                matrix.input_sizes = defaults.input_sizes;
+            if (!custom_type)
+                matrix.data_types = defaults.data_types;
+            if (!custom_resolution)
+                matrix.resolutions = defaults.resolutions;
+            if (!custom_size && !custom_type)
+                matrix.input_variants = defaults.input_variants;
+            else
+                matrix.input_variants.clear();
+            matrix.fps = defaults.fps;
+            const auto preview_id = create_suite_id();
+            const auto cases = build_matrix(matrix, preview_id);
+            const auto estimate = estimate_suite(cases, output);
+            std::cout
+                << "YouTube Test Lab preflight:\n"
+                << "  Cases: " << estimate.case_count << "\n"
+                << "  Estimated frames: "
+                << estimate.estimated_total_frames << "\n"
+                << "  Estimated duration: "
+                << estimate.estimated_total_duration_seconds << " s\n"
+                << "  Estimated output: "
+                << format_size(estimate.estimated_output_bytes) << "\n"
+                << "  Safety margin: "
+                << format_size(estimate.safety_margin_bytes) << "\n"
+                << "  Required disk: "
+                << format_size(estimate.required_disk_bytes) << "\n";
+            if (estimate.available_disk_bytes)
+                std::cout << "  Available disk: "
+                          << format_size(*estimate.available_disk_bytes)
+                          << "\n";
+            if (!allow_low_disk && !estimate.disk_space_sufficient)
+                throw std::runtime_error(
+                    "insufficient disk space (use --allow-low-disk "
+                    "only after reviewing the estimate)");
+            if (estimate_only) {
+                std::cout << "Estimate only: no suite files were created.\n";
+                return 0;
+            }
+            const auto manifest = create_suite(
+                output, preset, matrix, allow_low_disk,
+                [&](const Progress &p) {
+                    std::cout << "\rCase " << p.completed_cases << "/"
+                              << p.total_cases << " " << p.active_case
+                              << " " << static_cast<int>(
+                                     p.case_progress * 100.0)
+                              << "%   " << std::flush;
+                    return continue_running();
+                });
+            std::cout << "\nSuite generated: "
+                      << (std::filesystem::path(output) /
+                          "youtube_test_lab" / manifest.suite_id /
+                          "manifest.json").string()
+                      << "\n";
+            if (!continue_running()) {
+                std::cerr << "Test Lab generation cancelled; completed "
+                             "cases were preserved for resume.\n";
+                return 130;
+            }
+            const bool any_failed = std::any_of(
+                manifest.cases.begin(), manifest.cases.end(),
+                [](const TestCase &item) {
+                    return item.state == CaseState::Failed;
+                });
+            if (any_failed)
+                std::cerr
+                    << "One or more cases failed; inspect manifest "
+                       "notes and use testlab resume after correcting "
+                       "the cause.\n";
+            return any_failed ? 2 : 0;
+        }
+        if (subcommand == "simulate") {
+            if (suite.empty())
+                throw std::invalid_argument("--suite is required");
+            const auto selected = find_simulation_profile(profile);
+            if (!selected)
+                throw std::invalid_argument(
+                    "invalid simulation profile: " + profile);
+            std::cout
+                << "WARNING: Local simulation is not a guaranteed "
+                   "copy of YouTube processing.\n";
+            simulate_suite(suite, *selected,
+                [&](const Progress &p) {
+                    std::cout << "\rSimulating " << p.completed_cases
+                              << "/" << p.total_cases << " "
+                              << p.active_case << "   " << std::flush;
+                    return continue_running();
+                });
+            std::cout << "\nSimulation complete.\n";
+            if (!continue_running()) {
+                std::cerr << "Test Lab simulation cancelled.\n";
+                return 130;
+            }
+            const auto updated = read_manifest(suite);
+            const bool profile_failed = std::any_of(
+                updated.cases.begin(), updated.cases.end(),
+                [&](const TestCase &item) {
+                    return !item.results.empty() &&
+                        item.results.back().simulation_profile ==
+                            selected->name &&
+                        item.results.back().final_status !=
+                            FinalStatus::Pass;
+                });
+            return profile_failed ? 2 : 0;
+        }
+        if (subcommand == "resume") {
+            if (suite.empty())
+                throw std::invalid_argument("--suite is required");
+            resume_suite(suite, allow_low_disk,
+                [&](const Progress &p) {
+                    std::cout << "\rResuming " << p.completed_cases
+                              << "/" << p.total_cases << " "
+                              << p.active_case << "   " << std::flush;
+                    return continue_running();
+                });
+            std::cout << "\nResume complete.\n";
+            if (!continue_running()) {
+                std::cerr << "Test Lab resume cancelled.\n";
+                return 130;
+            }
+            const auto updated = read_manifest(suite);
+            return std::any_of(
+                updated.cases.begin(), updated.cases.end(),
+                [](const TestCase &item) {
+                    return item.state == CaseState::Failed;
+                }) ? 2 : 0;
+        }
+        if (subcommand == "analyze") {
+            if (suite.empty() || video.empty())
+                throw std::invalid_argument(
+                    "--suite and --video are required");
+            auto manifest = read_manifest(suite);
+            if (case_id.empty()) {
+                const auto detected =
+                    case_id_from_filename(manifest, video);
+                if (!detected)
+                    throw std::invalid_argument(
+                        "case ID was not uniquely found in the filename; "
+                        "use --case");
+                case_id = *detected;
+            }
+            auto it = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const TestCase &c) {
+                    return c.test_case_id == case_id;
+                });
+            if (it == manifest.cases.end())
+                throw std::invalid_argument("unknown case ID");
+            const auto root =
+                std::filesystem::absolute(suite).parent_path();
+            const auto imported =
+                root / "imported" /
+                (case_id + "_" +
+                 std::filesystem::path(video).filename().string());
+            {
+                SafeOutputFile safe(imported);
+                std::filesystem::copy_file(
+                    video, safe.partial_path(),
+                    std::filesystem::copy_options::overwrite_existing);
+                safe.commit();
+            }
+            const auto result = analyze_case_video(
+                manifest, *it, imported,
+                ResultSource::RealYouTubeRoundtrip);
+            it->state = CaseState::Analyzed;
+            write_manifest_atomic(manifest, suite);
+            write_reports(manifest, root / "reports");
+            std::cout << "Source: Real YouTube roundtrip\n"
+                      << "Case: " << case_id << "\n"
+                      << "Packet recovery: "
+                      << result.packet_recovery_percentage << "%\n"
+                      << "SHA-256: "
+                      << (result.sha256_match ? "match" : "mismatch")
+                      << "\nStatus: "
+                      << to_string(result.final_status) << "\n";
+            return result.final_status == FinalStatus::Pass ? 0 : 2;
+        }
+        if (subcommand == "report") {
+            if (suite.empty())
+                throw std::invalid_argument("--suite is required");
+            if (format != "json" && format != "csv" &&
+                format != "markdown" && format != "md")
+                throw std::invalid_argument(
+                    "invalid report format");
+            const auto manifest = read_manifest(suite);
+            const auto reports =
+                std::filesystem::absolute(suite).parent_path() /
+                "reports";
+            write_reports(manifest, reports);
+            const std::string extension =
+                format == "markdown" || format == "md"
+                    ? "md" : format;
+            std::cout << "Report: "
+                      << (reports / ("report." + extension)).string()
+                      << "\n";
+            return 0;
+        }
+        throw std::invalid_argument(
+            "unknown testlab subcommand: " + subcommand);
+    } catch (const std::exception &error) {
+        std::cerr << "Test Lab error: " << error.what() << "\n";
+        return 1;
+    }
 }
 
 static int do_encode(const std::string &input_path, const std::string &output_path,
@@ -465,6 +835,15 @@ int main(const int argc, char *argv[]) {
     }
 
     const std::string command = argv[1];
+
+    if (command == "testlab") {
+        try {
+            return do_testlab(argc, argv);
+        } catch (const std::exception &error) {
+            std::cerr << "Test Lab error: " << error.what() << "\n";
+            return 1;
+        }
+    }
 
     if (command != "encode" && command != "decode" &&
         command != "stream-encode" && command != "stream-decode") {

@@ -41,6 +41,20 @@ struct VideoEncoderStatistics {
     uint64_t output_bytes = 0;
 };
 
+struct ResilientVideoConfig {
+    int width = FRAME_WIDTH;
+    int height = FRAME_HEIGHT;
+    int fps = FRAME_FPS;
+    std::string codec = VIDEO_CODEC;
+    std::string container = VIDEO_CONTAINER;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return width >= 8 && height >= 8 &&
+               width % 8 == 0 && height % 8 == 0 &&
+               fps > 0 && !codec.empty() && !container.empty();
+    }
+};
+
 FrameLayout compute_frame_layout();
 
 FrameLayout compute_frame_layout(int width, int height);
@@ -51,6 +65,10 @@ class VideoEncoder {
 public:
     explicit VideoEncoder(const std::string &output_path,
                           PerformanceProfiler *profiler = nullptr);
+
+    VideoEncoder(const std::string &output_path,
+                 const ResilientVideoConfig &config,
+                 PerformanceProfiler *profiler = nullptr);
 
     ~VideoEncoder();
 
@@ -74,8 +92,11 @@ public:
 
     [[nodiscard]] static int packets_per_frame();
 
-    [[nodiscard]] static constexpr std::size_t gray8_frame_bytes() {
-        return static_cast<std::size_t>(FRAME_WIDTH) * FRAME_HEIGHT;
+    [[nodiscard]] static int packets_per_frame(
+        const ResilientVideoConfig &config);
+
+    [[nodiscard]] std::size_t gray8_frame_bytes() const {
+        return static_cast<std::size_t>(config_.width) * config_.height;
     }
 
     [[nodiscard]] const VideoEncoderStatistics &statistics() const {
@@ -95,6 +116,7 @@ private:
     bool finalized = false;
     PerformanceProfiler *profiler_ = nullptr;
     VideoEncoderStatistics statistics_;
+    ResilientVideoConfig config_;
 
     void init_encoder(const std::string &output_path);
 
