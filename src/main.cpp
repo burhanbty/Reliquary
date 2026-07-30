@@ -31,6 +31,7 @@
 #include "encoding_reliability.h"
 #include "media_storage.h"
 #include "safe_output.h"
+#include "youtube_capacity_lab.h"
 #include "youtube_test_lab.h"
 
 static std::string format_size(const uint64_t bytes) {
@@ -276,6 +277,27 @@ static void print_usage(const char *program) {
         << " testlab deduplicate --suite <manifest.json> [--dry-run|--apply]\n"
         << "  " << program
         << " testlab report --suite <manifest.json> --format <json|csv|markdown>\n"
+        << "  " << program
+        << " capacitylab estimate --preset <smoke|staged|custom> --output <folder>\n"
+        << "  " << program
+        << " capacitylab run --preset <smoke|staged|custom> --output <folder>\n"
+        << "    [--block-size 8,6,4] [--bits-per-block 1,2] "
+           "[--signal 0.75,1.0,1.25,1.5]\n"
+        << "    [--repair-percent 0,1,2,5] "
+           "[--resolution 1080p,2160p]\n"
+        << "    [--simulation h264-medium,h264-heavy] "
+           "[--max-cases 64] [--max-disk-gib 20]\n"
+        << "  " << program
+        << " capacitylab resume --manifest <manifest.json>\n"
+        << "  " << program
+        << " capacitylab shortlist --manifest <manifest.json> "
+           "[--max-videos 8]\n"
+        << "  " << program
+        << " capacitylab analyze-folder --manifest <manifest.json> "
+           "--folder <downloads> [--session-label <label>]\n"
+        << "  " << program
+        << " capacitylab report --manifest <manifest.json> "
+           "--format <json|csv|markdown>\n"
         << "\nTest Lab only supports Resilient mode. Local simulation is not "
            "a guaranteed copy of YouTube processing.\n";
 }
@@ -791,6 +813,259 @@ static int do_testlab(const int argc, char *argv[]) {
     }
 }
 
+static std::vector<std::string> split_csv(
+    const std::string &value) {
+    std::vector<std::string> result;
+    std::size_t begin = 0;
+    while (begin <= value.size()) {
+        const auto comma = value.find(',', begin);
+        const std::string token = value.substr(
+            begin, comma == std::string::npos
+                       ? std::string::npos : comma - begin);
+        if (token.empty())
+            throw std::invalid_argument(
+                "empty value in comma-separated option");
+        result.push_back(token);
+        if (comma == std::string::npos) break;
+        begin = comma + 1;
+    }
+    return result;
+}
+
+static int do_capacitylab(const int argc, char *argv[]) {
+    using namespace youtube_capacity_lab;
+    if (argc < 3)
+        throw std::invalid_argument(
+            "missing capacitylab subcommand");
+    const std::string subcommand = argv[2];
+    RunOptions options;
+    std::string manifest_path;
+    std::string returned_folder;
+    std::string session_label;
+    std::string report_format = "markdown";
+    std::string cancel_file;
+    bool custom_matrix = false;
+    bool block_set = false;
+    bool bits_set = false;
+    bool signal_set = false;
+    bool repair_set = false;
+    bool resolution_set = false;
+    bool simulation_set = false;
+    for (int i = 3; i < argc; ++i) {
+        const std::string arg = argv[i];
+        auto require_value = [&](const char *name) {
+            if (i + 1 >= argc)
+                throw std::invalid_argument(
+                    std::string("missing value for ") + name);
+            return std::string(argv[++i]);
+        };
+        if (arg == "--preset") {
+            const std::string value = require_value("--preset");
+            if (value == "smoke") options.preset = Preset::Smoke;
+            else if (value == "staged")
+                options.preset = Preset::Staged;
+            else if (value == "custom")
+                options.preset = Preset::Custom;
+            else
+                throw std::invalid_argument(
+                    "capacity preset must be smoke, staged, or custom");
+        } else if (arg == "--output") {
+            options.output_root = require_value("--output");
+        } else if (arg == "--manifest" || arg == "--suite") {
+            manifest_path = require_value(arg.c_str());
+        } else if (arg == "--folder") {
+            returned_folder = require_value("--folder");
+        } else if (arg == "--session-label") {
+            session_label = require_value("--session-label");
+        } else if (arg == "--format") {
+            report_format = require_value("--format");
+        } else if (arg == "--cancel-file") {
+            cancel_file = require_value("--cancel-file");
+        } else if (arg == "--max-cases") {
+            options.maximum_cases = std::stoull(
+                require_value("--max-cases"));
+        } else if (arg == "--max-disk-gib") {
+            const double gib = std::stod(
+                require_value("--max-disk-gib"));
+            if (!std::isfinite(gib) || gib < 0.5 ||
+                gib > 1024.0)
+                throw std::invalid_argument(
+                    "max disk must be between 0.5 and 1024 GiB");
+            options.maximum_disk_bytes =
+                static_cast<uint64_t>(
+                    gib * 1024.0 * 1024.0 * 1024.0);
+        } else if (arg == "--max-shortlist-videos" ||
+                   arg == "--max-videos") {
+            options.maximum_shortlist_videos =
+                std::stoull(require_value(arg.c_str()));
+            if (options.maximum_shortlist_videos == 0 ||
+                options.maximum_shortlist_videos > 12)
+                throw std::invalid_argument(
+                    "shortlist limit must be between 1 and 12");
+        } else if (arg == "--block-size") {
+            if (!block_set) options.block_sizes.clear();
+            for (const auto &value :
+                 split_csv(require_value("--block-size")))
+                options.block_sizes.push_back(std::stoi(value));
+            block_set = true;
+            custom_matrix = true;
+        } else if (arg == "--bits-per-block") {
+            if (!bits_set) options.bits_per_block.clear();
+            for (const auto &value :
+                 split_csv(require_value("--bits-per-block")))
+                options.bits_per_block.push_back(std::stoi(value));
+            bits_set = true;
+            custom_matrix = true;
+        } else if (arg == "--signal") {
+            if (!signal_set) options.signal_milli.clear();
+            for (const auto &value :
+                 split_csv(require_value("--signal"))) {
+                const double signal = std::stod(value);
+                options.signal_milli.push_back(
+                    static_cast<int>(std::llround(signal * 1000.0)));
+            }
+            signal_set = true;
+            custom_matrix = true;
+        } else if (arg == "--repair-percent") {
+            if (!repair_set)
+                options.repair_basis_points.clear();
+            for (const auto &value :
+                 split_csv(require_value("--repair-percent"))) {
+                const double repair = std::stod(value);
+                options.repair_basis_points.push_back(
+                    static_cast<int>(std::llround(repair * 100.0)));
+            }
+            repair_set = true;
+            custom_matrix = true;
+        } else if (arg == "--resolution") {
+            if (!resolution_set) options.resolutions.clear();
+            for (const auto &value :
+                 split_csv(require_value("--resolution"))) {
+                if (value == "1080p")
+                    options.resolutions.emplace_back(1920, 1080);
+                else if (value == "2160p" || value == "4k")
+                    options.resolutions.emplace_back(3840, 2160);
+                else
+                    throw std::invalid_argument(
+                        "Capacity Lab resolution must be 1080p or 2160p");
+            }
+            resolution_set = true;
+            custom_matrix = true;
+        } else if (arg == "--simulation") {
+            if (!simulation_set) options.simulations.clear();
+            for (const auto &value :
+                 split_csv(require_value("--simulation")))
+                options.simulations.push_back(value);
+            simulation_set = true;
+        } else if (arg == "--estimate-only") {
+            options.estimate_only = true;
+        } else if (arg == "--allow-low-disk") {
+            options.allow_low_disk = true;
+        } else {
+            throw std::invalid_argument(
+                "unknown capacitylab option: " + arg);
+        }
+    }
+    if (custom_matrix && options.preset != Preset::Custom)
+        options.preset = Preset::Custom;
+    auto print_preflight = [](const Preflight &value) {
+        std::cout
+            << "YouTube Capacity Lab preflight:\n"
+            << "  Raw combinations: "
+            << value.raw_combination_count << "\n"
+            << "  Staged maximum cases: "
+            << value.staged_maximum_cases << "\n"
+            << "  Estimated transcodes: "
+            << value.estimated_transcodes << "\n"
+            << "  Estimated total frames: "
+            << value.estimated_total_frames << "\n"
+            << "  Estimated output: "
+            << format_size(value.estimated_output_bytes) << "\n"
+            << "  Required with safety margin: "
+            << format_size(value.required_disk_bytes) << "\n"
+            << "  Estimated seconds: "
+            << std::fixed << std::setprecision(1)
+            << value.estimated_seconds << "\n"
+            << "  Disk sufficient: "
+            << (value.disk_space_sufficient ? "yes" : "no")
+            << "\n";
+    };
+    if (subcommand == "estimate") {
+        if (options.output_root.empty())
+            throw std::invalid_argument(
+                "--output is required for capacitylab estimate");
+        options.estimate_only = true;
+        print_preflight(estimate(options));
+        return 0;
+    }
+    if (subcommand == "run") {
+        if (options.output_root.empty())
+            throw std::invalid_argument(
+                "--output is required for capacitylab run");
+        print_preflight(estimate(options));
+        const auto result = run(options, [&](const Progress &value) {
+            std::cout << "CAPACITY_PROGRESS "
+                << value.completed_cases << "/"
+                << value.total_cases << " stage="
+                << value.stage << " config="
+                << value.active_config_id << " disk="
+                << value.disk_used_bytes << "\n";
+            return cancel_file.empty() ||
+                !std::filesystem::exists(cancel_file);
+        });
+        const auto path =
+            options.output_root / "youtube_capacity_lab" /
+            result.experiment_id / "manifest.json";
+        std::cout << "CAPACITY_MANIFEST "
+                  << std::filesystem::absolute(path).string()
+                  << "\n";
+        return 0;
+    }
+    if (manifest_path.empty())
+        throw std::invalid_argument(
+            "--manifest is required for this capacitylab command");
+    if (subcommand == "resume") {
+        resume(manifest_path, [&](const Progress &value) {
+            std::cout << "CAPACITY_PROGRESS "
+                << value.completed_cases << "/"
+                << value.total_cases << " stage="
+                << value.stage << " config="
+                << value.active_config_id << "\n";
+            return cancel_file.empty() ||
+                !std::filesystem::exists(cancel_file);
+        });
+        return 0;
+    }
+    if (subcommand == "shortlist") {
+        generate_shortlist(
+            manifest_path, options.maximum_shortlist_videos);
+        return 0;
+    }
+    if (subcommand == "analyze-folder") {
+        if (returned_folder.empty())
+            throw std::invalid_argument(
+                "--folder is required for analyze-folder");
+        analyze_folder(
+            manifest_path, returned_folder, session_label);
+        return 0;
+    }
+    if (subcommand == "report") {
+        if (report_format != "markdown" &&
+            report_format != "json" &&
+            report_format != "csv")
+            throw std::invalid_argument(
+                "report format must be markdown, json, or csv");
+        const auto manifest = read_manifest(manifest_path);
+        write_reports(
+            manifest,
+            std::filesystem::absolute(manifest_path)
+                .parent_path() / "reports");
+        return 0;
+    }
+    throw std::invalid_argument(
+        "unknown capacitylab subcommand: " + subcommand);
+}
+
 static int do_encode(const std::string &input_path, const std::string &output_path,
                      const bool encrypt, const std::string &password,
                      const ms_hash_algorithm_t hash_algo,
@@ -1014,6 +1289,15 @@ int main(const int argc, char *argv[]) {
             return do_testlab(argc, argv);
         } catch (const std::exception &error) {
             std::cerr << "Test Lab error: " << error.what() << "\n";
+            return 1;
+        }
+    }
+    if (command == "capacitylab") {
+        try {
+            return do_capacitylab(argc, argv);
+        } catch (const std::exception &error) {
+            std::cerr << "Capacity Lab error: "
+                      << error.what() << "\n";
             return 1;
         }
     }

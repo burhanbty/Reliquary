@@ -249,6 +249,138 @@ Insufficient disk blocks generation unless the user explicitly supplies the
 existing-style `--allow-low-disk` override. The Full matrix should be started
 only after reviewing that estimate.
 
+### YouTube Capacity Lab
+
+The separate **YouTube Capacity Lab** searches for higher experimental data
+density without changing Fast Local, the production Resilient defaults, the
+packet/media format, or the public C API/ABI. Its settings exist only inside
+the Capacity Lab GUI tab, `capacitylab` CLI commands, and schema-v4 Capacity
+Lab manifests. An experimental result is never promoted to a production
+profile automatically.
+
+The production reference remains 8x8, 1 bit per block, a coefficient strength
+of 500 (`1.00x`), a coefficient-sign decoder threshold at zero, and the
+existing packet/FEC format. Capacity Lab can test:
+
+- 8x8, 6x6, and 4x4 blocks
+- 1 or 2 bits per block
+- `0.75x`, `1.00x`, `1.25x`, and `1.50x` signal strength
+- 0%, 1%, 2%, and 5% Wirehair repair
+- 1920x1080 and 3840x2160 at 30 FPS
+
+The experimental transform is a normalized, separable NxN DCT with one cached
+cosine basis per supported size. The 8x8/1-bit/1.00x block generator retains
+the production coefficient, truncation, and clamp behavior and is covered by
+a byte-for-byte regression test. One-bit modulation uses the production
+positive/negative AC(0,1) states. Two-bit modulation uses four ordered AC(0,1)
+levels whose bit labels follow Gray order `00, 01, 11, 10`; decoder thresholds
+are calibrated from the effective post-clamp levels. Per-block decisions
+record the selected symbol, nearest-level distance, and confidence.
+
+Geometry uses only complete blocks. Any right or bottom remainder stays at
+neutral luma and is recorded as unused edge space. Production has no separate
+frame-level sync reservation: packet `MAGIC_ID`, the v2 packet header, and CRC
+provide synchronization and integrity inside the embedded byte stream.
+Capacity reports therefore show zero reserved frame blocks and report packet
+header/sync overhead separately. Checked arithmetic rejects invalid sizes,
+zero packet capacity, and overflow.
+
+Every comparison uses at least 60 real, distinct data frames at 30 FPS. The
+payload generator streams deterministic high-entropy data and hashes the
+complete payload. All repair levels in the same resolution/block/bits/signal
+group use the same source payload, size, seed, and SHA-256; the 0% member sets
+the group size. No blank filler frames, repeated frames, or duplicated packets
+are introduced.
+
+Capacity calculations include blocks, raw/useful bits, packets and source
+payload per frame, repair overhead, expected frames and duration, useful
+bytes/second, conservative preflight disk estimates, and comparison with the
+8x8/1-bit/1.00x/5% baseline. Candidate size is replaced by the measured and
+probed H.264 output size after a real local encode; it is not inferred from
+theoretical capacity.
+
+Search presets are deliberately bounded:
+
+- **Smoke**: 12 1080p cases at 2% repair, covering all block/bit pairs at
+  `1.00x` and `1.25x`.
+- **Staged Sweep**: Stage 1 tests 24 geometry/modulation/signal cases at 2%
+  repair; Stage 2 tests 0/1/2/5% repair for at most four passing Pareto
+  candidates; Stage 3 tests light/medium/heavy resolution-preserving H.264 at
+  1080p and 4K for at most three finalists.
+- **Custom**: uses only the explicitly selected matrix and enforces case and
+  disk limits. The full 192-case matrix requires an explicit 192-case limit.
+
+Mandatory gates require exact master SHA-256, exact upload-candidate SHA-256,
+valid resolution-preserving media metadata, required local simulation passes,
+packet recovery at or above the configured gate, and bounded BER/SER. The
+720p downscale profile remains a separate robustness observation called
+`Resolution-change unsupported`; failure there does not reject a normal
+capacity candidate. VP9/AV1 requests are optional capabilities and are
+recorded as `Unavailable` without failing the experiment because this
+Capacity Lab build does not enable those simulation paths. No external
+`ffmpeg.exe` or `ffprobe.exe` dependency is introduced.
+
+After gates, Capacity Lab exposes a Pareto frontier instead of hiding tradeoffs
+in one opaque score. It compares useful payload rate, recovery margin, BER/SER,
+candidate bytes per payload byte, and encode/transcode/decode time. Reports
+mark dominated candidates and label readable representatives such as Most
+robust, Best balanced, Highest capacity, Smallest upload, and
+Experimental/risky.
+
+Recovery telemetry includes source/repair packets, valid unique packets,
+required threshold, packets above threshold, recovery margin in packets and
+percent, duplicate/CRC-invalid/missing packets, packet recovery, raw BER/SER,
+and average/minimum confidence. A 0%-repair exact pass with almost no recovery
+margin is still marked risky.
+
+CLI examples:
+
+```powershell
+media_storage capacitylab estimate --preset smoke --output C:\vsx-capacity
+media_storage capacitylab run --preset smoke --output C:\vsx-capacity
+media_storage capacitylab run --preset staged --output C:\vsx-capacity --max-cases 64 --max-disk-gib 20
+media_storage capacitylab resume --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json
+media_storage capacitylab shortlist --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --max-videos 8
+media_storage capacitylab analyze-folder --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --folder C:\Downloads\youtube --session-label "Initial YouTube test"
+media_storage capacitylab report --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --format markdown
+
+media_storage capacitylab run --preset custom --output C:\vsx-capacity `
+  --block-size 8,6,4 --bits-per-block 1,2 `
+  --signal 0.75,1.0,1.25,1.5 --repair-percent 0,1,2,5 `
+  --resolution 1080p,2160p --simulation h264-medium `
+  --max-cases 192 --max-disk-gib 40
+```
+
+Each experiment is resumable and uses atomically updated state:
+
+```text
+youtube_capacity_lab/<experiment-id>/
+  manifest.json
+  payloads/
+  masters/
+  simulations/
+  youtube_shortlist/
+  imported/
+  restored/
+  reports/
+```
+
+Only selected local-gate passes are copied to `youtube_shortlist`, with a
+sidecar containing the canonical config ID, capacity metrics, local result,
+and selection reason. Upload/download remains manual. Returned MP4/WebM files
+are mapped by config ID in the filename, decoded with the manifest-provided
+experimental configuration, deduplicated by file SHA-256, and recorded as a
+real observation. A wrong config must fail packet extraction or exact SHA; it
+cannot silently produce a valid result.
+
+JSON, CSV, and Markdown reports distinguish `Local-only candidate`,
+`Ready for real YouTube test`, `Real YouTube exact pass`,
+`Real YouTube failed`, `Insufficient observations`, `Dominated`, and
+`Rejected`. Local success is never called "YouTube proven." YouTube processing
+can change over time, and 720p downscale remains an unsupported
+resolution-change case, so real initial/24-hour/7-day/30-day observations are
+still required before any production-profile decision.
+
 ### Performance profiling
 
 VidStoreX adds a shared performance-reporting system for GUI and CLI

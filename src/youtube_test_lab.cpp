@@ -1887,6 +1887,15 @@ std::optional<SimulationProfile> find_simulation_profile(
     return std::nullopt;
 }
 
+void transcode_simulation_video(
+    const std::filesystem::path &input,
+    const std::filesystem::path &output,
+    const SimulationProfile &profile,
+    const std::string &suite_id,
+    const std::string &case_id) {
+    transcode_h264(input, output, profile, suite_id, case_id);
+}
+
 std::string create_suite_id() {
     static std::atomic<uint64_t> sequence{0};
     std::ostringstream out;

@@ -39,11 +39,13 @@
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QFormLayout>
 #include <QStyle>
 #include <QLocale>
 #include <QSignalBlocker>
 #include <QSet>
+#include <QUrl>
 
 #include <chrono>
 #include <cmath>
@@ -865,6 +867,252 @@ void DriveManagerUI::setupUI() {
     testLabResults->horizontalHeader()->setStretchLastSection(true);
     testLabLayout->addWidget(testLabResults, 1);
     mainTabs->addTab(testLabPage, "YouTube Test Lab");
+
+    auto *capacityPage = new QWidget();
+    auto *capacityLayout = new QVBoxLayout(capacityPage);
+    auto *capacityNotice = new QLabel(
+        "<b>YouTube Capacity Lab (experimental)</b><br>"
+        "Searches 4x4/6x6/8x8 geometry, 1/2-bit modulation, signal "
+        "strength and repair levels behind local lossless and H.264 "
+        "gates. These controls never change the production Resilient "
+        "profile. Shortlisted videos still require a manual real "
+        "YouTube roundtrip before they can be considered proven.");
+    capacityNotice->setWordWrap(true);
+    capacityLayout->addWidget(capacityNotice);
+    auto *capacityControls =
+        new QGroupBox("Experiment controls");
+    auto *capacityGrid = new QGridLayout(capacityControls);
+    capacityPresetCombo = new QComboBox();
+    capacityPresetCombo->addItems(
+        {"Smoke", "Staged Sweep", "Custom"});
+    capacityOutputEdit = new QLineEdit();
+    capacityOutputEdit->setPlaceholderText(
+        "Experiment parent output directory");
+    auto *capacityOutputBrowse = new QPushButton("Browse...");
+    capacityManifestEdit = new QLineEdit();
+    capacityManifestEdit->setPlaceholderText(
+        "Capacity manifest.json");
+    auto *capacityManifestBrowse = new QPushButton("Manifest...");
+    capacityBlocksEdit = new QLineEdit("8,6,4");
+    capacityBitsEdit = new QLineEdit("1,2");
+    capacitySignalsEdit = new QLineEdit("0.75,1.0,1.25,1.5");
+    capacityRepairsEdit = new QLineEdit("0,1,2,5");
+    capacityResolutionCombo = new QComboBox();
+    capacityResolutionCombo->addItems(
+        {"1080p", "2160p", "1080p,2160p"});
+    capacitySimulationCombo = new QComboBox();
+    capacitySimulationCombo->addItems(
+        {"h264-medium", "h264-light", "h264-heavy"});
+    capacityMaximumCasesSpin = new QSpinBox();
+    capacityMaximumCasesSpin->setRange(1, 192);
+    capacityMaximumCasesSpin->setValue(64);
+    capacityMaximumDiskSpin = new QDoubleSpinBox();
+    capacityMaximumDiskSpin->setRange(0.5, 1024.0);
+    capacityMaximumDiskSpin->setDecimals(1);
+    capacityMaximumDiskSpin->setValue(20.0);
+    capacityMaximumDiskSpin->setSuffix(" GiB");
+    capacityShortlistSpin = new QSpinBox();
+    capacityShortlistSpin->setRange(1, 12);
+    capacityShortlistSpin->setValue(8);
+    capacityEstimateOnlyCheck =
+        new QCheckBox("Estimate only (write no videos)");
+    capacityEstimateLabel = new QLabel(
+        "Smoke: 12 local cases. Staged: 24 geometry/modulation cases, "
+        "then at most 4 repair families and 3 resolution/profile "
+        "finalists. The raw 192-case matrix is never the default.");
+    capacityEstimateLabel->setWordWrap(true);
+    capacityEstimateButton = new QPushButton("Estimate");
+    capacityStartButton = new QPushButton("Start");
+    capacityResumeButton = new QPushButton("Resume");
+    capacityCancelButton = new QPushButton("Cancel");
+    capacityCancelButton->setEnabled(false);
+    capacityGrid->addWidget(new QLabel("Preset:"), 0, 0);
+    capacityGrid->addWidget(capacityPresetCombo, 0, 1);
+    capacityGrid->addWidget(new QLabel("Output:"), 0, 2);
+    capacityGrid->addWidget(capacityOutputEdit, 0, 3);
+    capacityGrid->addWidget(capacityOutputBrowse, 0, 4);
+    capacityGrid->addWidget(new QLabel("Manifest:"), 1, 0);
+    capacityGrid->addWidget(capacityManifestEdit, 1, 1, 1, 3);
+    capacityGrid->addWidget(capacityManifestBrowse, 1, 4);
+    capacityGrid->addWidget(new QLabel("Block sizes:"), 2, 0);
+    capacityGrid->addWidget(capacityBlocksEdit, 2, 1);
+    capacityGrid->addWidget(new QLabel("Bits/block:"), 2, 2);
+    capacityGrid->addWidget(capacityBitsEdit, 2, 3);
+    capacityGrid->addWidget(new QLabel("Signals:"), 3, 0);
+    capacityGrid->addWidget(capacitySignalsEdit, 3, 1);
+    capacityGrid->addWidget(new QLabel("Repair %:"), 3, 2);
+    capacityGrid->addWidget(capacityRepairsEdit, 3, 3);
+    capacityGrid->addWidget(new QLabel("Resolution:"), 4, 0);
+    capacityGrid->addWidget(capacityResolutionCombo, 4, 1);
+    capacityGrid->addWidget(new QLabel("Simulation:"), 4, 2);
+    capacityGrid->addWidget(capacitySimulationCombo, 4, 3);
+    capacityGrid->addWidget(new QLabel("Max cases:"), 5, 0);
+    capacityGrid->addWidget(capacityMaximumCasesSpin, 5, 1);
+    capacityGrid->addWidget(new QLabel("Max disk:"), 5, 2);
+    capacityGrid->addWidget(capacityMaximumDiskSpin, 5, 3);
+    capacityGrid->addWidget(new QLabel("Shortlist limit:"), 6, 0);
+    capacityGrid->addWidget(capacityShortlistSpin, 6, 1);
+    capacityGrid->addWidget(capacityEstimateOnlyCheck, 6, 2, 1, 2);
+    capacityGrid->addWidget(capacityEstimateLabel, 7, 0, 1, 5);
+    capacityGrid->addWidget(capacityEstimateButton, 8, 0);
+    capacityGrid->addWidget(capacityStartButton, 8, 1);
+    capacityGrid->addWidget(capacityResumeButton, 8, 2);
+    capacityGrid->addWidget(capacityCancelButton, 8, 3);
+    capacityLayout->addWidget(capacityControls);
+
+    auto *capacityActions = new QGroupBox(
+        "Shortlist and returned-video analysis");
+    auto *capacityActionsGrid = new QGridLayout(capacityActions);
+    capacityReturnedFolderEdit = new QLineEdit();
+    capacityReturnedFolderEdit->setPlaceholderText(
+        "Folder containing downloaded MP4/WebM files");
+    auto *capacityReturnedBrowse = new QPushButton("Folder...");
+    capacityShortlistButton =
+        new QPushButton("Generate YouTube Shortlist");
+    capacityAnalyzeFolderButton =
+        new QPushButton("Analyze Returned Folder");
+    capacityReportButton = new QPushButton("Refresh Reports");
+    capacityOpenFolderButton =
+        new QPushButton("Open Experiment Folder");
+    capacityActionsGrid->addWidget(
+        new QLabel("Returned folder:"), 0, 0);
+    capacityActionsGrid->addWidget(
+        capacityReturnedFolderEdit, 0, 1, 1, 3);
+    capacityActionsGrid->addWidget(capacityReturnedBrowse, 0, 4);
+    capacityActionsGrid->addWidget(capacityShortlistButton, 1, 0);
+    capacityActionsGrid->addWidget(
+        capacityAnalyzeFolderButton, 1, 1);
+    capacityActionsGrid->addWidget(capacityReportButton, 1, 2);
+    capacityActionsGrid->addWidget(capacityOpenFolderButton, 1, 3);
+    capacityLayout->addWidget(capacityActions);
+    capacityProgress = new QProgressBar();
+    capacityProgress->setRange(0, 100);
+    capacityLayout->addWidget(capacityProgress);
+    capacityResults = new QTableWidget(0, 16);
+    capacityResults->setHorizontalHeaderLabels({
+        "Config", "Stage", "Block", "Bits", "Signal", "Repair",
+        "Resolution", "Useful KiB/s", "Gain", "Candidate",
+        "Recovery", "Margin", "BER/SER", "SHA", "Pareto",
+        "Status / Shortlist reason"});
+    capacityResults->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents);
+    capacityResults->horizontalHeader()->setStretchLastSection(true);
+    capacityLayout->addWidget(capacityResults, 1);
+    mainTabs->addTab(capacityPage, "Capacity Lab");
+
+    connect(capacityPresetCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](const int index) {
+        const bool custom = index == 2;
+        for (auto *edit : {capacityBlocksEdit, capacityBitsEdit,
+                           capacitySignalsEdit, capacityRepairsEdit})
+            edit->setEnabled(custom);
+        capacityResolutionCombo->setEnabled(custom);
+    });
+    capacityBlocksEdit->setEnabled(false);
+    capacityBitsEdit->setEnabled(false);
+    capacitySignalsEdit->setEnabled(false);
+    capacityRepairsEdit->setEnabled(false);
+    capacityResolutionCombo->setEnabled(false);
+    connect(capacityOutputBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getExistingDirectory(
+            this, "Capacity Lab output directory");
+        if (!path.isEmpty()) capacityOutputEdit->setText(path);
+    });
+    connect(capacityManifestBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, "Select Capacity Lab manifest", {},
+            "JSON manifest (manifest.json)");
+        if (!path.isEmpty()) capacityManifestEdit->setText(path);
+    });
+    connect(capacityReturnedBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getExistingDirectory(
+            this, "Returned YouTube video folder");
+        if (!path.isEmpty())
+            capacityReturnedFolderEdit->setText(path);
+    });
+    const auto capacityRunArguments =
+        [this](const QString &command) {
+            const QString preset =
+                capacityPresetCombo->currentIndex() == 0 ? "smoke" :
+                capacityPresetCombo->currentIndex() == 1 ? "staged" :
+                "custom";
+            QStringList args{
+                "capacitylab", command, "--preset", preset,
+                "--output", capacityOutputEdit->text(),
+                "--max-cases",
+                QString::number(capacityMaximumCasesSpin->value()),
+                "--max-disk-gib",
+                QString::number(capacityMaximumDiskSpin->value()),
+                "--max-shortlist-videos",
+                QString::number(capacityShortlistSpin->value()),
+                "--simulation",
+                capacitySimulationCombo->currentText()};
+            if (preset == "custom")
+                args << "--block-size" << capacityBlocksEdit->text()
+                     << "--bits-per-block" << capacityBitsEdit->text()
+                     << "--signal" << capacitySignalsEdit->text()
+                     << "--repair-percent" << capacityRepairsEdit->text()
+                     << "--resolution"
+                     << capacityResolutionCombo->currentText();
+            if (capacityEstimateOnlyCheck->isChecked())
+                args << "--estimate-only";
+            return args;
+        };
+    connect(capacityEstimateButton, &QPushButton::clicked,
+            this, [this, capacityRunArguments] {
+        if (capacityOutputEdit->text().isEmpty()) return;
+        startTestLabProcess(capacityRunArguments("estimate"));
+    });
+    connect(capacityStartButton, &QPushButton::clicked,
+            this, [this, capacityRunArguments] {
+        if (capacityOutputEdit->text().isEmpty()) return;
+        startTestLabProcess(capacityRunArguments("run"));
+    });
+    connect(capacityResumeButton, &QPushButton::clicked, this, [this] {
+        if (capacityManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "capacitylab", "resume", "--manifest",
+            capacityManifestEdit->text()});
+    });
+    connect(capacityShortlistButton, &QPushButton::clicked, this, [this] {
+        if (capacityManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "capacitylab", "shortlist", "--manifest",
+            capacityManifestEdit->text(), "--max-videos",
+            QString::number(capacityShortlistSpin->value())});
+    });
+    connect(capacityAnalyzeFolderButton, &QPushButton::clicked,
+            this, [this] {
+        if (capacityManifestEdit->text().isEmpty() ||
+            capacityReturnedFolderEdit->text().isEmpty())
+            return;
+        startTestLabProcess({
+            "capacitylab", "analyze-folder", "--manifest",
+            capacityManifestEdit->text(), "--folder",
+            capacityReturnedFolderEdit->text(),
+            "--session-label", "Initial YouTube test"});
+    });
+    connect(capacityReportButton, &QPushButton::clicked, this, [this] {
+        if (capacityManifestEdit->text().isEmpty()) return;
+        startTestLabProcess({
+            "capacitylab", "report", "--manifest",
+            capacityManifestEdit->text(), "--format", "markdown"});
+    });
+    connect(capacityOpenFolderButton, &QPushButton::clicked, this, [this] {
+        if (capacityManifestEdit->text().isEmpty()) return;
+        QDesktopServices::openUrl(QUrl::fromLocalFile(
+            QFileInfo(capacityManifestEdit->text())
+                .absolutePath()));
+    });
+    connect(capacityCancelButton, &QPushButton::clicked, this, [this] {
+        if (testLabProcess &&
+            testLabProcess->state() != QProcess::NotRunning) {
+            QFile cancel(testLabCancelFile);
+            if (cancel.open(QIODevice::WriteOnly)) cancel.close();
+            capacityCancelButton->setEnabled(false);
+        }
+    });
 
     connect(testLabPresetCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -2118,6 +2366,27 @@ void DriveManagerUI::startTestLabProcess(
                 if (position >= 0)
                     testLabManifestEdit->setText(
                         line.mid(position + marker.size()).trimmed());
+                const QString capacityMarker =
+                    "CAPACITY_MANIFEST ";
+                const int capacityPosition =
+                    line.indexOf(capacityMarker);
+                if (capacityPosition >= 0)
+                    capacityManifestEdit->setText(
+                        line.mid(
+                            capacityPosition +
+                            capacityMarker.size()).trimmed());
+                if (line.startsWith("CAPACITY_PROGRESS ")) {
+                    const QString counts =
+                        line.section(' ', 1, 1);
+                    const int completed =
+                        counts.section('/', 0, 0).toInt();
+                    const int total =
+                        counts.section('/', 1, 1).toInt();
+                    if (total > 0) {
+                        capacityProgress->setRange(0, total);
+                        capacityProgress->setValue(completed);
+                    }
+                }
                 if (line.contains(
                         "This video has already been analyzed for this case."))
                     testLabDuplicateWarning->setText(
@@ -2173,6 +2442,18 @@ void DriveManagerUI::startTestLabProcess(
                 testLabDeduplicateButton->setEnabled(true);
                 testLabReportButton->setEnabled(true);
                 refreshTestLabDashboard();
+                capacityProgress->setRange(0, 100);
+                capacityProgress->setValue(
+                    status == QProcess::NormalExit &&
+                    exitCode == 0 ? 100 : 0);
+                capacityCancelButton->setEnabled(false);
+                capacityEstimateButton->setEnabled(true);
+                capacityStartButton->setEnabled(true);
+                capacityResumeButton->setEnabled(true);
+                capacityShortlistButton->setEnabled(true);
+                capacityAnalyzeFolderButton->setEnabled(true);
+                capacityReportButton->setEnabled(true);
+                refreshCapacityLabDashboard();
             });
     }
     const QString executable =
@@ -2200,6 +2481,14 @@ void DriveManagerUI::startTestLabProcess(
     testLabNewSessionButton->setEnabled(false);
     testLabDeduplicateButton->setEnabled(false);
     testLabReportButton->setEnabled(false);
+    capacityProgress->setRange(0, 0);
+    capacityCancelButton->setEnabled(true);
+    capacityEstimateButton->setEnabled(false);
+    capacityStartButton->setEnabled(false);
+    capacityResumeButton->setEnabled(false);
+    capacityShortlistButton->setEnabled(false);
+    capacityAnalyzeFolderButton->setEnabled(false);
+    capacityReportButton->setEnabled(false);
     logMessage(
         "[Test Lab] Starting: " + arguments.join(' '));
     testLabProcess->start(executable, processArguments);
@@ -2347,6 +2636,94 @@ void DriveManagerUI::refreshTestLabDashboard() {
         };
         for (int column = 0; column < values.size(); ++column)
             testLabResults->setItem(
+                row, column,
+                new QTableWidgetItem(values.at(column)));
+    }
+}
+
+void DriveManagerUI::refreshCapacityLabDashboard() {
+    if (!capacityResults || !capacityManifestEdit ||
+        capacityManifestEdit->text().isEmpty())
+        return;
+    QFile file(capacityManifestEdit->text());
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QJsonParseError error;
+    const QJsonDocument document =
+        QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError ||
+        !document.isObject())
+        return;
+    const QJsonObject manifest = document.object();
+    if (manifest.value("manifest_type").toString() !=
+        "youtube-capacity-lab")
+        return;
+    const QJsonArray cases = manifest.value("cases").toArray();
+    capacityResults->setRowCount(cases.size());
+    for (int row = 0; row < cases.size(); ++row) {
+        const QJsonObject item = cases.at(row).toObject();
+        const QJsonArray results = item.value("results").toArray();
+        QJsonObject result;
+        if (!results.isEmpty())
+            result = results.last().toObject();
+        const QString status =
+            item.value("shortlisted").toBool()
+                ? item.value("shortlist_reason").toString()
+                : (item.value("rejection_reason").toString().isEmpty()
+                       ? item.value("state").toString()
+                       : item.value("rejection_reason").toString());
+        const QStringList values{
+            item.value("config_id").toString(),
+            QString::number(item.value("stage").toInt()),
+            QString::number(item.value("block_width").toInt()),
+            QString::number(item.value("bits_per_block").toInt()),
+            QString::number(
+                item.value("signal_milli").toInt() / 1000.0,
+                'f', 2),
+            QString::number(
+                item.value("repair_basis_points").toInt() / 100.0,
+                'f', 0),
+            QString("%1x%2")
+                .arg(item.value("resolution_width").toInt())
+                .arg(item.value("resolution_height").toInt()),
+            QString::number(
+                item.value("useful_payload_bytes_per_second")
+                    .toDouble() / 1024.0,
+                'f', 2),
+            QString::number(
+                item.value("useful_payload_gain").toDouble(),
+                'f', 2),
+            QString::number(
+                item.value("candidate_size")
+                    .toVariant().toULongLong()),
+            results.isEmpty()
+                ? "-"
+                : QString::number(
+                    result.value("packet_recovery_percent")
+                        .toDouble(), 'f', 2),
+            results.isEmpty()
+                ? "-"
+                : QString::number(
+                    result.value("recovery_margin_percent")
+                        .toDouble(), 'f', 2),
+            results.isEmpty()
+                ? "-"
+                : QString("%1/%2")
+                    .arg(result.value("raw_ber").toDouble(),
+                         0, 'g', 3)
+                    .arg(result.value("raw_ser").toDouble(),
+                         0, 'g', 3),
+            results.isEmpty()
+                ? "-"
+                : (result.value("sha256_match").toBool()
+                       ? "Exact" : "Mismatch"),
+            item.value("pareto").toBool()
+                ? "Frontier"
+                : (item.value("dominated").toBool()
+                       ? "Dominated" : "-"),
+            status
+        };
+        for (int column = 0; column < values.size(); ++column)
+            capacityResults->setItem(
                 row, column,
                 new QTableWidgetItem(values.at(column)));
     }

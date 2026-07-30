@@ -344,6 +344,12 @@ using ProgressCallback = std::function<bool(const Progress &)>;
 [[nodiscard]] std::vector<SimulationProfile> simulation_profiles();
 [[nodiscard]] std::optional<SimulationProfile> find_simulation_profile(
     const std::string &name);
+void transcode_simulation_video(
+    const std::filesystem::path &input,
+    const std::filesystem::path &output,
+    const SimulationProfile &profile,
+    const std::string &suite_id,
+    const std::string &case_id);
 
 [[nodiscard]] std::string create_suite_id();
 [[nodiscard]] std::string sha256_file(

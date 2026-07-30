@@ -82,4 +82,10 @@ test_*
 !tests/test_cli_fast_local.cmake
 !tests/test_youtube_test_lab.cpp
 !tests/test_cli_testlab.cmake
+!tests/test_youtube_capacity_lab.cpp
+!tests/test_cli_capacitylab.cmake
 decoded_*
+
+# Local Capacity Lab benchmark artifacts
+capacity-benchmark/
+capacity-staged/

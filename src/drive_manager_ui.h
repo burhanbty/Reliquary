@@ -259,6 +259,8 @@ private:
 
     void refreshTestLabDashboard();
 
+    void refreshCapacityLabDashboard();
+
     // UI Components
     QWidget *centralWidget;
     QSplitter *mainSplitter;
@@ -377,6 +379,33 @@ private:
     QProcess *testLabProcess = nullptr;
     QString testLabCancelFile;
     QString testLabOutputBuffer;
+
+    // YouTube Capacity Lab (experimental; never changes production defaults)
+    QComboBox *capacityPresetCombo = nullptr;
+    QLineEdit *capacityOutputEdit = nullptr;
+    QLineEdit *capacityManifestEdit = nullptr;
+    QLineEdit *capacityReturnedFolderEdit = nullptr;
+    QLineEdit *capacityBlocksEdit = nullptr;
+    QLineEdit *capacityBitsEdit = nullptr;
+    QLineEdit *capacitySignalsEdit = nullptr;
+    QLineEdit *capacityRepairsEdit = nullptr;
+    QComboBox *capacityResolutionCombo = nullptr;
+    QComboBox *capacitySimulationCombo = nullptr;
+    QSpinBox *capacityMaximumCasesSpin = nullptr;
+    QDoubleSpinBox *capacityMaximumDiskSpin = nullptr;
+    QSpinBox *capacityShortlistSpin = nullptr;
+    QCheckBox *capacityEstimateOnlyCheck = nullptr;
+    QLabel *capacityEstimateLabel = nullptr;
+    QProgressBar *capacityProgress = nullptr;
+    QTableWidget *capacityResults = nullptr;
+    QPushButton *capacityEstimateButton = nullptr;
+    QPushButton *capacityStartButton = nullptr;
+    QPushButton *capacityResumeButton = nullptr;
+    QPushButton *capacityShortlistButton = nullptr;
+    QPushButton *capacityAnalyzeFolderButton = nullptr;
+    QPushButton *capacityReportButton = nullptr;
+    QPushButton *capacityOpenFolderButton = nullptr;
+    QPushButton *capacityCancelButton = nullptr;
 
     // Worker thread
     std::unique_ptr<WorkerThread> workerThread;
