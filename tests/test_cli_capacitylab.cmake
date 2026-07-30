@@ -42,3 +42,42 @@ if(full_result EQUAL 0)
     message(FATAL_ERROR
         "Full 192-case matrix ran without an explicit 192-case limit")
 endif()
+
+set(validate_root "${TEST_ROOT}/validate-read-only")
+file(MAKE_DIRECTORY "${validate_root}")
+set(validate_manifest "${validate_root}/manifest.json")
+file(WRITE "${validate_manifest}"
+    "{\n"
+    "  \"schema_version\": 4,\n"
+    "  \"manifest_type\": \"youtube-capacity-lab\",\n"
+    "  \"experiment_id\": \"CLI-VALIDATE\",\n"
+    "  \"created_at\": \"2026-07-30T00:00:00Z\",\n"
+    "  \"vidstorex_version\": \"1.4.0\",\n"
+    "  \"preset\": \"smoke\",\n"
+    "  \"maximum_cases\": 64,\n"
+    "  \"maximum_shortlist_videos\": 8,\n"
+    "  \"maximum_disk_bytes\": 21474836480,\n"
+    "  \"cancelled\": false,\n"
+    "  \"cases\": []\n"
+    "}\n")
+file(SHA256 "${validate_manifest}" validate_hash_before)
+execute_process(
+    COMMAND "${CLI}" capacitylab validate
+            --manifest "${validate_manifest}"
+    RESULT_VARIABLE validate_result
+    OUTPUT_VARIABLE validate_output
+    ERROR_VARIABLE validate_error
+)
+if(NOT validate_result EQUAL 0)
+    message(FATAL_ERROR
+        "Read-only Capacity validate failed: ${validate_error}")
+endif()
+if(NOT validate_output MATCHES "errors=0")
+    message(FATAL_ERROR
+        "Capacity validate did not report zero errors")
+endif()
+file(SHA256 "${validate_manifest}" validate_hash_after)
+if(NOT validate_hash_before STREQUAL validate_hash_after)
+    message(FATAL_ERROR
+        "Read-only Capacity validate modified the manifest")
+endif()

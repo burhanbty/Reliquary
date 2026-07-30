@@ -292,6 +292,8 @@ static void print_usage(const char *program) {
         << "  " << program
         << " capacitylab shortlist --manifest <manifest.json> "
            "[--max-videos 8]\n"
+        << " capacitylab validate --manifest <manifest.json> "
+           "[--repair]\n"
         << "  " << program
         << " capacitylab analyze-folder --manifest <manifest.json> "
            "--folder <downloads> [--session-label <label>]\n"
@@ -851,6 +853,7 @@ static int do_capacitylab(const int argc, char *argv[]) {
     bool repair_set = false;
     bool resolution_set = false;
     bool simulation_set = false;
+    bool repair_manifest = false;
     for (int i = 3; i < argc; ++i) {
         const std::string arg = argv[i];
         auto require_value = [&](const char *name) {
@@ -961,6 +964,8 @@ static int do_capacitylab(const int argc, char *argv[]) {
             options.estimate_only = true;
         } else if (arg == "--allow-low-disk") {
             options.allow_low_disk = true;
+        } else if (arg == "--repair") {
+            repair_manifest = true;
         } else {
             throw std::invalid_argument(
                 "unknown capacitylab option: " + arg);
@@ -1037,9 +1042,64 @@ static int do_capacitylab(const int argc, char *argv[]) {
         return 0;
     }
     if (subcommand == "shortlist") {
-        generate_shortlist(
+        const auto result = generate_shortlist(
             manifest_path, options.maximum_shortlist_videos);
+        std::cout
+            << "CAPACITY_ELIGIBLE "
+            << result.eligible_configs << "\n"
+            << "CAPACITY_SHORTLIST_SELECTED "
+            << result.selected_configs << "\n";
+        for (const auto &rejected : result.rejected_configs)
+            std::cout << "CAPACITY_REJECTED "
+                      << rejected << "\n";
+        for (const auto &removed : result.removed_files)
+            std::cout << "CAPACITY_SHORTLIST_REMOVED "
+                      << removed << "\n";
+        for (const auto &created : result.created_files)
+            std::cout << "CAPACITY_SHORTLIST_CREATED "
+                      << created << "\n";
+        std::cout << "CAPACITY_MANIFEST_BACKUP "
+                  << result.manifest_backup.string() << "\n";
+        if (!result.previous_shortlist_archive.empty())
+            std::cout << "CAPACITY_SHORTLIST_ARCHIVE "
+                      << result.previous_shortlist_archive.string()
+                      << "\n";
         return 0;
+    }
+    if (subcommand == "validate") {
+        auto validation =
+            validate_experiment(manifest_path);
+        auto print_validation =
+            [](const ValidationReport &value) {
+                std::cout
+                    << "CAPACITY_VALIDATE configs="
+                    << value.total_configs
+                    << " eligible=" << value.eligible_configs
+                    << " rejected=" << value.rejected_configs
+                    << " incomplete=" << value.incomplete_configs
+                    << " pareto=" << value.pareto_configs
+                    << " shortlisted="
+                    << value.shortlisted_configs
+                    << " errors=" << value.issues.size()
+                    << "\n";
+                for (const auto &issue : value.issues)
+                    std::cout
+                        << "CAPACITY_CONSISTENCY_ERROR "
+                        << issue.code << " config="
+                        << (issue.config_id.empty()
+                                ? "-" : issue.config_id)
+                        << " detail=" << issue.detail << "\n";
+            };
+        print_validation(validation);
+        if (!repair_manifest)
+            return validation.issues.empty() ? 0 : 2;
+        const auto result = generate_shortlist(
+            manifest_path, options.maximum_shortlist_videos);
+        std::cout << "CAPACITY_MANIFEST_BACKUP "
+                  << result.manifest_backup.string() << "\n";
+        validation = validate_experiment(manifest_path);
+        print_validation(validation);
+        return validation.issues.empty() ? 0 : 2;
     }
     if (subcommand == "analyze-folder") {
         if (returned_folder.empty())

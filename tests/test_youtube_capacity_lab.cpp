@@ -34,6 +34,63 @@ std::filesystem::path unique_temp(const std::string &name) {
          std::to_string(++sequence));
 }
 
+CapacityCase local_case(
+    const ExperimentConfig &config, const int stage,
+    const std::string &profile, const bool candidate_pass = true,
+    const bool master_pass = true) {
+    CapacityCase test_case;
+    test_case.config = config;
+    test_case.config_id = config.config_id();
+    test_case.case_id =
+        test_case.config_id + "-" + profile;
+    test_case.stage = stage;
+    test_case.capacity = compute_capacity(config);
+    test_case.effective_payload_bytes = 4096;
+    test_case.candidate_size = 1024;
+    test_case.requested_simulation_profile = profile;
+    test_case.state =
+        candidate_pass && master_pass
+            ? CaseState::Passed : CaseState::Rejected;
+    CaseResult master;
+    master.source_type = "master-lossless";
+    master.simulation_profile = "master-lossless";
+    master.decode_completed = master_pass;
+    master.sha256_match = master_pass;
+    master.telemetry.packet_recovery_percent =
+        master_pass ? 100.0 : 0.0;
+    test_case.results.push_back(master);
+    CaseResult candidate;
+    candidate.source_type = "upload-candidate";
+    candidate.simulation_profile = profile;
+    candidate.decode_completed = candidate_pass;
+    candidate.sha256_match = candidate_pass;
+    candidate.metadata_valid = candidate_pass;
+    candidate.telemetry.packet_recovery_percent =
+        candidate_pass ? 100.0 : 80.0;
+    candidate.telemetry.recovery_margin_percent =
+        candidate_pass ? 2.0 : -20.0;
+    candidate.telemetry.average_confidence =
+        candidate_pass ? 0.9 : 0.1;
+    test_case.results.push_back(candidate);
+    return test_case;
+}
+
+ExperimentManifest staged_profile_manifest(
+    const ExperimentConfig &config,
+    const std::string &failed_profile = {}) {
+    ExperimentManifest manifest;
+    manifest.experiment_id = "ELIGIBILITY";
+    manifest.created_at = "2026-07-30T00:00:00Z";
+    manifest.preset = Preset::Staged;
+    for (const std::string &profile : {
+             "yt-sim-1080p-light",
+             "yt-sim-1080p-medium",
+             "yt-sim-1080p-heavy"})
+        manifest.cases.push_back(local_case(
+            config, 3, profile, profile != failed_profile));
+    return manifest;
+}
+
 } // namespace
 
 TEST(CapacityConfig, CanonicalIdIsStable) {
@@ -336,6 +393,41 @@ TEST(CapacityManifest, RoundTripPreservesConfigAndResults) {
     std::filesystem::remove_all(root);
 }
 
+TEST(CapacityManifest, RecomputesBerSerFromAuthoritativeCounters) {
+    const auto root = unique_temp("manifest-ber-migration");
+    std::filesystem::create_directories(root);
+    ExperimentManifest manifest;
+    manifest.experiment_id = "CAPACITY-BER-MIGRATION";
+    manifest.created_at = "2026-07-30T00:00:00Z";
+    auto test_case = local_case(
+        config_for(4, 2), 1,
+        "yt-sim-1080p-medium");
+    auto &result = test_case.results.back();
+    result.telemetry.bits_compared = 100000000;
+    result.telemetry.bit_errors = 1;
+    result.telemetry.symbols_compared = 50000000;
+    result.telemetry.symbol_errors = 1;
+    // Simulate a schema-v4 manifest previously rewritten after losing the
+    // scientific-notation exponent.
+    result.telemetry.raw_ber = 10.0;
+    result.telemetry.raw_ser = 20.0;
+    manifest.cases.push_back(test_case);
+    const auto path = root / "manifest.json";
+    write_manifest_atomic(manifest, path);
+    const auto restored = read_manifest(path);
+    ASSERT_EQ(restored.cases.size(), 1U);
+    ASSERT_EQ(restored.cases.front().results.size(), 2U);
+    EXPECT_DOUBLE_EQ(
+        restored.cases.front().results.back()
+            .telemetry.raw_ber,
+        1.0 / 100000000.0);
+    EXPECT_DOUBLE_EQ(
+        restored.cases.front().results.back()
+            .telemetry.raw_ser,
+        1.0 / 50000000.0);
+    std::filesystem::remove_all(root);
+}
+
 TEST(CapacityReports, JsonCsvMarkdownKeepLocalAndRealDistinct) {
     const auto root = unique_temp("reports");
     ExperimentManifest manifest;
@@ -346,6 +438,30 @@ TEST(CapacityReports, JsonCsvMarkdownKeepLocalAndRealDistinct) {
         root / "capacity_summary.json"));
     EXPECT_TRUE(std::filesystem::exists(
         root / "capacity_results.csv"));
+    {
+        std::ifstream input(root / "capacity_results.csv");
+        const std::string text{
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()};
+        EXPECT_NE(
+            text.find("failed_mandatory_profile"),
+            std::string::npos);
+        EXPECT_NE(
+            text.find("shortlist_filename"),
+            std::string::npos);
+    }
+    {
+        std::ifstream input(root / "capacity_summary.json");
+        const std::string text{
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()};
+        EXPECT_NE(
+            text.find("\"config_decisions\""),
+            std::string::npos);
+        EXPECT_NE(
+            text.find("\"shortlist_exclusions\""),
+            std::string::npos);
+    }
     const auto markdown = root / "capacity_report.md";
     ASSERT_TRUE(std::filesystem::exists(markdown));
     {
@@ -403,6 +519,196 @@ TEST(CapacityShortlist, UsesUniqueConfigsAndResetsOldSelections) {
                 return value.state == CaseState::Shortlisted;
             }),
         static_cast<int>(selected.size()));
+}
+
+TEST(CapacityEligibility, AllMandatoryProfilesPass) {
+    auto manifest =
+        staged_profile_manifest(config_for(4, 2));
+    const auto decision =
+        evaluate_shortlist_eligibility(
+            manifest, manifest.cases.front().config_id);
+    EXPECT_TRUE(decision.eligible);
+    EXPECT_FALSE(decision.rejected);
+    EXPECT_FALSE(decision.incomplete);
+    EXPECT_EQ(
+        manifest.cases[*decision.representative_case]
+            .requested_simulation_profile,
+        "yt-sim-1080p-medium");
+}
+
+TEST(CapacityEligibility, EveryMandatoryProfileCanBlockConfig) {
+    for (const std::string &profile : {
+             "yt-sim-1080p-light",
+             "yt-sim-1080p-medium",
+             "yt-sim-1080p-heavy"}) {
+        auto manifest =
+            staged_profile_manifest(
+                config_for(4, 2), profile);
+        const auto decision =
+            evaluate_shortlist_eligibility(
+                manifest,
+                manifest.cases.front().config_id);
+        EXPECT_FALSE(decision.eligible);
+        EXPECT_TRUE(decision.rejected);
+        EXPECT_EQ(
+            decision.failed_mandatory_profile,
+            profile);
+        EXPECT_NE(
+            decision.reason.find("SHA-256 mismatch"),
+            std::string::npos);
+    }
+}
+
+TEST(CapacityEligibility, DownscaleFailureIsNonGating) {
+    auto manifest =
+        staged_profile_manifest(config_for(4, 2));
+    auto downscale = local_case(
+        manifest.cases.front().config, 3,
+        "yt-sim-720p-downscale", false);
+    downscale.state = CaseState::ResolutionUnsupported;
+    manifest.cases.push_back(std::move(downscale));
+    EXPECT_TRUE(
+        evaluate_shortlist_eligibility(
+            manifest, manifest.cases.front().config_id)
+            .eligible);
+}
+
+TEST(CapacityEligibility, MasterFailureAndIncompleteAreIneligible) {
+    auto master_failed =
+        staged_profile_manifest(config_for(4, 2));
+    master_failed.cases.front() = local_case(
+        master_failed.cases.front().config, 3,
+        "yt-sim-1080p-light", true, false);
+    auto decision = evaluate_shortlist_eligibility(
+        master_failed,
+        master_failed.cases.front().config_id);
+    EXPECT_TRUE(decision.rejected);
+    EXPECT_FALSE(decision.eligible);
+
+    auto incomplete =
+        staged_profile_manifest(config_for(4, 2));
+    incomplete.cases.pop_back();
+    decision = evaluate_shortlist_eligibility(
+        incomplete, incomplete.cases.front().config_id);
+    EXPECT_TRUE(decision.incomplete);
+    EXPECT_FALSE(decision.eligible);
+}
+
+TEST(CapacityEligibility, RejectedConfigCannotEnterParetoOrShortlist) {
+    auto manifest =
+        staged_profile_manifest(
+            config_for(4, 2),
+            "yt-sim-1080p-heavy");
+    auto eligible = local_case(
+        config_for(8, 1), 1,
+        "yt-sim-1080p-medium");
+    manifest.cases.push_back(std::move(eligible));
+    const auto rejected_id =
+        manifest.cases.front().config_id;
+    const auto selected =
+        select_shortlist(manifest, 8);
+    EXPECT_TRUE(std::none_of(
+        selected.begin(), selected.end(),
+        [&](const std::size_t index) {
+            return manifest.cases[index].config_id ==
+                rejected_id;
+        }));
+    for (const auto &test_case : manifest.cases)
+        if (test_case.config_id == rejected_id) {
+            EXPECT_FALSE(test_case.shortlisted);
+            EXPECT_FALSE(test_case.pareto);
+            EXPECT_FALSE(test_case.eligible_for_shortlist);
+        }
+}
+
+TEST(CapacityShortlist, RegenerationRepairsConflictAtomically) {
+    const auto root = unique_temp("shortlist-regeneration");
+    std::filesystem::create_directories(
+        root / "simulations");
+    std::filesystem::create_directories(
+        root / "youtube_shortlist");
+    {
+        std::ofstream stale(
+            root / "youtube_shortlist" / "stale.mp4",
+            std::ios::binary);
+        stale << "old shortlist";
+    }
+    auto manifest =
+        staged_profile_manifest(
+            config_for(4, 2),
+            "yt-sim-1080p-heavy");
+    manifest.cases[1].shortlisted = true;
+    manifest.cases[1].state = CaseState::Shortlisted;
+    manifest.cases[1].pareto = true;
+    for (auto &test_case : manifest.cases) {
+        test_case.candidate_path =
+            "simulations/" + test_case.case_id + ".mp4";
+        std::ofstream candidate(
+            root / test_case.candidate_path,
+            std::ios::binary);
+        candidate << "candidate";
+    }
+    auto good = local_case(
+        config_for(8, 1), 1,
+        "yt-sim-1080p-medium");
+    good.candidate_path =
+        "simulations/" + good.case_id + ".mp4";
+    {
+        std::ofstream candidate(
+            root / good.candidate_path,
+            std::ios::binary);
+        candidate << "eligible candidate";
+    }
+    manifest.cases.push_back(good);
+    const auto path = root / "manifest.json";
+    write_manifest_atomic(manifest, path);
+    std::ifstream before_input(path, std::ios::binary);
+    const std::string before{
+        std::istreambuf_iterator<char>(before_input),
+        std::istreambuf_iterator<char>()};
+    before_input.close();
+
+    const auto before_validation =
+        validate_experiment(path);
+    EXPECT_FALSE(before_validation.issues.empty());
+    std::ifstream after_validate_input(path, std::ios::binary);
+    const std::string after_validate{
+        std::istreambuf_iterator<char>(after_validate_input),
+        std::istreambuf_iterator<char>()};
+    after_validate_input.close();
+    EXPECT_EQ(before, after_validate);
+
+    const auto regenerated =
+        generate_shortlist(path, 8);
+    EXPECT_TRUE(std::filesystem::exists(
+        regenerated.manifest_backup));
+    EXPECT_TRUE(std::filesystem::exists(
+        regenerated.previous_shortlist_archive /
+        "stale.mp4"));
+    EXPECT_EQ(regenerated.selected_configs, 1U);
+    EXPECT_NE(
+        std::find(
+            regenerated.removed_files.begin(),
+            regenerated.removed_files.end(),
+            "stale.mp4"),
+        regenerated.removed_files.end());
+    std::size_t videos = 0;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(
+             root / "youtube_shortlist"))
+        videos += entry.is_regular_file() &&
+            entry.path().extension() == ".mp4";
+    EXPECT_EQ(videos, 1U);
+    EXPECT_TRUE(validate_experiment(path).issues.empty());
+    EXPECT_TRUE(std::filesystem::exists(
+        root / good.candidate_path));
+
+    const auto repeated =
+        generate_shortlist(path, 8);
+    EXPECT_EQ(repeated.selected_configs, 1U);
+    EXPECT_TRUE(repeated.removed_files.empty());
+    EXPECT_TRUE(validate_experiment(path).issues.empty());
+    std::filesystem::remove_all(root);
 }
 
 TEST(CapacityPreflight, SmokeIsBoundedAndReportsDisk) {

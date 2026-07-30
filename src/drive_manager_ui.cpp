@@ -2665,12 +2665,30 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
         QJsonObject result;
         if (!results.isEmpty())
             result = results.last().toObject();
-        const QString status =
-            item.value("shortlisted").toBool()
-                ? item.value("shortlist_reason").toString()
-                : (item.value("rejection_reason").toString().isEmpty()
-                       ? item.value("state").toString()
-                       : item.value("rejection_reason").toString());
+        const QString state = item.value("state").toString();
+        const bool rejected =
+            state == "Rejected" || state == "Failed";
+        const bool eligible =
+            item.value("eligible_for_shortlist").toBool();
+        const bool selected =
+            eligible && !rejected &&
+            item.value("shortlisted").toBool();
+        QString status;
+        if (selected) {
+            status = item.value("shortlist_reason").toString();
+        } else {
+            const QString failedProfile =
+                item.value("failed_mandatory_profile").toString();
+            const QString exclusion =
+                item.value("shortlist_exclusion_reason").toString();
+            const QString rejection =
+                item.value("rejection_reason").toString();
+            status = !exclusion.isEmpty()
+                ? exclusion
+                : !rejection.isEmpty() ? rejection : state;
+            if (!failedProfile.isEmpty())
+                status = failedProfile + ": " + status;
+        }
         const QStringList values{
             item.value("config_id").toString(),
             QString::number(item.value("stage").toInt()),

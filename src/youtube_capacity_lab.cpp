@@ -705,6 +705,30 @@ std::vector<std::string> extract_objects(
     return objects;
 }
 
+std::vector<std::string> json_string_array(
+    const std::string &json, const std::string &array_key) {
+    const std::string marker = "\"" + array_key + "\"";
+    const auto key = json.find(marker);
+    if (key == std::string::npos) return {};
+    const auto begin = json.find('[', key + marker.size());
+    const auto end =
+        begin == std::string::npos
+            ? std::string::npos
+            : json.find(']', begin + 1);
+    if (begin == std::string::npos ||
+        end == std::string::npos)
+        return {};
+    std::vector<std::string> values;
+    const std::string body =
+        json.substr(begin + 1, end - begin - 1);
+    const std::regex string_value("\"([^\"]*)\"");
+    for (std::sregex_iterator it(
+             body.begin(), body.end(), string_value), last;
+         it != last; ++it)
+        values.push_back((*it)[1].str());
+    return values;
+}
+
 std::optional<std::string> json_string(
     const std::string &object, const std::string &key) {
     const std::regex expression(
@@ -719,7 +743,8 @@ std::optional<double> json_number(
     const std::string &object, const std::string &key) {
     const std::regex expression(
         "\"" + key +
-        "\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)");
+        "\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?"
+        "(?:[eE][+-]?[0-9]+)?)");
     std::smatch match;
     if (!std::regex_search(object, match, expression))
         return std::nullopt;
@@ -1536,6 +1561,255 @@ std::vector<std::size_t> select_shortlist(
 
 namespace {
 
+std::string canonical_profile_name(const std::string &value) {
+    if (value == "h264-light") return "yt-sim-1080p-light";
+    if (value == "h264-medium") return "yt-sim-1080p-medium";
+    if (value == "h264-heavy") return "yt-sim-1080p-heavy";
+    return value;
+}
+
+std::string readable_profile_name(const std::string &value) {
+    const auto canonical = canonical_profile_name(value);
+    if (canonical == "yt-sim-1080p-light") return "H.264 light";
+    if (canonical == "yt-sim-1080p-medium") return "H.264 medium";
+    if (canonical == "yt-sim-1080p-heavy") return "H.264 heavy";
+    return canonical;
+}
+
+const CaseResult *result_by_source(
+    const CapacityCase &test_case, const std::string &source) {
+    for (auto it = test_case.results.rbegin();
+         it != test_case.results.rend(); ++it)
+        if (it->source_type == source)
+            return &*it;
+    return nullptr;
+}
+
+bool is_non_gating_profile(const CapacityCase &test_case) {
+    return canonical_profile_name(
+               test_case.requested_simulation_profile) ==
+           "yt-sim-720p-downscale";
+}
+
+bool result_exact_gate(const CaseResult *result,
+                       const bool require_metadata) {
+    return result && result->decode_completed &&
+        result->sha256_match &&
+        (!require_metadata || result->metadata_valid) &&
+        result->telemetry.packet_recovery_percent >= 98.0 &&
+        result->telemetry.raw_ber <= 0.02 &&
+        result->telemetry.raw_ser <= 0.02;
+}
+
+std::vector<std::size_t> config_case_indices(
+    const ExperimentManifest &manifest, const std::string &config_id) {
+    std::vector<std::size_t> result;
+    for (std::size_t index = 0;
+         index < manifest.cases.size(); ++index)
+        if (manifest.cases[index].config_id == config_id)
+            result.push_back(index);
+    return result;
+}
+
+} // namespace
+
+EligibilityDecision evaluate_shortlist_eligibility(
+    const ExperimentManifest &manifest,
+    const std::string &config_id) {
+    EligibilityDecision decision;
+    decision.config_id = config_id;
+    const auto indices = config_case_indices(manifest, config_id);
+    if (indices.empty()) {
+        decision.incomplete = true;
+        decision.reason = "Config has no experiment cases";
+        return decision;
+    }
+    int target_stage = 0;
+    for (const auto index : indices)
+        if (!is_non_gating_profile(manifest.cases[index]))
+            target_stage = std::max(
+                target_stage, manifest.cases[index].stage);
+    const auto &required =
+        target_stage >= 3
+            ? manifest.mandatory_stage3_profiles
+            : manifest.mandatory_stage1_profiles;
+    if (required.empty()) {
+        decision.incomplete = true;
+        decision.reason = "Manifest has no mandatory simulation profiles";
+        return decision;
+    }
+
+    for (const auto &required_value : required) {
+        const std::string required_profile =
+            canonical_profile_name(required_value);
+        const CapacityCase *matched = nullptr;
+        std::size_t matched_index = 0;
+        for (const auto index : indices) {
+            const auto &test_case = manifest.cases[index];
+            if (test_case.stage != target_stage ||
+                is_non_gating_profile(test_case))
+                continue;
+            const std::string case_profile =
+                canonical_profile_name(
+                    test_case.requested_simulation_profile);
+            const auto *candidate =
+                result_by_source(test_case, "upload-candidate");
+            const std::string result_profile =
+                candidate
+                    ? canonical_profile_name(
+                          candidate->simulation_profile)
+                    : case_profile;
+            if (case_profile == required_profile ||
+                result_profile == required_profile) {
+                matched = &test_case;
+                matched_index = index;
+                break;
+            }
+        }
+        if (!matched) {
+            decision.incomplete = true;
+            decision.failed_mandatory_profile = required_profile;
+            decision.reason =
+                "Missing mandatory " +
+                readable_profile_name(required_profile) +
+                " simulation result";
+            return decision;
+        }
+        if (matched->state == CaseState::Pending ||
+            matched->state == CaseState::Running ||
+            matched->state == CaseState::Cancelled) {
+            decision.incomplete = true;
+            decision.failed_mandatory_profile = required_profile;
+            decision.reason =
+                "Incomplete mandatory " +
+                readable_profile_name(required_profile) +
+                " simulation result";
+            return decision;
+        }
+        const auto *master =
+            result_by_source(*matched, "master-lossless");
+        if (!result_exact_gate(master, false)) {
+            decision.rejected = true;
+            decision.failed_mandatory_profile = required_profile;
+            decision.reason =
+                "Mandatory master roundtrip failed for " +
+                readable_profile_name(required_profile);
+            return decision;
+        }
+        const auto *candidate =
+            result_by_source(*matched, "upload-candidate");
+        if (!result_exact_gate(candidate, true)) {
+            decision.rejected = true;
+            decision.failed_mandatory_profile = required_profile;
+            if (candidate && !candidate->sha256_match)
+                decision.reason =
+                    "Mandatory " +
+                    readable_profile_name(required_profile) +
+                    " simulation failed: SHA-256 mismatch";
+            else if (candidate && !candidate->metadata_valid)
+                decision.reason =
+                    "Mandatory " +
+                    readable_profile_name(required_profile) +
+                    " simulation failed: media metadata validation";
+            else if (candidate &&
+                     candidate->telemetry.packet_recovery_percent < 98.0)
+                decision.reason =
+                    "Mandatory " +
+                    readable_profile_name(required_profile) +
+                    " simulation failed: packet recovery below threshold";
+            else
+                decision.reason =
+                    "Mandatory " +
+                    readable_profile_name(required_profile) +
+                    " simulation failed";
+            return decision;
+        }
+        if (!decision.representative_case ||
+            required_profile == "yt-sim-1080p-medium")
+            decision.representative_case = matched_index;
+    }
+    decision.eligible = true;
+    decision.reason = "All mandatory local simulation gates passed";
+    return decision;
+}
+
+void recompute_experiment_decisions(ExperimentManifest &manifest) {
+    std::map<std::string, EligibilityDecision> decisions;
+    for (const auto &test_case : manifest.cases)
+        if (!decisions.contains(test_case.config_id))
+            decisions.emplace(
+                test_case.config_id,
+                evaluate_shortlist_eligibility(
+                    manifest, test_case.config_id));
+    for (auto &test_case : manifest.cases) {
+        const auto &decision = decisions.at(test_case.config_id);
+        if (test_case.state == CaseState::Shortlisted)
+            test_case.state = CaseState::Passed;
+        test_case.shortlisted = false;
+        test_case.shortlist_reason.clear();
+        test_case.pareto = false;
+        test_case.dominated = false;
+        test_case.category.clear();
+        test_case.eligible_for_shortlist = decision.eligible;
+        test_case.incomplete = decision.incomplete;
+        test_case.failed_mandatory_profile =
+            decision.failed_mandatory_profile;
+        test_case.shortlist_exclusion_reason =
+            decision.eligible ? "" : decision.reason;
+        test_case.local_gate_status =
+            decision.eligible ? "Passed" :
+            decision.incomplete ? "Incomplete" : "Rejected";
+        test_case.mandatory_gates_passed =
+            decision.eligible &&
+            decision.representative_case &&
+            &test_case ==
+                &manifest.cases[*decision.representative_case];
+    }
+    update_pareto_and_categories(manifest.cases);
+}
+
+std::vector<std::size_t> select_shortlist(
+    ExperimentManifest &manifest,
+    const std::size_t maximum_videos) {
+    manifest.maximum_shortlist_videos = maximum_videos;
+    recompute_experiment_decisions(manifest);
+    std::vector<std::size_t> selected;
+    for (std::size_t index = 0;
+         index < manifest.cases.size(); ++index)
+        if (manifest.cases[index].pareto &&
+            manifest.cases[index].eligible_for_shortlist)
+            selected.push_back(index);
+    std::stable_sort(
+        selected.begin(), selected.end(),
+        [&](const std::size_t a, const std::size_t b) {
+            const bool categorized =
+                !manifest.cases[a].category.empty();
+            const bool other_categorized =
+                !manifest.cases[b].category.empty();
+            if (categorized != other_categorized)
+                return categorized;
+            return manifest.cases[a].capacity
+                       .useful_payload_bytes_per_second >
+                   manifest.cases[b].capacity
+                       .useful_payload_bytes_per_second;
+        });
+    if (selected.size() > maximum_videos)
+        selected.resize(maximum_videos);
+    for (const auto index : selected) {
+        auto &test_case = manifest.cases[index];
+        test_case.shortlisted = true;
+        test_case.state = CaseState::Shortlisted;
+        test_case.shortlist_reason =
+            test_case.category.empty()
+                ? "Non-dominated config passing every mandatory gate"
+                : test_case.category +
+                    "; non-dominated config passing every mandatory gate";
+    }
+    return selected;
+}
+
+namespace {
+
 youtube_test_lab::SimulationProfile simulation_for(
     const ExperimentConfig &config, const std::string &requested) {
     std::string lookup = requested;
@@ -1806,8 +2080,17 @@ ExperimentManifest run(
     manifest.preset = options.preset;
     manifest.baseline = production_baseline_config();
     manifest.maximum_cases = options.maximum_cases;
+    manifest.maximum_shortlist_videos =
+        options.maximum_shortlist_videos;
     manifest.maximum_disk_bytes =
         options.maximum_disk_bytes;
+    if (options.preset == Preset::Custom &&
+        !options.simulations.empty()) {
+        manifest.mandatory_stage1_profiles.clear();
+        for (const auto &profile : options.simulations)
+            manifest.mandatory_stage1_profiles.push_back(
+                canonical_profile_name(profile));
+    }
     manifest.cases = build_initial_cases(
         options, manifest.experiment_id);
     const auto root =
@@ -1867,7 +2150,7 @@ ExperimentManifest run(
             : options.simulations.front();
     if (!run_range(0, initial_profile))
         return manifest;
-    update_pareto_and_categories(manifest.cases);
+    recompute_experiment_decisions(manifest);
 
     if (options.preset == Preset::Staged) {
         auto selected = passing_sorted(manifest.cases);
@@ -1893,7 +2176,7 @@ ExperimentManifest run(
         if (!run_range(stage2_begin,
                        "yt-sim-1080p-medium"))
             return manifest;
-        update_pareto_and_categories(manifest.cases);
+        recompute_experiment_decisions(manifest);
 
         selected = passing_sorted(manifest.cases);
         if (selected.size() > 3) selected.resize(3);
@@ -1951,11 +2234,10 @@ ExperimentManifest run(
         }
     }
     (void) select_shortlist(
-        manifest.cases,
-        options.maximum_shortlist_videos);
+        manifest, options.maximum_shortlist_videos);
     write_manifest_atomic(manifest, manifest_path);
     write_reports(manifest, root / "reports");
-    generate_shortlist(
+    (void) generate_shortlist(
         manifest_path, options.maximum_shortlist_videos);
     return read_manifest(manifest_path);
 }
@@ -2026,7 +2308,7 @@ void resume(const std::filesystem::path &manifest_path,
                 return value.stage == 2;
             });
         if (!has_stage2) {
-            update_pareto_and_categories(manifest.cases);
+            recompute_experiment_decisions(manifest);
             auto selected = passing_sorted(manifest.cases);
             if (selected.size() > 4) selected.resize(4);
             std::vector<ExperimentConfig> configs;
@@ -2057,7 +2339,7 @@ void resume(const std::filesystem::path &manifest_path,
                 return value.stage == 3;
             });
         if (!has_stage3) {
-            update_pareto_and_categories(manifest.cases);
+            recompute_experiment_decisions(manifest);
             auto selected = passing_sorted(manifest.cases);
             if (selected.size() > 3) selected.resize(3);
             std::vector<ExperimentConfig> configs;
@@ -2090,54 +2372,78 @@ void resume(const std::filesystem::path &manifest_path,
             if (!process_pending(stage3_begin)) return;
         }
     }
-    (void) select_shortlist(manifest.cases, 8);
+    (void) select_shortlist(
+        manifest, manifest.maximum_shortlist_videos);
     write_manifest_atomic(manifest, manifest_path);
     write_reports(manifest, root / "reports");
-    generate_shortlist(manifest_path, 8);
+    (void) generate_shortlist(
+        manifest_path, manifest.maximum_shortlist_videos);
 }
 
-void generate_shortlist(
+ShortlistRegenerationReport generate_shortlist(
     const std::filesystem::path &manifest_path,
     const std::size_t maximum_videos) {
+    ShortlistRegenerationReport report;
     auto manifest = read_manifest(manifest_path);
     const auto root =
         std::filesystem::absolute(manifest_path).parent_path();
     const auto indices =
-        select_shortlist(manifest.cases, maximum_videos);
+        select_shortlist(manifest, maximum_videos);
     const auto directory = root / "youtube_shortlist";
-    std::filesystem::create_directories(directory);
+    const std::string operation_id =
+        compact_utc() + "-" + stable_hash_id(
+            std::to_string(
+                Clock::now().time_since_epoch().count()), 6);
+    const auto next_directory =
+        root / ("youtube_shortlist.next-" + operation_id);
+    const auto history_root = root / "shortlist_history";
+    const auto archive_directory =
+        history_root / operation_id;
+    std::filesystem::create_directories(next_directory);
+
+    std::set<std::string> old_videos;
+    if (std::filesystem::is_directory(directory))
+        for (const auto &entry :
+             std::filesystem::directory_iterator(directory))
+            if (entry.is_regular_file() &&
+                entry.path().extension() == ".mp4")
+                old_videos.insert(
+                    entry.path().filename().string());
+    std::set<std::string> new_videos;
     for (const auto index : indices) {
         auto &test_case = manifest.cases[index];
         const auto source =
             resolve_path(root, test_case.candidate_path);
         if (!std::filesystem::exists(source)) {
-            test_case.shortlisted = false;
-            test_case.state = CaseState::Failed;
-            test_case.rejection_reason =
-                "selected candidate artifact is missing";
-            continue;
+            std::filesystem::remove_all(next_directory);
+            throw std::runtime_error(
+                "selected candidate artifact is missing: " +
+                source.string());
         }
         const auto destination =
-            directory / candidate_filename(test_case);
+            next_directory / candidate_filename(test_case);
         std::error_code error;
         std::filesystem::copy_file(
             source, destination,
-            std::filesystem::copy_options::overwrite_existing,
+            std::filesystem::copy_options::none,
             error);
         if (error) {
-            test_case.shortlisted = false;
-            test_case.state = CaseState::Failed;
-            test_case.rejection_reason =
-                "could not copy shortlist video: " +
-                error.message();
-            continue;
+            std::filesystem::remove_all(next_directory);
+            throw std::runtime_error(
+                "could not prepare shortlist video: " +
+                error.message());
         }
+        new_videos.insert(destination.filename().string());
+        report.created_files.push_back(
+            destination.filename().string());
         std::ofstream sidecar(
             destination.string() + ".json",
             std::ios::binary | std::ios::trunc);
-        if (!sidecar)
+        if (!sidecar) {
+            std::filesystem::remove_all(next_directory);
             throw std::runtime_error(
                 "could not write shortlist sidecar");
+        }
         sidecar << "{\n"
             << "  \"config_id\": " << q(test_case.config_id) << ",\n"
             << "  \"block_size\": " << test_case.config.block_width << ",\n"
@@ -2164,9 +2470,157 @@ void generate_shortlist(
             << "  \"youtube_proven\": false,\n"
             << "  \"reason\": " << q(test_case.shortlist_reason)
             << "\n}\n";
+        if (!sidecar) {
+            sidecar.close();
+            std::filesystem::remove_all(next_directory);
+            throw std::runtime_error(
+                "could not flush shortlist sidecar");
+        }
     }
-    write_manifest_atomic(manifest, manifest_path);
-    write_reports(manifest, root / "reports");
+    for (const auto &old_file : old_videos)
+        if (!new_videos.contains(old_file))
+            report.removed_files.push_back(old_file);
+
+    const auto backup =
+        std::filesystem::path(
+            manifest_path.string() + ".backup-" +
+            operation_id + ".json");
+    std::filesystem::copy_file(
+        manifest_path, backup,
+        std::filesystem::copy_options::none);
+    report.manifest_backup = backup;
+
+    bool archived = false;
+    try {
+        if (std::filesystem::exists(directory)) {
+            std::filesystem::create_directories(history_root);
+            std::filesystem::rename(
+                directory, archive_directory);
+            archived = true;
+            report.previous_shortlist_archive =
+                archive_directory;
+        }
+        std::filesystem::rename(next_directory, directory);
+        try {
+            write_manifest_atomic(manifest, manifest_path);
+            write_reports(manifest, root / "reports");
+        } catch (...) {
+            std::filesystem::remove_all(directory);
+            if (archived)
+                std::filesystem::rename(
+                    archive_directory, directory);
+            throw;
+        }
+    } catch (...) {
+        std::error_code cleanup_error;
+        std::filesystem::remove_all(
+            next_directory, cleanup_error);
+        if (!std::filesystem::exists(directory) &&
+            archived &&
+            std::filesystem::exists(archive_directory))
+            std::filesystem::rename(
+                archive_directory, directory);
+        throw;
+    }
+
+    std::set<std::string> config_ids;
+    for (const auto &test_case : manifest.cases)
+        config_ids.insert(test_case.config_id);
+    for (const auto &config_id : config_ids) {
+        const auto decision =
+            evaluate_shortlist_eligibility(
+                manifest, config_id);
+        report.eligible_configs += decision.eligible;
+        if (decision.rejected || decision.incomplete)
+            report.rejected_configs.push_back(
+                config_id + ": " + decision.reason);
+    }
+    report.selected_configs = indices.size();
+    return report;
+}
+
+ValidationReport validate_experiment(
+    const std::filesystem::path &manifest_path) {
+    ValidationReport report;
+    const auto original = read_manifest(manifest_path);
+    auto derived = original;
+    (void) select_shortlist(
+        derived, derived.maximum_shortlist_videos);
+    std::set<std::string> config_ids;
+    for (const auto &test_case : original.cases)
+        config_ids.insert(test_case.config_id);
+    report.total_configs = config_ids.size();
+    for (const auto &config_id : config_ids) {
+        const auto decision =
+            evaluate_shortlist_eligibility(
+                original, config_id);
+        report.eligible_configs += decision.eligible;
+        report.rejected_configs += decision.rejected;
+        report.incomplete_configs += decision.incomplete;
+        const bool persisted_shortlisted = std::any_of(
+            original.cases.begin(), original.cases.end(),
+            [&](const CapacityCase &test_case) {
+                return test_case.config_id == config_id &&
+                    test_case.shortlisted;
+            });
+        const bool persisted_rejected = std::any_of(
+            original.cases.begin(), original.cases.end(),
+            [&](const CapacityCase &test_case) {
+                return test_case.config_id == config_id &&
+                    (test_case.state == CaseState::Rejected ||
+                     test_case.state == CaseState::Failed);
+            });
+        const bool persisted_pareto = std::any_of(
+            original.cases.begin(), original.cases.end(),
+            [&](const CapacityCase &test_case) {
+                return test_case.config_id == config_id &&
+                    test_case.pareto;
+            });
+        if (persisted_shortlisted &&
+            (persisted_rejected || !decision.eligible))
+            report.issues.push_back({
+                "rejected_shortlisted", config_id,
+                decision.reason});
+        if (persisted_pareto && !decision.eligible)
+            report.issues.push_back({
+                "ineligible_pareto", config_id,
+                decision.reason});
+        if (decision.incomplete)
+            report.issues.push_back({
+                "missing_mandatory_profile", config_id,
+                decision.reason});
+    }
+    std::set<std::string> expected_files;
+    for (const auto &test_case : derived.cases) {
+        report.pareto_configs += test_case.pareto;
+        report.shortlisted_configs += test_case.shortlisted;
+        if (test_case.shortlisted)
+            expected_files.insert(
+                candidate_filename(test_case));
+    }
+    const auto shortlist_directory =
+        std::filesystem::absolute(manifest_path)
+            .parent_path() / "youtube_shortlist";
+    std::set<std::string> actual_files;
+    if (std::filesystem::is_directory(shortlist_directory))
+        for (const auto &entry :
+             std::filesystem::directory_iterator(
+                 shortlist_directory))
+            if (entry.is_regular_file() &&
+                entry.path().extension() == ".mp4")
+                actual_files.insert(
+                    entry.path().filename().string());
+    for (const auto &actual : actual_files)
+        if (!expected_files.contains(actual))
+            report.issues.push_back({
+                "unexpected_shortlist_file", "",
+                actual});
+    for (const auto &expected : expected_files)
+        if (!actual_files.contains(expected))
+            report.issues.push_back({
+                "missing_shortlist_file", "",
+                expected});
+    return report;
 }
 
 void analyze_folder(
@@ -2450,6 +2904,17 @@ CaseResult parse_result(const std::string &object) {
     READ_TELEMETRY(average_confidence);
     READ_TELEMETRY(minimum_confidence);
 #undef READ_TELEMETRY
+    // Older schema-v4 manifests could be loaded and rewritten by a parser
+    // that dropped JSON scientific-notation exponents. Integer counters are
+    // authoritative, so always derive BER/SER from them during migration.
+    if (result.telemetry.bits_compared != 0)
+        result.telemetry.raw_ber =
+            static_cast<double>(result.telemetry.bit_errors) /
+            result.telemetry.bits_compared;
+    if (result.telemetry.symbols_compared != 0)
+        result.telemetry.raw_ser =
+            static_cast<double>(result.telemetry.symbol_errors) /
+            result.telemetry.symbols_compared;
     return result;
 }
 
@@ -2483,6 +2948,8 @@ void write_manifest_atomic(
             << q(to_string(manifest.preset)) << ",\n"
             << "  \"maximum_cases\": "
             << manifest.maximum_cases << ",\n"
+            << "  \"maximum_shortlist_videos\": "
+            << manifest.maximum_shortlist_videos << ",\n"
             << "  \"maximum_disk_bytes\": "
             << manifest.maximum_disk_bytes << ",\n"
             << "  \"cancelled\": "
@@ -2490,6 +2957,20 @@ void write_manifest_atomic(
             << ",\n"
             << "  \"baseline_config_id\": "
             << q(manifest.baseline.config_id()) << ",\n"
+            << "  \"mandatory_stage1_profiles\": [";
+        for (std::size_t i = 0;
+             i < manifest.mandatory_stage1_profiles.size(); ++i) {
+            if (i != 0) out << ",";
+            out << q(manifest.mandatory_stage1_profiles[i]);
+        }
+        out << "],\n"
+            << "  \"mandatory_stage3_profiles\": [";
+        for (std::size_t i = 0;
+             i < manifest.mandatory_stage3_profiles.size(); ++i) {
+            if (i != 0) out << ",";
+            out << q(manifest.mandatory_stage3_profiles[i]);
+        }
+        out << "],\n"
             << "  \"cases\": [\n";
         for (std::size_t i = 0;
              i < manifest.cases.size(); ++i) {
@@ -2590,11 +3071,22 @@ void write_manifest_atomic(
                 << (c.pareto ? "true" : "false") << ",\n"
                 << "      \"shortlisted\": "
                 << (c.shortlisted ? "true" : "false") << ",\n"
+                << "      \"eligible_for_shortlist\": "
+                << (c.eligible_for_shortlist
+                        ? "true" : "false") << ",\n"
+                << "      \"incomplete\": "
+                << (c.incomplete ? "true" : "false") << ",\n"
                 << "      \"category\": " << q(c.category) << ",\n"
                 << "      \"rejection_reason\": "
                 << q(c.rejection_reason) << ",\n"
                 << "      \"shortlist_reason\": "
                 << q(c.shortlist_reason) << ",\n"
+                << "      \"shortlist_exclusion_reason\": "
+                << q(c.shortlist_exclusion_reason) << ",\n"
+                << "      \"failed_mandatory_profile\": "
+                << q(c.failed_mandatory_profile) << ",\n"
+                << "      \"local_gate_status\": "
+                << q(c.local_gate_status) << ",\n"
                 << "      \"raw_bits_per_frame\": "
                 << c.capacity.geometry.raw_bits_per_frame << ",\n"
                 << "      \"raw_bytes_per_frame\": "
@@ -2671,9 +3163,26 @@ ExperimentManifest read_manifest(
     manifest.maximum_cases = static_cast<std::size_t>(
         json_u64(json, "maximum_cases").value_or(
             kDefaultMaximumCases));
+    manifest.maximum_shortlist_videos =
+        static_cast<std::size_t>(
+            json_u64(
+                json, "maximum_shortlist_videos")
+                .value_or(8));
     manifest.maximum_disk_bytes =
         json_u64(json, "maximum_disk_bytes").value_or(
             kDefaultMaximumDiskBytes);
+    const auto stage1_profiles =
+        json_string_array(
+            json, "mandatory_stage1_profiles");
+    if (!stage1_profiles.empty())
+        manifest.mandatory_stage1_profiles =
+            stage1_profiles;
+    const auto stage3_profiles =
+        json_string_array(
+            json, "mandatory_stage3_profiles");
+    if (!stage3_profiles.empty())
+        manifest.mandatory_stage3_profiles =
+            stage3_profiles;
     manifest.cancelled = json_bool(json, "cancelled");
     manifest.baseline = production_baseline_config();
     for (const auto &object : extract_objects(json, "cases")) {
@@ -2753,12 +3262,26 @@ ExperimentManifest read_manifest(
         c.dominated = json_bool(object, "dominated");
         c.pareto = json_bool(object, "pareto");
         c.shortlisted = json_bool(object, "shortlisted");
+        c.eligible_for_shortlist =
+            json_bool(object, "eligible_for_shortlist");
+        c.incomplete = json_bool(object, "incomplete");
         c.category =
             json_string(object, "category").value_or("");
         c.rejection_reason =
             json_string(object, "rejection_reason").value_or("");
         c.shortlist_reason =
             json_string(object, "shortlist_reason").value_or("");
+        c.shortlist_exclusion_reason =
+            json_string(
+                object, "shortlist_exclusion_reason")
+                .value_or("");
+        c.failed_mandatory_profile =
+            json_string(
+                object, "failed_mandatory_profile")
+                .value_or("");
+        c.local_gate_status =
+            json_string(object, "local_gate_status")
+                .value_or("");
         c.capacity.expected_source_packets =
             json_u64(object, "expected_source_packets")
                 .value_or(c.capacity.expected_source_packets);
@@ -2794,8 +3317,11 @@ ExperimentManifest read_manifest(
 }
 
 void write_reports(
-    const ExperimentManifest &manifest,
+    const ExperimentManifest &source_manifest,
     const std::filesystem::path &reports_directory) {
+    auto manifest = source_manifest;
+    (void) select_shortlist(
+        manifest, manifest.maximum_shortlist_videos);
     std::filesystem::create_directories(reports_directory);
     {
         std::ofstream out(
@@ -2807,7 +3333,9 @@ void write_reports(
         out << "config_id,stage,block,bits,signal,repair,resolution,"
                "useful_kib_s,gain,candidate_bytes,packet_recovery,"
                "recovery_margin,ber,ser,average_confidence,sha,"
-               "pareto,shortlisted,status,reason\n";
+               "eligible,shortlisted,incomplete,failed_mandatory_profile,"
+               "pareto,category,status,exclusion_reason,"
+               "shortlist_filename\n";
         for (const auto &c : manifest.cases) {
             const CaseResult *result =
                 c.results.empty() ? nullptr : &c.results.back();
@@ -2836,12 +3364,19 @@ void write_reports(
                 << ","
                 << (result && result->sha256_match
                         ? "exact" : "not-exact")
-                << "," << (c.pareto ? "yes" : "no")
+                << "," << (c.eligible_for_shortlist
+                        ? "yes" : "no")
                 << "," << (c.shortlisted ? "yes" : "no")
+                << "," << (c.incomplete ? "yes" : "no")
+                << "," << q(c.failed_mandatory_profile)
+                << "," << (c.pareto ? "yes" : "no")
+                << "," << q(c.category)
                 << "," << q(to_string(c.state))
                 << "," << q(c.shortlisted
-                    ? c.shortlist_reason
-                    : c.rejection_reason)
+                    ? ""
+                    : c.shortlist_exclusion_reason)
+                << "," << q(c.shortlisted
+                    ? candidate_filename(c) : "")
                 << "\n";
         }
     }
@@ -2852,6 +3387,24 @@ void write_reports(
         if (!out)
             throw std::runtime_error(
                 "could not write Capacity Lab Markdown report");
+        std::set<std::string> report_config_ids;
+        for (const auto &test_case : manifest.cases)
+            report_config_ids.insert(test_case.config_id);
+        uint64_t eligible_configs = 0;
+        uint64_t rejected_configs = 0;
+        uint64_t incomplete_configs = 0;
+        std::map<std::string, EligibilityDecision>
+            report_decisions;
+        for (const auto &config_id : report_config_ids) {
+            auto decision =
+                evaluate_shortlist_eligibility(
+                    manifest, config_id);
+            eligible_configs += decision.eligible;
+            rejected_configs += decision.rejected;
+            incomplete_configs += decision.incomplete;
+            report_decisions.emplace(
+                config_id, std::move(decision));
+        }
         out << "# YouTube Capacity Lab\n\n"
             << "Experiment: `" << manifest.experiment_id << "`  \n"
             << "Preset: " << to_string(manifest.preset) << "  \n"
@@ -2859,6 +3412,25 @@ void write_reports(
             << "> Local simulations are not real YouTube evidence. "
                "No configuration below is marked YouTube-proven until a "
                "real returned-video observation passes exact SHA-256.\n\n"
+            << "## Decision summary\n\n"
+            << "- Total configs: " << report_config_ids.size() << "\n"
+            << "- Eligible configs: " << eligible_configs << "\n"
+            << "- Rejected configs: " << rejected_configs << "\n"
+            << "- Incomplete configs: " << incomplete_configs << "\n"
+            << "- Pareto configs: "
+            << std::count_if(
+                   manifest.cases.begin(), manifest.cases.end(),
+                   [](const CapacityCase &value) {
+                       return value.pareto;
+                   })
+            << "\n"
+            << "- Shortlisted configs: "
+            << std::count_if(
+                   manifest.cases.begin(), manifest.cases.end(),
+                   [](const CapacityCase &value) {
+                       return value.shortlisted;
+                   })
+            << "\n\n"
             << "## A. Baseline\n\n"
             << "- 8x8 / 1-bit / 1.00x / 5% repair\n"
             << "- Production coefficient: "
@@ -2881,6 +3453,47 @@ void write_reports(
             out << "- Stage " << stage << ": "
                 << passed << " passed, "
                 << rejected << " rejected\n";
+        }
+        out << "\n### Config eligibility\n\n"
+            << "| Config | Eligible | Selected | Gate | "
+               "Failed mandatory profile | Rejection/exclusion reason | "
+               "Pareto | Category | Shortlist filename |\n"
+            << "|---|---|---|---|---|---|---|---|---|\n";
+        for (const auto &[config_id, decision] :
+             report_decisions) {
+            const auto selected = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const CapacityCase &value) {
+                    return value.config_id == config_id &&
+                        value.shortlisted;
+                });
+            const auto representative = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const CapacityCase &value) {
+                    return value.config_id == config_id &&
+                        (value.shortlisted ||
+                         value.mandatory_gates_passed);
+                });
+            out << "|" << config_id
+                << "|" << (decision.eligible ? "Yes" : "No")
+                << "|" << (selected != manifest.cases.end()
+                                ? "Yes" : "No")
+                << "|" << (decision.eligible
+                                ? "Passed"
+                                : decision.incomplete
+                                    ? "Incomplete" : "Rejected")
+                << "|" << decision.failed_mandatory_profile
+                << "|" << (decision.eligible
+                                ? ""
+                                : decision.reason)
+                << "|" << (representative != manifest.cases.end() &&
+                                representative->pareto
+                                ? "Yes" : "No")
+                << "|" << (representative != manifest.cases.end()
+                                ? representative->category : "")
+                << "|" << (selected != manifest.cases.end()
+                                ? candidate_filename(*selected) : "")
+                << "|\n";
         }
         out << "\n## C. Pareto frontier\n\n"
             << "| Config | Block | Bits | Signal | Repair | Resolution | "
@@ -2965,16 +3578,26 @@ void write_reports(
         if (!out)
             throw std::runtime_error(
                 "could not write Capacity Lab JSON report");
-        uint64_t passed = 0;
+        uint64_t eligible = 0;
         uint64_t rejected = 0;
+        uint64_t incomplete = 0;
         uint64_t pareto = 0;
         uint64_t shortlist = 0;
+        std::set<std::string> config_ids;
         for (const auto &c : manifest.cases) {
-            passed += c.mandatory_gates_passed;
-            rejected += c.state == CaseState::Rejected ||
-                        c.state == CaseState::Failed;
+            config_ids.insert(c.config_id);
             pareto += c.pareto;
             shortlist += c.shortlisted;
+        }
+        std::vector<EligibilityDecision> decisions;
+        for (const auto &config_id : config_ids) {
+            auto decision =
+                evaluate_shortlist_eligibility(
+                    manifest, config_id);
+            eligible += decision.eligible;
+            rejected += decision.rejected;
+            incomplete += decision.incomplete;
+            decisions.push_back(std::move(decision));
         }
         out << "{\n"
             << "  \"experiment_id\": "
@@ -2982,10 +3605,69 @@ void write_reports(
             << "  \"schema_version\": "
             << manifest.schema_version << ",\n"
             << "  \"cases\": " << manifest.cases.size() << ",\n"
-            << "  \"passed\": " << passed << ",\n"
+            << "  \"configs\": " << config_ids.size() << ",\n"
+            << "  \"eligible\": " << eligible << ",\n"
             << "  \"rejected\": " << rejected << ",\n"
+            << "  \"incomplete\": " << incomplete << ",\n"
             << "  \"pareto\": " << pareto << ",\n"
             << "  \"shortlisted\": " << shortlist << ",\n"
+            << "  \"config_decisions\": [";
+        bool first_decision = true;
+        for (const auto &decision : decisions) {
+            const auto representative = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const CapacityCase &value) {
+                    return value.config_id == decision.config_id &&
+                        (value.shortlisted ||
+                         value.mandatory_gates_passed);
+                });
+            if (!first_decision) out << ",";
+            first_decision = false;
+            out << "\n    {\"config_id\": "
+                << q(decision.config_id)
+                << ", \"eligible\": "
+                << (decision.eligible ? "true" : "false")
+                << ", \"selected_for_shortlist\": "
+                << (representative != manifest.cases.end() &&
+                        representative->shortlisted
+                        ? "true" : "false")
+                << ", \"incomplete\": "
+                << (decision.incomplete ? "true" : "false")
+                << ", \"failed_mandatory_profile\": "
+                << q(decision.failed_mandatory_profile)
+                << ", \"rejection_reason\": "
+                << q(decision.eligible ? "" : decision.reason)
+                << ", \"pareto\": "
+                << (representative != manifest.cases.end() &&
+                        representative->pareto
+                        ? "true" : "false")
+                << ", \"category\": "
+                << q(representative != manifest.cases.end()
+                         ? representative->category : "")
+                << ", \"shortlist_filename\": "
+                << q(representative != manifest.cases.end() &&
+                         representative->shortlisted
+                         ? candidate_filename(*representative)
+                         : "")
+                << "}";
+        }
+        if (!first_decision) out << "\n  ";
+        out << "],\n"
+            << "  \"shortlist_exclusions\": [";
+        bool first_exclusion = true;
+        for (const auto &decision : decisions) {
+            if (decision.eligible) continue;
+            if (!first_exclusion) out << ",";
+            first_exclusion = false;
+            out << "\n    {\"config_id\": "
+                << q(decision.config_id)
+                << ", \"failed_mandatory_profile\": "
+                << q(decision.failed_mandatory_profile)
+                << ", \"reason\": " << q(decision.reason)
+                << "}";
+        }
+        if (!first_exclusion) out << "\n  ";
+        out << "],\n"
             << "  \"youtube_proven\": false\n"
             << "}\n";
     }

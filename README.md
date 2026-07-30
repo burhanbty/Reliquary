@@ -341,6 +341,8 @@ media_storage capacitylab run --preset smoke --output C:\vsx-capacity
 media_storage capacitylab run --preset staged --output C:\vsx-capacity --max-cases 64 --max-disk-gib 20
 media_storage capacitylab resume --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json
 media_storage capacitylab shortlist --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --max-videos 8
+media_storage capacitylab validate --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json
+media_storage capacitylab validate --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --repair
 media_storage capacitylab analyze-folder --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --folder C:\Downloads\youtube --session-label "Initial YouTube test"
 media_storage capacitylab report --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --format markdown
 
@@ -372,6 +374,21 @@ are mapped by config ID in the filename, decoded with the manifest-provided
 experimental configuration, deduplicated by file SHA-256, and recorded as a
 real observation. A wrong config must fail packet extraction or exact SHA; it
 cannot silently produce a valid result.
+
+Shortlist eligibility is evaluated once at config-ID level. For Stage 3,
+light, medium, and heavy resolution-preserving H.264 results are mandatory;
+one missing, incomplete, metadata-invalid, below-threshold, or SHA-mismatched
+result makes the whole config ineligible. The 720p downscale observation is
+explicitly non-gating. Pareto and category selection run only after this
+filter.
+
+`capacitylab validate` is read-only unless `--repair` is supplied. It detects
+rejected-plus-shortlisted conflicts, missing mandatory profiles, ineligible
+Pareto entries, and manifest/folder shortlist mismatches. Shortlist
+regeneration backs up the manifest, builds the replacement in a temporary
+sibling directory, archives the previous shortlist, and swaps the new
+directory into place only after every selected artifact and sidecar is ready.
+Markdown, JSON, CSV, GUI, and CLI consume the same derived eligibility fields.
 
 JSON, CSV, and Markdown reports distinguish `Local-only candidate`,
 `Ready for real YouTube test`, `Real YouTube exact pass`,

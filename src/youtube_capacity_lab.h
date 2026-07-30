@@ -185,9 +185,14 @@ struct CapacityCase {
     bool dominated = false;
     bool pareto = false;
     bool shortlisted = false;
+    bool eligible_for_shortlist = false;
+    bool incomplete = false;
     std::string category;
     std::string rejection_reason;
     std::string shortlist_reason;
+    std::string shortlist_exclusion_reason;
+    std::string failed_mandatory_profile;
+    std::string local_gate_status;
     std::vector<CaseResult> results;
 };
 
@@ -199,9 +204,52 @@ struct ExperimentManifest {
     Preset preset = Preset::Smoke;
     ExperimentConfig baseline;
     std::size_t maximum_cases = kDefaultMaximumCases;
+    std::size_t maximum_shortlist_videos = 8;
     uint64_t maximum_disk_bytes = kDefaultMaximumDiskBytes;
     bool cancelled = false;
+    std::vector<std::string> mandatory_stage1_profiles{
+        "yt-sim-1080p-medium"};
+    std::vector<std::string> mandatory_stage3_profiles{
+        "yt-sim-1080p-light",
+        "yt-sim-1080p-medium",
+        "yt-sim-1080p-heavy"};
     std::vector<CapacityCase> cases;
+};
+
+struct EligibilityDecision {
+    std::string config_id;
+    bool eligible = false;
+    bool rejected = false;
+    bool incomplete = false;
+    std::string failed_mandatory_profile;
+    std::string reason;
+    std::optional<std::size_t> representative_case;
+};
+
+struct ValidationIssue {
+    std::string code;
+    std::string config_id;
+    std::string detail;
+};
+
+struct ValidationReport {
+    std::size_t total_configs = 0;
+    std::size_t eligible_configs = 0;
+    std::size_t rejected_configs = 0;
+    std::size_t incomplete_configs = 0;
+    std::size_t pareto_configs = 0;
+    std::size_t shortlisted_configs = 0;
+    std::vector<ValidationIssue> issues;
+};
+
+struct ShortlistRegenerationReport {
+    std::size_t eligible_configs = 0;
+    std::size_t selected_configs = 0;
+    std::vector<std::string> rejected_configs;
+    std::vector<std::string> removed_files;
+    std::vector<std::string> created_files;
+    std::filesystem::path manifest_backup;
+    std::filesystem::path previous_shortlist_archive;
 };
 
 struct RunOptions {
@@ -271,13 +319,21 @@ void inverse_dct(const std::vector<double> &coefficients, int block_size,
 void update_pareto_and_categories(std::vector<CapacityCase> &cases);
 [[nodiscard]] std::vector<std::size_t> select_shortlist(
     std::vector<CapacityCase> &cases, std::size_t maximum_videos);
+[[nodiscard]] EligibilityDecision evaluate_shortlist_eligibility(
+    const ExperimentManifest &manifest, const std::string &config_id);
+void recompute_experiment_decisions(ExperimentManifest &manifest);
+[[nodiscard]] std::vector<std::size_t> select_shortlist(
+    ExperimentManifest &manifest, std::size_t maximum_videos);
 
 [[nodiscard]] ExperimentManifest run(
     const RunOptions &options, const ProgressCallback &progress = {});
 void resume(const std::filesystem::path &manifest_path,
             const ProgressCallback &progress = {});
-void generate_shortlist(const std::filesystem::path &manifest_path,
-                        std::size_t maximum_videos = 8);
+[[nodiscard]] ShortlistRegenerationReport generate_shortlist(
+    const std::filesystem::path &manifest_path,
+    std::size_t maximum_videos = 8);
+[[nodiscard]] ValidationReport validate_experiment(
+    const std::filesystem::path &manifest_path);
 void analyze_folder(const std::filesystem::path &manifest_path,
                     const std::filesystem::path &folder,
                     const std::string &session_label = {});
