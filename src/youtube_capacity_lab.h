@@ -30,7 +30,7 @@ inline constexpr const char *kModulation2Version =
 inline constexpr const char *kThresholdVersion =
     "nearest-level-v1";
 
-enum class Preset { Smoke, Staged, Custom };
+enum class Preset { Smoke, Staged, Boundary1080p, Custom };
 enum class CaseState {
     Pending,
     Running,
@@ -142,9 +142,13 @@ struct RecoveryTelemetry {
 };
 
 struct CaseResult {
+    std::string config_id;
+    std::string boundary_case_id;
     std::string source_type;
     std::string simulation_profile;
     std::string analysis_session_label;
+    std::string imported_at;
+    std::string analyzed_at;
     std::string analyzed_file_sha256;
     std::string codec;
     int returned_width = 0;
@@ -165,13 +169,17 @@ struct CaseResult {
 
 struct CapacityCase {
     std::string case_id;
+    std::string boundary_case_id;
     std::string config_id;
     int stage = 1;
     ExperimentConfig config;
     CapacityMetrics capacity;
+    double boundary_density_gain = 0.0;
     uint64_t requested_payload_bytes = 0;
     uint64_t effective_payload_bytes = 0;
     uint64_t payload_seed = 0;
+    std::string deterministic_stream_id;
+    std::string payload_family_id;
     std::string source_sha256;
     std::string payload_path;
     std::string master_path;
@@ -193,6 +201,12 @@ struct CapacityCase {
     std::string shortlist_exclusion_reason;
     std::string failed_mandatory_profile;
     std::string local_gate_status;
+    std::string local_evidence_status;
+    std::string real_youtube_status;
+    std::string overall_evidence_status;
+    std::string last_real_analysis_event;
+    bool production_codec_path = false;
+    bool simulation_warning = false;
     std::vector<CaseResult> results;
 };
 
@@ -207,6 +221,7 @@ struct ExperimentManifest {
     std::size_t maximum_shortlist_videos = 8;
     uint64_t maximum_disk_bytes = kDefaultMaximumDiskBytes;
     bool cancelled = false;
+    bool include_simulation_failures = false;
     std::vector<std::string> mandatory_stage1_profiles{
         "yt-sim-1080p-medium"};
     std::vector<std::string> mandatory_stage3_profiles{
@@ -266,6 +281,7 @@ struct RunOptions {
     std::size_t maximum_shortlist_videos = 8;
     bool allow_low_disk = false;
     bool estimate_only = false;
+    bool include_simulation_failures = false;
 };
 
 struct Preflight {
@@ -287,6 +303,43 @@ struct Progress {
     int stage = 0;
     std::string active_config_id;
     uint64_t disk_used_bytes = 0;
+};
+
+enum class DensityEvidence { Untested, Pass, Fail };
+
+struct BoundaryDensityResult {
+    double gain = 0.0;
+    std::size_t profiles_tested = 0;
+    std::size_t exact_passes = 0;
+    std::size_t failures = 0;
+    double best_margin_percent = 0.0;
+    DensityEvidence evidence = DensityEvidence::Untested;
+};
+
+struct BoundaryInference {
+    std::string baseline_status = "Not uploaded/tested";
+    std::vector<BoundaryDensityResult> densities;
+    std::optional<double> highest_exact_pass;
+    std::optional<double> lowest_failure_above;
+    std::string status = "Insufficient observations";
+    std::string bracket = "Insufficient observations";
+    bool non_monotonic = false;
+    bool retest_required = true;
+    std::string safe_candidate_config_id;
+    std::string next_experiment;
+};
+
+struct RepairComparison {
+    int block_size = 0;
+    int bits_per_block = 0;
+    std::string repair2_config_id;
+    std::string repair5_config_id;
+    double recovery_delta_percent = 0.0;
+    double margin_delta_percent = 0.0;
+    int64_t candidate_size_delta = 0;
+    double duration_delta_seconds = 0.0;
+    std::string sha_effect;
+    std::string inference;
 };
 
 using ProgressCallback = std::function<bool(const Progress &)>;
@@ -313,6 +366,7 @@ void inverse_dct(const std::vector<double> &coefficients, int block_size,
 
 [[nodiscard]] std::vector<ExperimentConfig> smoke_configs();
 [[nodiscard]] std::vector<ExperimentConfig> stage1_configs();
+[[nodiscard]] std::vector<ExperimentConfig> boundary_1080p_configs();
 [[nodiscard]] std::vector<CapacityCase> build_initial_cases(
     const RunOptions &options, const std::string &experiment_id);
 [[nodiscard]] Preflight estimate(const RunOptions &options);
@@ -337,6 +391,16 @@ void resume(const std::filesystem::path &manifest_path,
 void analyze_folder(const std::filesystem::path &manifest_path,
                     const std::filesystem::path &folder,
                     const std::string &session_label = {});
+[[nodiscard]] BoundaryInference infer_boundary(
+    const ExperimentManifest &manifest);
+[[nodiscard]] std::vector<RepairComparison> compare_boundary_repairs(
+    const ExperimentManifest &manifest);
+[[nodiscard]] std::string local_evidence_status(
+    const CapacityCase &test_case);
+[[nodiscard]] std::string real_youtube_status(
+    const CapacityCase &test_case);
+[[nodiscard]] std::string overall_evidence_status(
+    const CapacityCase &test_case);
 
 void write_manifest_atomic(const ExperimentManifest &manifest,
                            const std::filesystem::path &path);

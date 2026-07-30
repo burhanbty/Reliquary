@@ -278,9 +278,9 @@ static void print_usage(const char *program) {
         << "  " << program
         << " testlab report --suite <manifest.json> --format <json|csv|markdown>\n"
         << "  " << program
-        << " capacitylab estimate --preset <smoke|staged|custom> --output <folder>\n"
+        << " capacitylab estimate --preset <smoke|staged|boundary-1080p|custom> --output <folder>\n"
         << "  " << program
-        << " capacitylab run --preset <smoke|staged|custom> --output <folder>\n"
+        << " capacitylab run --preset <smoke|staged|boundary-1080p|custom> --output <folder>\n"
         << "    [--block-size 8,6,4] [--bits-per-block 1,2] "
            "[--signal 0.75,1.0,1.25,1.5]\n"
         << "    [--repair-percent 0,1,2,5] "
@@ -300,6 +300,11 @@ static void print_usage(const char *program) {
         << "  " << program
         << " capacitylab report --manifest <manifest.json> "
            "--format <json|csv|markdown>\n"
+        << "  " << program
+        << " capacitylab boundary-report --manifest <manifest.json> "
+           "--format <json|csv|markdown>\n"
+        << "  " << program
+        << " capacitylab boundary-status --manifest <manifest.json>\n"
         << "\nTest Lab only supports Resilient mode. Local simulation is not "
            "a guaranteed copy of YouTube processing.\n";
 }
@@ -867,11 +872,14 @@ static int do_capacitylab(const int argc, char *argv[]) {
             if (value == "smoke") options.preset = Preset::Smoke;
             else if (value == "staged")
                 options.preset = Preset::Staged;
+            else if (value == "boundary-1080p")
+                options.preset = Preset::Boundary1080p;
             else if (value == "custom")
                 options.preset = Preset::Custom;
             else
                 throw std::invalid_argument(
-                    "capacity preset must be smoke, staged, or custom");
+                    "capacity preset must be smoke, staged, "
+                    "boundary-1080p, or custom");
         } else if (arg == "--output") {
             options.output_root = require_value("--output");
         } else if (arg == "--manifest" || arg == "--suite") {
@@ -964,6 +972,9 @@ static int do_capacitylab(const int argc, char *argv[]) {
             options.estimate_only = true;
         } else if (arg == "--allow-low-disk") {
             options.allow_low_disk = true;
+        } else if (arg ==
+                   "--include-simulation-failures") {
+            options.include_simulation_failures = true;
         } else if (arg == "--repair") {
             repair_manifest = true;
         } else {
@@ -1019,7 +1030,10 @@ static int do_capacitylab(const int argc, char *argv[]) {
                 !std::filesystem::exists(cancel_file);
         });
         const auto path =
-            options.output_root / "youtube_capacity_lab" /
+            options.output_root /
+            (options.preset == Preset::Boundary1080p
+                 ? "youtube_boundary_lab"
+                 : "youtube_capacity_lab") /
             result.experiment_id / "manifest.json";
         std::cout << "CAPACITY_MANIFEST "
                   << std::filesystem::absolute(path).string()
@@ -1109,13 +1123,56 @@ static int do_capacitylab(const int argc, char *argv[]) {
             manifest_path, returned_folder, session_label);
         return 0;
     }
-    if (subcommand == "report") {
+    if (subcommand == "boundary-status") {
+        const auto manifest = read_manifest(manifest_path);
+        if (manifest.preset != Preset::Boundary1080p)
+            throw std::invalid_argument(
+                "boundary-status requires a boundary-1080p manifest");
+        const auto status = infer_boundary(manifest);
+        std::cout
+            << "BOUNDARY_BASELINE "
+            << status.baseline_status << "\n";
+        for (const auto &density : status.densities) {
+            const char *evidence =
+                density.evidence == DensityEvidence::Pass
+                    ? "pass"
+                    : density.evidence == DensityEvidence::Fail
+                        ? "fail" : "untested";
+            std::cout << "BOUNDARY_DENSITY "
+                << std::fixed << std::setprecision(2)
+                << density.gain << "x " << evidence
+                << " profiles=" << density.profiles_tested
+                << " exact=" << density.exact_passes
+                << " failures=" << density.failures << "\n";
+        }
+        std::cout << "BOUNDARY_HIGHEST_EXACT "
+            << (status.highest_exact_pass
+                    ? std::to_string(
+                        *status.highest_exact_pass) + "x"
+                    : "none") << "\n"
+            << "BOUNDARY_LOWEST_FAILURE "
+            << (status.lowest_failure_above
+                    ? std::to_string(
+                        *status.lowest_failure_above) + "x"
+                    : "none") << "\n"
+            << "BOUNDARY_BRACKET " << status.bracket << "\n"
+            << "BOUNDARY_NON_MONOTONIC "
+            << (status.non_monotonic ? "yes" : "no") << "\n"
+            << "BOUNDARY_NEXT " << status.next_experiment << "\n";
+        return 0;
+    }
+    if (subcommand == "report" ||
+        subcommand == "boundary-report") {
         if (report_format != "markdown" &&
             report_format != "json" &&
             report_format != "csv")
             throw std::invalid_argument(
                 "report format must be markdown, json, or csv");
         const auto manifest = read_manifest(manifest_path);
+        if (subcommand == "boundary-report" &&
+            manifest.preset != Preset::Boundary1080p)
+            throw std::invalid_argument(
+                "boundary-report requires a boundary-1080p manifest");
         write_reports(
             manifest,
             std::filesystem::absolute(manifest_path)

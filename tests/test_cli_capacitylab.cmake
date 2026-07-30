@@ -28,6 +28,27 @@ endif()
 
 execute_process(
     COMMAND "${CLI}" capacitylab estimate
+            --preset boundary-1080p
+            --output "${TEST_ROOT}"
+    RESULT_VARIABLE boundary_estimate_result
+    OUTPUT_VARIABLE boundary_estimate_output
+    ERROR_VARIABLE boundary_estimate_error
+)
+if(NOT boundary_estimate_result EQUAL 0)
+    message(FATAL_ERROR
+        "Boundary estimate failed: ${boundary_estimate_error}")
+endif()
+if(NOT boundary_estimate_output MATCHES "Staged maximum cases: 7")
+    message(FATAL_ERROR
+        "Boundary preset did not report exactly seven cases")
+endif()
+if(NOT boundary_estimate_output MATCHES "Estimated transcodes: 21")
+    message(FATAL_ERROR
+        "Boundary preset did not report three simulations per case")
+endif()
+
+execute_process(
+    COMMAND "${CLI}" capacitylab estimate
             --preset custom
             --output "${TEST_ROOT}"
             --block-size 8,6,4
@@ -80,4 +101,27 @@ file(SHA256 "${validate_manifest}" validate_hash_after)
 if(NOT validate_hash_before STREQUAL validate_hash_after)
     message(FATAL_ERROR
         "Read-only Capacity validate modified the manifest")
+endif()
+
+set(boundary_manifest "${validate_root}/boundary-manifest.json")
+file(READ "${validate_manifest}" boundary_manifest_text)
+string(REPLACE "\"preset\": \"smoke\""
+               "\"preset\": \"boundary-1080p\""
+               boundary_manifest_text "${boundary_manifest_text}")
+file(WRITE "${boundary_manifest}" "${boundary_manifest_text}")
+execute_process(
+    COMMAND "${CLI}" capacitylab boundary-status
+            --manifest "${boundary_manifest}"
+    RESULT_VARIABLE boundary_status_result
+    OUTPUT_VARIABLE boundary_status_output
+    ERROR_VARIABLE boundary_status_error
+)
+if(NOT boundary_status_result EQUAL 0)
+    message(FATAL_ERROR
+        "Boundary status failed: ${boundary_status_error}")
+endif()
+if(NOT boundary_status_output MATCHES
+       "BOUNDARY_BRACKET Insufficient observations")
+    message(FATAL_ERROR
+        "Boundary status invented a result without observations")
 endif()

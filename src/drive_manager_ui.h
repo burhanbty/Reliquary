@@ -395,6 +395,7 @@ private:
     QDoubleSpinBox *capacityMaximumDiskSpin = nullptr;
     QSpinBox *capacityShortlistSpin = nullptr;
     QCheckBox *capacityEstimateOnlyCheck = nullptr;
+    QCheckBox *capacityIncludeSimulationFailuresCheck = nullptr;
     QLabel *capacityEstimateLabel = nullptr;
     QProgressBar *capacityProgress = nullptr;
     QTableWidget *capacityResults = nullptr;

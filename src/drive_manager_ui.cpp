@@ -884,7 +884,8 @@ void DriveManagerUI::setupUI() {
     auto *capacityGrid = new QGridLayout(capacityControls);
     capacityPresetCombo = new QComboBox();
     capacityPresetCombo->addItems(
-        {"Smoke", "Staged Sweep", "Custom"});
+        {"Smoke", "Staged Sweep", "YouTube Boundary 1080p",
+         "Custom"});
     capacityOutputEdit = new QLineEdit();
     capacityOutputEdit->setPlaceholderText(
         "Experiment parent output directory");
@@ -916,6 +917,9 @@ void DriveManagerUI::setupUI() {
     capacityShortlistSpin->setValue(8);
     capacityEstimateOnlyCheck =
         new QCheckBox("Estimate only (write no videos)");
+    capacityIncludeSimulationFailuresCheck =
+        new QCheckBox(
+            "Include simulation failures in boundary test");
     capacityEstimateLabel = new QLabel(
         "Smoke: 12 local cases. Staged: 24 geometry/modulation cases, "
         "then at most 4 repair families and 3 resolution/profile "
@@ -953,11 +957,13 @@ void DriveManagerUI::setupUI() {
     capacityGrid->addWidget(new QLabel("Shortlist limit:"), 6, 0);
     capacityGrid->addWidget(capacityShortlistSpin, 6, 1);
     capacityGrid->addWidget(capacityEstimateOnlyCheck, 6, 2, 1, 2);
-    capacityGrid->addWidget(capacityEstimateLabel, 7, 0, 1, 5);
-    capacityGrid->addWidget(capacityEstimateButton, 8, 0);
-    capacityGrid->addWidget(capacityStartButton, 8, 1);
-    capacityGrid->addWidget(capacityResumeButton, 8, 2);
-    capacityGrid->addWidget(capacityCancelButton, 8, 3);
+    capacityGrid->addWidget(
+        capacityIncludeSimulationFailuresCheck, 7, 2, 1, 2);
+    capacityGrid->addWidget(capacityEstimateLabel, 8, 0, 1, 5);
+    capacityGrid->addWidget(capacityEstimateButton, 9, 0);
+    capacityGrid->addWidget(capacityStartButton, 9, 1);
+    capacityGrid->addWidget(capacityResumeButton, 9, 2);
+    capacityGrid->addWidget(capacityCancelButton, 9, 3);
     capacityLayout->addWidget(capacityControls);
 
     auto *capacityActions = new QGroupBox(
@@ -988,12 +994,12 @@ void DriveManagerUI::setupUI() {
     capacityProgress = new QProgressBar();
     capacityProgress->setRange(0, 100);
     capacityLayout->addWidget(capacityProgress);
-    capacityResults = new QTableWidget(0, 16);
+    capacityResults = new QTableWidget(0, 19);
     capacityResults->setHorizontalHeaderLabels({
-        "Config", "Stage", "Block", "Bits", "Signal", "Repair",
+        "Case", "Config", "Stage", "Block", "Bits", "Signal", "Repair",
         "Resolution", "Useful KiB/s", "Gain", "Candidate",
         "Recovery", "Margin", "BER/SER", "SHA", "Pareto",
-        "Status / Shortlist reason"});
+        "Local evidence", "Real YouTube", "Overall / Boundary"});
     capacityResults->horizontalHeader()->setSectionResizeMode(
         QHeaderView::ResizeToContents);
     capacityResults->horizontalHeader()->setStretchLastSection(true);
@@ -1003,17 +1009,44 @@ void DriveManagerUI::setupUI() {
     connect(capacityPresetCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](const int index) {
-        const bool custom = index == 2;
+        const bool boundary = index == 2;
+        const bool custom = index == 3;
         for (auto *edit : {capacityBlocksEdit, capacityBitsEdit,
                            capacitySignalsEdit, capacityRepairsEdit})
             edit->setEnabled(custom);
         capacityResolutionCombo->setEnabled(custom);
+        capacitySimulationCombo->setEnabled(!boundary);
+        capacityMaximumCasesSpin->setEnabled(!boundary);
+        capacityShortlistSpin->setEnabled(!boundary);
+        capacityIncludeSimulationFailuresCheck->setEnabled(boundary);
+        capacityShortlistButton->setEnabled(!boundary);
+        capacityEstimateButton->setText(
+            boundary ? "Estimate Boundary Sweep" : "Estimate");
+        capacityStartButton->setText(
+            boundary ? "Generate Boundary Videos" : "Start");
+        capacityReportButton->setText(
+            boundary ? "Refresh Boundary Report"
+                     : "Refresh Reports");
+        capacityOpenFolderButton->setText(
+            boundary ? "Open Boundary Folder"
+                     : "Open Experiment Folder");
+        capacityEstimateLabel->setText(
+            boundary
+                ? "B00-B06: exactly 7 videos, 1920x1080, 30 FPS, "
+                  "signal 1.00x. Matrix: 8x8/1-bit r5; 6x6/1-bit "
+                  "r2/r5; 8x8/2-bit r2/r5; 6x6/2-bit r5; "
+                  "4x4/1-bit r5. Use Estimate Boundary Sweep for "
+                  "disk sizing."
+                : "Smoke: 12 local cases. Staged: 24 geometry/"
+                  "modulation cases, then bounded repair and final "
+                  "profiles. Custom is explicit.");
     });
     capacityBlocksEdit->setEnabled(false);
     capacityBitsEdit->setEnabled(false);
     capacitySignalsEdit->setEnabled(false);
     capacityRepairsEdit->setEnabled(false);
     capacityResolutionCombo->setEnabled(false);
+    capacityIncludeSimulationFailuresCheck->setEnabled(false);
     connect(capacityOutputBrowse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getExistingDirectory(
             this, "Capacity Lab output directory");
@@ -1036,6 +1069,8 @@ void DriveManagerUI::setupUI() {
             const QString preset =
                 capacityPresetCombo->currentIndex() == 0 ? "smoke" :
                 capacityPresetCombo->currentIndex() == 1 ? "staged" :
+                capacityPresetCombo->currentIndex() == 2
+                    ? "boundary-1080p" :
                 "custom";
             QStringList args{
                 "capacitylab", command, "--preset", preset,
@@ -1057,6 +1092,9 @@ void DriveManagerUI::setupUI() {
                      << capacityResolutionCombo->currentText();
             if (capacityEstimateOnlyCheck->isChecked())
                 args << "--estimate-only";
+            if (preset == "boundary-1080p" &&
+                capacityIncludeSimulationFailuresCheck->isChecked())
+                args << "--include-simulation-failures";
             return args;
         };
     connect(capacityEstimateButton, &QPushButton::clicked,
@@ -1091,12 +1129,18 @@ void DriveManagerUI::setupUI() {
             "capacitylab", "analyze-folder", "--manifest",
             capacityManifestEdit->text(), "--folder",
             capacityReturnedFolderEdit->text(),
-            "--session-label", "Initial YouTube test"});
+            "--session-label",
+            capacityPresetCombo->currentIndex() == 2
+                ? "Boundary initial YouTube test"
+                : "Initial YouTube test"});
     });
     connect(capacityReportButton, &QPushButton::clicked, this, [this] {
         if (capacityManifestEdit->text().isEmpty()) return;
         startTestLabProcess({
-            "capacitylab", "report", "--manifest",
+            "capacitylab",
+            capacityPresetCombo->currentIndex() == 2
+                ? "boundary-report" : "report",
+            "--manifest",
             capacityManifestEdit->text(), "--format", "markdown"});
     });
     connect(capacityOpenFolderButton, &QPushButton::clicked, this, [this] {
@@ -2387,6 +2431,13 @@ void DriveManagerUI::startTestLabProcess(
                         capacityProgress->setValue(completed);
                     }
                 }
+                if (capacityPresetCombo &&
+                    capacityPresetCombo->currentIndex() == 2 &&
+                    line.trimmed().startsWith(
+                        "Required with safety margin:"))
+                    capacityEstimateLabel->setText(
+                        "Boundary: exactly 7 videos; " +
+                        line.trimmed());
                 if (line.contains(
                         "This video has already been analyzed for this case."))
                     testLabDuplicateWarning->setText(
@@ -2690,6 +2741,9 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
                 status = failedProfile + ": " + status;
         }
         const QStringList values{
+            item.value("boundary_case_id").toString().isEmpty()
+                ? "-"
+                : item.value("boundary_case_id").toString(),
             item.value("config_id").toString(),
             QString::number(item.value("stage").toInt()),
             QString::number(item.value("block_width").toInt()),
@@ -2708,7 +2762,9 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
                     .toDouble() / 1024.0,
                 'f', 2),
             QString::number(
-                item.value("useful_payload_gain").toDouble(),
+                item.value("boundary_density_gain").toDouble() > 0.0
+                    ? item.value("boundary_density_gain").toDouble()
+                    : item.value("useful_payload_gain").toDouble(),
                 'f', 2),
             QString::number(
                 item.value("candidate_size")
@@ -2738,7 +2794,15 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
                 ? "Frontier"
                 : (item.value("dominated").toBool()
                        ? "Dominated" : "-"),
-            status
+            item.value("local_evidence_status").toString().isEmpty()
+                ? item.value("local_gate_status").toString()
+                : item.value("local_evidence_status").toString(),
+            item.value("real_youtube_status").toString().isEmpty()
+                ? "Not uploaded/tested"
+                : item.value("real_youtube_status").toString(),
+            item.value("overall_evidence_status").toString().isEmpty()
+                ? status
+                : item.value("overall_evidence_status").toString()
         };
         for (int column = 0; column < values.size(); ++column)
             capacityResults->setItem(

@@ -339,12 +339,17 @@ CLI examples:
 media_storage capacitylab estimate --preset smoke --output C:\vsx-capacity
 media_storage capacitylab run --preset smoke --output C:\vsx-capacity
 media_storage capacitylab run --preset staged --output C:\vsx-capacity --max-cases 64 --max-disk-gib 20
+media_storage capacitylab estimate --preset boundary-1080p --output C:\vsx-capacity
+media_storage capacitylab run --preset boundary-1080p --output C:\vsx-capacity --include-simulation-failures
 media_storage capacitylab resume --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json
 media_storage capacitylab shortlist --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --max-videos 8
 media_storage capacitylab validate --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json
 media_storage capacitylab validate --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --repair
 media_storage capacitylab analyze-folder --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --folder C:\Downloads\youtube --session-label "Initial YouTube test"
 media_storage capacitylab report --manifest C:\vsx-capacity\youtube_capacity_lab\<experiment>\manifest.json --format markdown
+media_storage capacitylab analyze-folder --manifest C:\vsx-capacity\youtube_boundary_lab\<experiment>\manifest.json --folder C:\Downloads\youtube --session-label "Boundary initial YouTube test"
+media_storage capacitylab boundary-report --manifest C:\vsx-capacity\youtube_boundary_lab\<experiment>\manifest.json --format markdown
+media_storage capacitylab boundary-status --manifest C:\vsx-capacity\youtube_boundary_lab\<experiment>\manifest.json
 
 media_storage capacitylab run --preset custom --output C:\vsx-capacity `
   --block-size 8,6,4 --bits-per-block 1,2 `
@@ -397,6 +402,41 @@ JSON, CSV, and Markdown reports distinguish `Local-only candidate`,
 can change over time, and 720p downscale remains an unsupported
 resolution-change case, so real initial/24-hour/7-day/30-day observations are
 still required before any production-profile decision.
+
+### YouTube Boundary 1080p
+
+`boundary-1080p` is a separate, fixed seven-video experiment that reuses the
+Capacity Lab config, packet, streaming-payload, observation, duplicate
+prevention, and returned-folder analysis machinery. Every run creates a new
+`youtube_boundary_lab/<experiment-id>` folder and never changes an existing
+Capacity Lab experiment.
+
+| Case | Geometry | Bits/block | Signal | Repair | Approx. gain |
+|---|---|---:|---:|---:|---:|
+| B00 | 8x8 | 1 | 1.00x | 5% | 1.00x |
+| B01 | 6x6 | 1 | 1.00x | 2% | 1.77x |
+| B02 | 6x6 | 1 | 1.00x | 5% | 1.77x |
+| B03 | 8x8 | 2 | 1.00x | 2% | 2.00x |
+| B04 | 8x8 | 2 | 1.00x | 5% | 2.00x |
+| B05 | 6x6 | 2 | 1.00x | 5% | 3.62x |
+| B06 | 4x4 | 1 | 1.00x | 5% | 4.00x |
+
+All cases are 1920x1080 at 30 FPS with at least 60 real data frames. Repair
+pairs share the same deterministic source payload and SHA-256. B00 is asserted
+against the production 8x8/1-bit/1.00x/5% configuration before encoding.
+Master and upload-candidate exactness plus media/timestamp validity are hard
+local gates. Light, medium, and heavy H.264 simulations are retained as
+separate diagnostic evidence. `--include-simulation-failures` may export an
+otherwise locally exact candidate with a visible simulation warning; it never
+bypasses the hard local gates.
+
+The generated `youtube_upload` directory contains the upload checklist,
+locally valid MP4 files, and JSON sidecars. Upload and download remain manual.
+Real YouTube evidence stays separate from local evidence. The central
+inference refuses to report a boundary when B00 fails, observations are
+missing, or results are non-monotonic. A safe candidate additionally requires
+a 5% repair profile, positive (preferably at least 1%) recovery margin, and
+exact passes in at least two differently labelled sessions.
 
 ### Performance profiling
 

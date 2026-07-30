@@ -91,6 +91,92 @@ ExperimentManifest staged_profile_manifest(
     return manifest;
 }
 
+ExperimentManifest boundary_manifest() {
+    RunOptions options;
+    options.preset = Preset::Boundary1080p;
+    options.maximum_cases = 7;
+    ExperimentManifest manifest;
+    manifest.experiment_id = "BOUNDARY";
+    manifest.created_at = "2026-07-30T00:00:00Z";
+    manifest.preset = Preset::Boundary1080p;
+    manifest.baseline = production_baseline_config();
+    manifest.maximum_cases = 7;
+    manifest.maximum_shortlist_videos = 7;
+    manifest.cases = build_initial_cases(options, "BOUNDARY");
+    for (auto &test_case : manifest.cases) {
+        test_case.state = CaseState::Passed;
+        test_case.mandatory_gates_passed = true;
+        auto local = local_case(
+            test_case.config, 1, "yt-sim-1080p-medium");
+        test_case.results = local.results;
+        test_case.results.back().source_type = "local-simulation";
+        test_case.results.back().simulation_profile =
+            "yt-sim-1080p-medium";
+        CaseResult candidate = test_case.results.back();
+        candidate.source_type = "upload-candidate";
+        test_case.results.insert(
+            test_case.results.begin() + 1, candidate);
+    }
+    return manifest;
+}
+
+double boundary_gain(const CapacityCase &test_case) {
+    if (test_case.config.block_width == 8 &&
+        test_case.config.bits_per_block == 1)
+        return 1.00;
+    if (test_case.config.block_width == 6 &&
+        test_case.config.bits_per_block == 1)
+        return 1.77;
+    if (test_case.config.block_width == 8 &&
+        test_case.config.bits_per_block == 2)
+        return 2.00;
+    if (test_case.config.block_width == 6 &&
+        test_case.config.bits_per_block == 2)
+        return 3.62;
+    return 4.00;
+}
+
+void add_real_observation(
+    CapacityCase &test_case, const bool pass,
+    const std::string &session = "Boundary initial YouTube test",
+    const bool correct_resolution = true,
+    const double margin = 2.0) {
+    CaseResult result;
+    result.source_type = "real-youtube-roundtrip";
+    result.analysis_session_label = session;
+    result.analyzed_file_sha256 =
+        test_case.config_id + session;
+    result.codec = "h264";
+    result.returned_width =
+        correct_resolution
+            ? test_case.config.resolution_width : 1280;
+    result.returned_height =
+        correct_resolution
+            ? test_case.config.resolution_height : 720;
+    result.returned_fps = 30.0;
+    result.metadata_valid = correct_resolution;
+    result.decode_completed = true;
+    result.sha256_match = pass;
+    result.telemetry.required_packet_threshold = 100;
+    result.telemetry.valid_unique_packets =
+        pass ? 102 : 80;
+    result.telemetry.recovery_margin_packets =
+        pass ? 2 : -20;
+    result.telemetry.recovery_margin_percent =
+        pass ? margin : -20.0;
+    result.telemetry.packet_recovery_percent =
+        pass ? 100.0 : 80.0;
+    test_case.results.push_back(std::move(result));
+}
+
+void observe_density(
+    ExperimentManifest &manifest, const double gain,
+    const bool pass) {
+    for (auto &test_case : manifest.cases)
+        if (std::abs(boundary_gain(test_case) - gain) < 0.001)
+            add_real_observation(test_case, pass);
+}
+
 } // namespace
 
 TEST(CapacityConfig, CanonicalIdIsStable) {
@@ -728,4 +814,300 @@ TEST(CapacityPreflight, FullMatrixRequiresExplicitCaseLimit) {
     options.maximum_cases = 64;
     EXPECT_THROW((void) build_initial_cases(options, "too-many"),
                  std::invalid_argument);
+}
+
+TEST(BoundaryPreset, HasExactlySevenDeterministic1080pCases) {
+    RunOptions options;
+    options.preset = Preset::Boundary1080p;
+    options.maximum_cases = 7;
+    const auto cases =
+        build_initial_cases(options, "BOUNDARY");
+    ASSERT_EQ(cases.size(), 7U);
+    const std::array<std::string, 7> ids{
+        "B00", "B01", "B02", "B03",
+        "B04", "B05", "B06"};
+    const std::array<double, 7> gains{
+        1.00, 1.77, 1.77, 2.00, 2.00, 3.62, 4.00};
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        EXPECT_EQ(cases[i].boundary_case_id, ids[i]);
+        EXPECT_EQ(cases[i].case_id, ids[i]);
+        EXPECT_EQ(cases[i].config.resolution_width, 1920);
+        EXPECT_EQ(cases[i].config.resolution_height, 1080);
+        EXPECT_EQ(cases[i].config.signal_milli, 1000);
+        EXPECT_EQ(cases[i].config_id,
+                  cases[i].config.config_id());
+        EXPECT_DOUBLE_EQ(
+            cases[i].boundary_density_gain, gains[i]);
+    }
+}
+
+TEST(BoundaryPreset, MatrixExcludes4kAndFourByFourTwoBit) {
+    const auto configs = boundary_1080p_configs();
+    ASSERT_EQ(configs.size(), 7U);
+    for (const auto &config : configs) {
+        EXPECT_EQ(config.resolution_height, 1080);
+        EXPECT_FALSE(config.block_width == 4 &&
+                     config.bits_per_block == 2);
+    }
+}
+
+TEST(BoundaryPreset, OrderedMatrixMatchesSpecification) {
+    const auto configs = boundary_1080p_configs();
+    const std::array<std::tuple<int, int, int>, 7> expected{
+        std::tuple{8, 1, 500},
+        std::tuple{6, 1, 200},
+        std::tuple{6, 1, 500},
+        std::tuple{8, 2, 200},
+        std::tuple{8, 2, 500},
+        std::tuple{6, 2, 500},
+        std::tuple{4, 1, 500}};
+    ASSERT_EQ(configs.size(), expected.size());
+    for (std::size_t i = 0; i < configs.size(); ++i) {
+        EXPECT_EQ(configs[i].block_width,
+                  std::get<0>(expected[i]));
+        EXPECT_EQ(configs[i].bits_per_block,
+                  std::get<1>(expected[i]));
+        EXPECT_EQ(configs[i].repair_basis_points,
+                  std::get<2>(expected[i]));
+    }
+}
+
+TEST(BoundaryPayload, RepairFamiliesSharePayloadIdentity) {
+    auto manifest = boundary_manifest();
+    EXPECT_EQ(manifest.cases[1].payload_family_id,
+              manifest.cases[2].payload_family_id);
+    EXPECT_EQ(manifest.cases[1].deterministic_stream_id,
+              manifest.cases[2].deterministic_stream_id);
+    EXPECT_EQ(manifest.cases[1].payload_seed,
+              manifest.cases[2].payload_seed);
+    EXPECT_EQ(manifest.cases[1].effective_payload_bytes,
+              manifest.cases[2].effective_payload_bytes);
+    EXPECT_EQ(manifest.cases[3].payload_family_id,
+              manifest.cases[4].payload_family_id);
+    EXPECT_EQ(manifest.cases[3].payload_seed,
+              manifest.cases[4].payload_seed);
+}
+
+TEST(BoundaryPayload, EveryCaseUsesAtLeastSixtyRealFrames) {
+    const auto manifest = boundary_manifest();
+    for (const auto &test_case : manifest.cases) {
+        EXPECT_GE(test_case.capacity.expected_frames, 60U);
+        EXPECT_GE(test_case.capacity.expected_duration_seconds, 2.0);
+        EXPECT_GE(test_case.effective_payload_bytes,
+                  test_case.capacity.minimum_payload_bytes);
+    }
+}
+
+TEST(BoundaryBaseline, UsesExactProductionConfiguration) {
+    const auto manifest = boundary_manifest();
+    ASSERT_FALSE(manifest.cases.empty());
+    EXPECT_TRUE(manifest.cases.front().production_codec_path);
+    EXPECT_EQ(
+        manifest.cases.front().config.canonical_serialization(),
+        production_baseline_config().canonical_serialization());
+}
+
+TEST(BoundaryInference, UntestedDoesNotInventBoundary) {
+    const auto result = infer_boundary(boundary_manifest());
+    EXPECT_EQ(result.status, "Insufficient observations");
+    EXPECT_EQ(result.bracket, "Insufficient observations");
+    EXPECT_EQ(result.baseline_status, "Not uploaded/tested");
+}
+
+TEST(BoundaryInference, BaselineFailureInvalidatesControl) {
+    auto manifest = boundary_manifest();
+    add_real_observation(manifest.cases.front(), false);
+    const auto result = infer_boundary(manifest);
+    EXPECT_EQ(result.status, "Invalid control result");
+    EXPECT_EQ(result.bracket, "Invalid control result");
+}
+
+TEST(BoundaryInference, BaselineOnlyPassBracketsAt177Failure) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    observe_density(manifest, 1.77, false);
+    const auto result = infer_boundary(manifest);
+    EXPECT_EQ(result.bracket,
+              "1.00x <= boundary < 1.77x");
+}
+
+TEST(BoundaryInference, Pass177Fail200CreatesBracket) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    observe_density(manifest, 1.77, true);
+    observe_density(manifest, 2.00, false);
+    EXPECT_EQ(infer_boundary(manifest).bracket,
+              "1.77x <= boundary < 2.00x");
+}
+
+TEST(BoundaryInference, Pass200Fail362CreatesBracket) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    observe_density(manifest, 1.77, true);
+    observe_density(manifest, 2.00, true);
+    observe_density(manifest, 3.62, false);
+    EXPECT_EQ(infer_boundary(manifest).bracket,
+              "2.00x <= boundary < 3.62x");
+}
+
+TEST(BoundaryInference, Pass362Fail400CreatesBracket) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    observe_density(manifest, 1.77, true);
+    observe_density(manifest, 2.00, true);
+    observe_density(manifest, 3.62, true);
+    observe_density(manifest, 4.00, false);
+    EXPECT_EQ(infer_boundary(manifest).bracket,
+              "3.62x <= boundary < 4.00x");
+}
+
+TEST(BoundaryInference, Pass400RequiresHigherSweep) {
+    auto manifest = boundary_manifest();
+    for (const double gain :
+         {1.00, 1.77, 2.00, 3.62, 4.00})
+        observe_density(manifest, gain, true);
+    const auto result = infer_boundary(manifest);
+    EXPECT_EQ(result.status, "At least 4.00x");
+    EXPECT_NE(result.next_experiment.find("above 4.00x"),
+              std::string::npos);
+}
+
+TEST(BoundaryInference, NonMonotonicIsInconclusive) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    observe_density(manifest, 1.77, false);
+    observe_density(manifest, 2.00, true);
+    const auto result = infer_boundary(manifest);
+    EXPECT_TRUE(result.non_monotonic);
+    EXPECT_EQ(result.status, "Non-monotonic / inconclusive");
+}
+
+TEST(BoundaryEvidence, WrongResolutionFailsRealGate) {
+    auto manifest = boundary_manifest();
+    add_real_observation(
+        manifest.cases.front(), true,
+        "Boundary initial YouTube test", false);
+    EXPECT_EQ(real_youtube_status(manifest.cases.front()),
+              "Real YouTube invalid resolution");
+    EXPECT_EQ(infer_boundary(manifest).status,
+              "Invalid control result");
+}
+
+TEST(BoundaryEvidence, LocalPassAndRealFailRemainSeparate) {
+    auto manifest = boundary_manifest();
+    add_real_observation(manifest.cases[1], false);
+    EXPECT_EQ(local_evidence_status(manifest.cases[1]),
+              "Local simulation pass");
+    EXPECT_EQ(real_youtube_status(manifest.cases[1]),
+              "Real YouTube SHA mismatch");
+    EXPECT_EQ(overall_evidence_status(manifest.cases[1]),
+              "Local candidate; Real YouTube failed");
+}
+
+TEST(BoundaryEvidence, InitialAndRepeatedExactPassDiffer) {
+    auto manifest = boundary_manifest();
+    auto &test_case = manifest.cases[2];
+    add_real_observation(
+        test_case, true, "Boundary initial YouTube test");
+    EXPECT_EQ(real_youtube_status(test_case),
+              "Real YouTube initial exact pass");
+    add_real_observation(
+        test_case, true, "Boundary 24-hour retest");
+    EXPECT_EQ(real_youtube_status(test_case),
+              "Real YouTube repeated exact pass");
+}
+
+TEST(BoundaryEvidence, SafeCandidateNeedsRepairFiveAndTwoSessions) {
+    auto manifest = boundary_manifest();
+    observe_density(manifest, 1.00, true);
+    auto &repair5 = manifest.cases[2];
+    add_real_observation(
+        repair5, true, "Boundary initial YouTube test", true, 2.0);
+    add_real_observation(
+        repair5, true, "Boundary 24-hour retest", true, 2.0);
+    const auto result = infer_boundary(manifest);
+    EXPECT_EQ(result.safe_candidate_config_id,
+              repair5.config_id);
+    EXPECT_FALSE(result.retest_required);
+}
+
+TEST(BoundaryRepair, ComparisonUsesMatchedPayloadFamilies) {
+    auto manifest = boundary_manifest();
+    manifest.cases[1].candidate_size = 1000;
+    manifest.cases[2].candidate_size = 1200;
+    add_real_observation(manifest.cases[1], false);
+    add_real_observation(manifest.cases[2], true);
+    const auto comparisons =
+        compare_boundary_repairs(manifest);
+    ASSERT_EQ(comparisons.size(), 2U);
+    EXPECT_EQ(comparisons.front().candidate_size_delta, 200);
+    EXPECT_GT(comparisons.front().margin_delta_percent, 0.0);
+}
+
+TEST(BoundaryReports, JsonCsvAndMarkdownAgreeWithoutEvidence) {
+    const auto root = unique_temp("boundary-reports");
+    std::filesystem::create_directories(root);
+    const auto manifest = boundary_manifest();
+    write_reports(manifest, root);
+    for (const auto &name : {
+             "boundary_report.md", "boundary_results.csv",
+             "boundary_summary.json"})
+        EXPECT_TRUE(std::filesystem::exists(root / name));
+    std::ifstream markdown(root / "boundary_report.md");
+    const std::string text{
+        std::istreambuf_iterator<char>(markdown),
+        std::istreambuf_iterator<char>()};
+    EXPECT_NE(text.find("Insufficient observations"),
+              std::string::npos);
+    EXPECT_NE(text.find("## H. Next experiment recommendation"),
+              std::string::npos);
+    markdown.close();
+    std::filesystem::remove_all(root);
+}
+
+TEST(BoundaryManifest, RoundtripPreservesBoundaryState) {
+    const auto root = unique_temp("boundary-manifest");
+    std::filesystem::create_directories(root);
+    auto manifest = boundary_manifest();
+    manifest.include_simulation_failures = true;
+    const auto path = root / "manifest.json";
+    write_manifest_atomic(manifest, path);
+    const auto loaded = read_manifest(path);
+    EXPECT_EQ(loaded.preset, Preset::Boundary1080p);
+    EXPECT_TRUE(loaded.include_simulation_failures);
+    ASSERT_EQ(loaded.cases.size(), 7U);
+    EXPECT_EQ(loaded.cases.front().boundary_case_id, "B00");
+    EXPECT_TRUE(loaded.cases.front().production_codec_path);
+    EXPECT_FALSE(
+        loaded.cases.front().deterministic_stream_id.empty());
+    std::filesystem::remove_all(root);
+}
+
+TEST(BoundaryPreflight, IsBoundedToSevenCases) {
+    RunOptions options;
+    options.preset = Preset::Boundary1080p;
+    options.output_root =
+        std::filesystem::temp_directory_path();
+    const auto result = estimate(options);
+    EXPECT_EQ(result.staged_maximum_cases, 7U);
+    EXPECT_EQ(result.estimated_transcodes, 21U);
+}
+
+TEST(CapacityRealEvidence,
+     ConfigLevelReportDoesNotHideRealFailureOnAnotherProfile) {
+    const auto root = unique_temp("capacity-real-evidence");
+    std::filesystem::create_directories(root);
+    auto config = config_for(8, 1);
+    auto manifest = staged_profile_manifest(config);
+    add_real_observation(manifest.cases.back(), false);
+    write_reports(manifest, root);
+    std::ifstream report(root / "capacity_report.md");
+    const std::string text{
+        std::istreambuf_iterator<char>(report),
+        std::istreambuf_iterator<char>()};
+    EXPECT_NE(
+        text.find("Local candidate; Real YouTube failed"),
+        std::string::npos);
+    report.close();
+    std::filesystem::remove_all(root);
 }

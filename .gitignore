@@ -89,3 +89,4 @@ decoded_*
 # Local Capacity Lab benchmark artifacts
 capacity-benchmark/
 capacity-staged/
+boundary-staged/
