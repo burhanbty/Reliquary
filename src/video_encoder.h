@@ -47,6 +47,9 @@ struct ResilientVideoConfig {
     int fps = FRAME_FPS;
     std::string codec = VIDEO_CODEC;
     std::string container = VIDEO_CONTAINER;
+    // Test Lab masters opt in; normal Resilient callers keep their
+    // established container behavior.
+    bool explicit_frame_duration = false;
 
     [[nodiscard]] bool valid() const noexcept {
         return width >= 8 && height >= 8 &&

@@ -24,11 +24,19 @@ if(NOT estimate_output MATCHES "Cases: 6")
     message(FATAL_ERROR
         "Quick preset estimate did not report six cases")
 endif()
+if(NOT estimate_output MATCHES "Minimum per candidate: 2")
+    message(FATAL_ERROR
+        "Quick preset did not report the 2-second minimum")
+endif()
 
 foreach(BAD_ARGS
         "generate;--preset;invalid;--output;${TEST_ROOT};--estimate-only"
         "generate;--preset;quick;--output;${TEST_ROOT};--resolution;1919x1080;--estimate-only"
-        "generate;--preset;quick;--output;${TEST_ROOT};--mode;fast-local;--estimate-only")
+        "generate;--preset;quick;--output;${TEST_ROOT};--minimum-upload-duration;1.99;--estimate-only"
+        "generate;--preset;quick;--output;${TEST_ROOT};--mode;fast-local;--estimate-only"
+        "analyze-folder;--suite;missing.json"
+        "analyze-folder;--suite;missing.json;--folder;${TEST_ROOT};--map;invalid"
+        "deduplicate;--suite;missing.json;--dry-run;--apply")
     execute_process(
         COMMAND "${CLI}" testlab ${BAD_ARGS}
         RESULT_VARIABLE bad_result

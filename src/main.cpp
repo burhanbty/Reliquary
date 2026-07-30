@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -258,13 +259,21 @@ static void print_usage(const char *program) {
         << " testlab generate --preset <quick|full> --output <folder>\n"
         << "    [--repair-percent <0..500>] [--input-size <64KiB|256KiB|1MiB>]\n"
         << "    [--data-type <random|compressible>] [--resolution <1080p|1440p|2160p>]\n"
-        << "    [--allow-low-disk]\n"
+        << "    [--minimum-upload-duration <seconds>=2] "
+           "[--allow-low-disk]\n"
         << "  " << program
         << " testlab simulate --suite <manifest.json> --profile <yt-sim-profile>\n"
         << "  " << program
         << " testlab resume --suite <manifest.json> [--allow-low-disk]\n"
         << "  " << program
-        << " testlab analyze --suite <manifest.json> [--case <case-id>] --video <downloaded.mp4>\n"
+        << " testlab analyze --suite <manifest.json> [--case <case-id>] --video <downloaded-video>\n"
+        << "    [--session-label <label>] [--record-new-observation]\n"
+        << "  " << program
+        << " testlab analyze-folder --suite <manifest.json> --folder <download-folder>\n"
+        << "    [--session-label <label>] [--map <filename=case-id>] [--dry-run]\n"
+        << "    [--record-new-observation]\n"
+        << "  " << program
+        << " testlab deduplicate --suite <manifest.json> [--dry-run|--apply]\n"
         << "  " << program
         << " testlab report --suite <manifest.json> --format <json|csv|markdown>\n"
         << "\nTest Lab only supports Resilient mode. Local simulation is not "
@@ -319,14 +328,22 @@ static int do_testlab(const int argc, char *argv[]) {
     std::string profile = "yt-sim-1080p-medium";
     std::string case_id;
     std::string video;
+    std::string folder;
+    std::string session_label;
     std::string format = "markdown";
     std::string cancel_file;
+    std::map<std::string, std::string> manual_mappings;
     bool allow_low_disk = false;
     bool estimate_only = false;
+    bool dry_run = false;
+    bool apply = false;
+    bool record_new_observation = false;
     bool custom_repair = false;
     bool custom_size = false;
     bool custom_type = false;
     bool custom_resolution = false;
+    double minimum_upload_duration =
+        kMinimumUploadDurationSeconds;
     MatrixOptions matrix;
     for (int i = 3; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -344,11 +361,40 @@ static int do_testlab(const int argc, char *argv[]) {
             profile = require_value(arg.c_str());
         else if (arg == "--case") case_id = require_value("--case");
         else if (arg == "--video") video = require_value("--video");
+        else if (arg == "--folder") folder = require_value("--folder");
+        else if (arg == "--session-label")
+            session_label = require_value("--session-label");
+        else if (arg == "--map") {
+            const auto mapping = require_value("--map");
+            const auto equals = mapping.find('=');
+            if (equals == std::string::npos || equals == 0 ||
+                equals + 1 == mapping.size())
+                throw std::invalid_argument(
+                    "--map must use filename=case-id");
+            manual_mappings[mapping.substr(0, equals)] =
+                mapping.substr(equals + 1);
+        }
         else if (arg == "--format") format = require_value("--format");
         else if (arg == "--cancel-file")
             cancel_file = require_value("--cancel-file");
         else if (arg == "--allow-low-disk") allow_low_disk = true;
         else if (arg == "--estimate-only") estimate_only = true;
+        else if (arg == "--dry-run") dry_run = true;
+        else if (arg == "--apply") apply = true;
+        else if (arg == "--record-new-observation")
+            record_new_observation = true;
+        else if (arg == "--minimum-upload-duration") {
+            const std::string value =
+                require_value("--minimum-upload-duration");
+            std::size_t used = 0;
+            minimum_upload_duration = std::stod(value, &used);
+            if (used != value.size() ||
+                !std::isfinite(minimum_upload_duration) ||
+                minimum_upload_duration <
+                    kMinimumUploadDurationSeconds)
+                throw std::invalid_argument(
+                    "minimum upload duration must be at least 2 seconds");
+        }
         else if (arg == "--mode") {
             const auto mode = require_value("--mode");
             if (mode == "fast-local")
@@ -424,6 +470,8 @@ static int do_testlab(const int argc, char *argv[]) {
             else
                 matrix.input_variants.clear();
             matrix.fps = defaults.fps;
+            matrix.minimum_upload_duration_seconds =
+                minimum_upload_duration;
             const auto preview_id = create_suite_id();
             const auto cases = build_matrix(matrix, preview_id);
             const auto estimate = estimate_suite(cases, output);
@@ -434,6 +482,11 @@ static int do_testlab(const int argc, char *argv[]) {
                 << estimate.estimated_total_frames << "\n"
                 << "  Estimated duration: "
                 << estimate.estimated_total_duration_seconds << " s\n"
+                << "  Minimum per candidate: "
+                << minimum_upload_duration << " s / "
+                << minimum_frames_for_duration(
+                       minimum_upload_duration, matrix.fps)
+                << " frames\n"
                 << "  Estimated output: "
                 << format_size(estimate.estimated_output_bytes) << "\n"
                 << "  Safety margin: "
@@ -467,6 +520,31 @@ static int do_testlab(const int argc, char *argv[]) {
                           "youtube_test_lab" / manifest.suite_id /
                           "manifest.json").string()
                       << "\n";
+            for (const auto &item : manifest.cases) {
+                std::cout
+                    << "Case " << item.test_case_id << ":\n"
+                    << "  Requested input bytes: "
+                    << item.requested_input_size << "\n"
+                    << "  Effective input bytes: "
+                    << item.effective_input_size << "\n"
+                    << "  Minimum frames: "
+                    << item.minimum_required_frames << "\n"
+                    << "  Expected frames: "
+                    << item.expected_encoded_frames << "\n"
+                    << "  Actual frames: "
+                    << item.actual_candidate_frames << "\n"
+                    << "  Candidate duration: "
+                    << item.candidate_duration_seconds << " s\n"
+                    << "  Candidate validation: "
+                    << (item.candidate_validation_error.empty()
+                            ? "passed"
+                            : item.candidate_validation_error)
+                    << "\n"
+                    << "  YouTube ready: "
+                    << (item.candidate_ready_for_youtube
+                            ? "Yes" : "No")
+                    << "\n";
+            }
             if (!continue_running()) {
                 std::cerr << "Test Lab generation cancelled; completed "
                              "cases were preserved for resume.\n";
@@ -544,7 +622,7 @@ static int do_testlab(const int argc, char *argv[]) {
             if (suite.empty() || video.empty())
                 throw std::invalid_argument(
                     "--suite and --video are required");
-            auto manifest = read_manifest(suite);
+            const auto manifest = read_manifest(suite);
             if (case_id.empty()) {
                 const auto detected =
                     case_id_from_filename(manifest, video);
@@ -554,34 +632,32 @@ static int do_testlab(const int argc, char *argv[]) {
                         "use --case");
                 case_id = *detected;
             }
-            auto it = std::find_if(
+            const auto it = std::find_if(
                 manifest.cases.begin(), manifest.cases.end(),
                 [&](const TestCase &c) {
                     return c.test_case_id == case_id;
                 });
             if (it == manifest.cases.end())
                 throw std::invalid_argument("unknown case ID");
-            const auto root =
-                std::filesystem::absolute(suite).parent_path();
-            const auto imported =
-                root / "imported" /
-                (case_id + "_" +
-                 std::filesystem::path(video).filename().string());
-            {
-                SafeOutputFile safe(imported);
-                std::filesystem::copy_file(
-                    video, safe.partial_path(),
-                    std::filesystem::copy_options::overwrite_existing);
-                safe.commit();
+            AnalysisOptions options;
+            options.session_label = session_label;
+            options.record_new_observation =
+                record_new_observation;
+            const auto outcome = analyze_real_video(
+                suite, case_id, video, options);
+            const auto &result = outcome.result;
+            if (outcome.duplicate) {
+                std::cout
+                    << "This video has already been analyzed for this case.\n"
+                    << "Observation ID: " << result.observation_id << "\n"
+                    << "Analyzed at: " << result.analyzed_at_utc << "\n"
+                    << "Status: " << to_string(result.final_status) << "\n";
+                return 0;
             }
-            const auto result = analyze_case_video(
-                manifest, *it, imported,
-                ResultSource::RealYouTubeRoundtrip);
-            it->state = CaseState::Analyzed;
-            write_manifest_atomic(manifest, suite);
-            write_reports(manifest, root / "reports");
             std::cout << "Source: Real YouTube roundtrip\n"
                       << "Case: " << case_id << "\n"
+                      << "Observation ID: " << result.observation_id << "\n"
+                      << "Session: " << result.analysis_session_id << "\n"
                       << "Packet recovery: "
                       << result.packet_recovery_percentage << "%\n"
                       << "SHA-256: "
@@ -589,6 +665,103 @@ static int do_testlab(const int argc, char *argv[]) {
                       << "\nStatus: "
                       << to_string(result.final_status) << "\n";
             return result.final_status == FinalStatus::Pass ? 0 : 2;
+        }
+        if (subcommand == "analyze-folder") {
+            if (suite.empty() || folder.empty())
+                throw std::invalid_argument(
+                    "--suite and --folder are required");
+            const auto manifest = read_manifest(suite);
+            const auto preview = preview_analysis_folder(
+                manifest, folder, manual_mappings);
+            std::cout
+                << "Batch analysis preview:\n"
+                << "Filename\tCase\tResolution\tCodec\tSize\tStatus\tDuplicate\n";
+            bool needs_mapping = false;
+            for (const auto &item : preview) {
+                const auto matched_case =
+                    !item.user_case_id.empty()
+                        ? item.user_case_id
+                        : item.detected_case_id.value_or("-");
+                std::cout
+                    << item.filename << "\t" << matched_case << "\t"
+                    << item.video.width << "x" << item.video.height << "\t"
+                    << (item.video.codec.empty()
+                            ? "unavailable" : item.video.codec)
+                    << "\t" << item.file_size << "\t"
+                    << to_string(item.status) << "\t"
+                    << (item.duplicate_observation ? "yes" : "no")
+                    << "\n";
+                needs_mapping =
+                    needs_mapping ||
+                    item.status == BatchMatchStatus::NeedsMapping ||
+                    item.status ==
+                        BatchMatchStatus::DuplicateCaseConflict;
+            }
+            if (dry_run) {
+                std::cout << "Dry run: manifest was not changed.\n";
+                return needs_mapping ? 2 : 0;
+            }
+            if (needs_mapping)
+                throw std::invalid_argument(
+                    "one or more files need an explicit --map "
+                    "filename=case-id selection");
+            AnalysisOptions options;
+            options.session_label = session_label;
+            options.source_folder =
+                std::filesystem::absolute(folder).string();
+            options.record_new_observation =
+                record_new_observation;
+            const auto summary = analyze_folder(
+                suite, folder, manual_mappings, options,
+                [&](const Progress &p) {
+                    std::cout
+                        << "\rAnalyzing " << p.completed_cases << "/"
+                        << p.total_cases << " " << p.active_case
+                        << "   " << std::flush;
+                    return continue_running();
+                });
+            std::cout
+                << "\nSession: " << summary.analysis_session_id
+                << "\nDiscovered: " << summary.discovered
+                << "\nAnalyzed: " << summary.analyzed
+                << "\nDuplicates skipped: "
+                << summary.duplicates_skipped
+                << "\nNeeds mapping: " << summary.needs_mapping
+                << "\nUnsupported: " << summary.unsupported << "\n";
+            if (summary.cancelled) {
+                std::cerr
+                    << "Batch analysis cancelled; completed observations "
+                       "were preserved.\n";
+                return 130;
+            }
+            return summary.needs_mapping || summary.unsupported ? 2 : 0;
+        }
+        if (subcommand == "deduplicate") {
+            if (suite.empty())
+                throw std::invalid_argument("--suite is required");
+            if (dry_run && apply)
+                throw std::invalid_argument(
+                    "--dry-run and --apply are mutually exclusive");
+            const auto summary = deduplicate_results(suite, apply);
+            std::cout
+                << (summary.applied ? "Deduplicate applied" :
+                                      "Deduplicate dry run")
+                << "\nObservations scanned: "
+                << summary.observations_scanned
+                << "\nDuplicate groups: " << summary.duplicate_groups
+                << "\nDuplicate observations: "
+                << summary.duplicate_observations
+                << "\nObservations after apply: "
+                << summary.observations_after_apply << "\n";
+            if (!summary.backup_path.empty())
+                std::cout << "Backup: "
+                          << summary.backup_path.string() << "\n";
+            for (const auto &message : summary.messages)
+                std::cout << "  " << message << "\n";
+            if (!apply)
+                std::cout
+                    << "No changes made. Re-run with --apply after review.\n";
+            return 0;
         }
         if (subcommand == "report") {
             if (suite.empty())

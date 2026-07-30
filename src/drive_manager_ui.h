@@ -354,17 +354,29 @@ private:
     QComboBox *testLabSimulationCombo = nullptr;
     QLineEdit *testLabVideoEdit = nullptr;
     QLineEdit *testLabCaseEdit = nullptr;
+    QLineEdit *testLabFolderEdit = nullptr;
+    QLineEdit *testLabMappingsEdit = nullptr;
+    QLineEdit *testLabSessionLabelEdit = nullptr;
+    QLabel *testLabActiveSessionLabel = nullptr;
+    QLabel *testLabDuplicateWarning = nullptr;
+    QCheckBox *testLabRecordNewCheck = nullptr;
     QLabel *testLabEstimateLabel = nullptr;
     QProgressBar *testLabProgress = nullptr;
     QTableWidget *testLabResults = nullptr;
+    QTableWidget *testLabBatchPreview = nullptr;
     QPushButton *testLabGenerateButton = nullptr;
     QPushButton *testLabResumeButton = nullptr;
     QPushButton *testLabSimulateButton = nullptr;
     QPushButton *testLabAnalyzeButton = nullptr;
+    QPushButton *testLabPreviewFolderButton = nullptr;
+    QPushButton *testLabAnalyzeFolderButton = nullptr;
+    QPushButton *testLabNewSessionButton = nullptr;
+    QPushButton *testLabDeduplicateButton = nullptr;
     QPushButton *testLabReportButton = nullptr;
     QPushButton *testLabCancelButton = nullptr;
     QProcess *testLabProcess = nullptr;
     QString testLabCancelFile;
+    QString testLabOutputBuffer;
 
     // Worker thread
     std::unique_ptr<WorkerThread> workerThread;

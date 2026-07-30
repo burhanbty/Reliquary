@@ -328,6 +328,9 @@ void VideoEncoder::write_encoded_packet() {
     }
     statistics_.encoded_packet_bytes.push_back(
         static_cast<uint64_t>(av_packet->size));
+    if (config_.explicit_frame_duration &&
+        av_packet->duration <= 0)
+        av_packet->duration = 1;
     av_packet_rescale_ts(
         av_packet, codec_ctx->time_base, stream->time_base);
     av_packet->stream_index = stream->index;

@@ -88,7 +88,10 @@ The GUI has a dedicated Test Lab tab. The CLI exposes the same workflow:
 media_storage testlab generate --preset quick --output C:\vsx-lab
 media_storage testlab generate --preset full --output C:\vsx-lab
 media_storage testlab simulate --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --profile yt-sim-1080p-medium
-media_storage testlab analyze --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --case yt001 --video C:\Downloads\returned.mp4
+media_storage testlab analyze --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --case yt001 --video C:\Downloads\returned.webm --session-label "Initial upload"
+media_storage testlab analyze-folder --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --folder C:\Downloads\youtube --dry-run
+media_storage testlab analyze-folder --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --folder C:\Downloads\youtube --session-label "Initial upload"
+media_storage testlab deduplicate --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --dry-run
 media_storage testlab report --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --format markdown
 ```
 
@@ -101,7 +104,8 @@ suite can be continued with:
 media_storage testlab resume --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json
 ```
 
-The default Quick matrix has six cases: 64 KiB deterministic random data,
+The default Quick matrix has six cases: a requested 64 KiB deterministic
+random payload,
 5%/20%/50% repair, and 1080p/4K. The Full matrix has 36 unique cases:
 5%/20%/50%, the current/1080p/1440p/4K resolutions (duplicates removed),
 and these input variants:
@@ -111,15 +115,31 @@ and these input variants:
 - 256 KiB random
 - 1 MiB random
 
-Payloads are generated in bounded blocks from a recorded fixed seed. Their
-SHA-256 hashes are stored in the manifest, so the same payload can be
-regenerated without holding the whole file in memory.
+Every upload candidate is sized for at least **2.0 seconds and 60 real data
+frames at 30 FPS**. If a small requested payload cannot produce that many
+frames, Test Lab deterministically extends it to an effective payload using
+the production packet/FEC/frame-capacity calculation. Cases in the same
+resolution, data-type, and requested-size comparison group use the same
+effective payload. The manifest keeps `requested_input_size` and
+`effective_input_size` separately and records why extension occurred.
+No blank, neutral, repeated, or other filler frames are added.
+
+Payloads and their duration extensions are generated in bounded blocks from
+recorded versioned seeds. Their SHA-256 hashes cover the complete effective
+payload, so the same data can be regenerated without holding the whole file
+in memory.
 
 Each case first creates a Resilient FFV1/GRAY8/Matroska master using a
 central `ResilientVideoConfig`. It then creates a progressive H.264,
 YUV 4:2:0, MP4 upload candidate with FFmpeg. The candidate is immediately
-decoded by VidStoreX and compared with the payload SHA-256. A candidate is
-marked ready only if that local exact-recovery check succeeds.
+reopened and checked for valid H.264/YUV420P metadata, resolution, 30 FPS,
+at least 60 decoded frames, at least 1.95 seconds of reported duration,
+monotonic PTS/DTS, a valid final timestamp, complete decoder flush, and a
+written MP4 trailer. VidStoreX then decodes the embedded payload and compares
+its SHA-256. A candidate is marked ready only if every container, timestamp,
+decode, and exact-recovery check succeeds. The 2-second value is a tested
+starting threshold, not a guarantee that YouTube will accept or process a
+particular upload.
 
 Local simulation profiles are:
 
@@ -147,6 +167,55 @@ VidStoreX performs no YouTube login, API upload, or automatic download.
 Filename case-ID detection is attempted; `--case` or GUI selection handles
 renamed downloads. Imported videos are inspected through the linked FFmpeg
 libraries, with no required `ffprobe.exe` process.
+
+Single-video and folder analysis share one central observation service.
+Folder preview lists each supported video, detected case, resolution, codec,
+size, mapping status, and duplicate status before any manifest change. Case
+IDs such as `yt001` are matched case-insensitively inside original
+`VSX_YT_..._yt001_...` names and downloader-added prefixes or suffixes.
+Ambiguous names, missing IDs, and multiple files for one case remain
+**Needs mapping**; use one or more `--map "filename.webm=yt001"` options or
+the GUI mapping field rather than accepting a guess.
+
+The real analyzer opens MP4/H.264, WebM/VP9, WebM/AV1, and other containers
+and codecs that the linked FFmpeg build can safely decode. It analyzes the
+download directly—there is no intermediate MP4 transcode. Each observation
+records container, codec/profile/tag, pixel format, dimensions, display
+aspect ratio, FPS, time base, duration, decoded frames, file size, SHA-256,
+packet recovery, and stream/container bitrate. If reported bitrate is absent,
+it uses `file_size_bytes * 8 / duration_seconds` when duration is valid and
+marks the source as `calculated_from_size_duration`.
+
+Duplicate prevention uses suite, case, source type, source-file SHA-256, and
+the analysis fingerprint. An accidental second click returns the existing
+observation ID, date, and result without changing the manifest or reports.
+A different file hash is a new observation. To intentionally measure the
+same bytes later, create a labeled session and opt in explicitly:
+
+```powershell
+media_storage testlab analyze --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --case yt001 --video C:\Downloads\returned.webm --session-label "24-hour retest" --record-new-observation
+media_storage testlab analyze --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --case yt001 --video C:\Downloads\returned.webm --session-label "7-day retest" --record-new-observation
+media_storage testlab analyze-folder --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --folder C:\Downloads\youtube-30-day --session-label "30-day retest" --record-new-observation
+```
+
+The v3 manifest distinguishes filesystem creation/modified timestamps,
+VidStoreX's `imported_at_utc`, and `analyzed_at_utc`. Filesystem time is only
+a file timestamp; VidStoreX does not claim it is the actual YouTube download
+time. Sessions group initial, 24-hour, 7-day, and 30-day observations while
+reports keep unique cases and unique observations as separate counts.
+
+Legacy duplicate cleanup is review-first and never deletes imported videos
+or restored files:
+
+```powershell
+media_storage testlab deduplicate --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --dry-run
+media_storage testlab deduplicate --suite C:\vsx-lab\youtube_test_lab\<suite>\manifest.json --apply
+```
+
+Apply creates timestamped manifest backups, keeps the oldest or most complete
+canonical observation, writes the v3 manifest atomically, and regenerates
+JSON/CSV/Markdown reports. Real YouTube outcomes remain observations, not
+guarantees; YouTube may change processing, codec selection, or resolution.
 
 Every suite is portable and uses this layout:
 
@@ -534,7 +603,7 @@ structure versions, stale input metadata, and newly insufficient disk.
 Zero-initialized options retain Resilient mode and the default 5% Local
 reliability behavior.
 
-The API reports version `1.3.0`. `ms_encoding_mode_t` and Fast Local layout
+The API reports version `1.4.0`. `ms_encoding_mode_t` and Fast Local layout
 fields were appended to `ms_encode_options_t`, `ms_encoding_estimate_t`, and
 `ms_result_t`; `MS_ENCODING_ESTIMATE_VERSION` is now 2. These changes alter
 binary layouts, so applications built against an older header must be
