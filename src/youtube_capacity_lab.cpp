@@ -176,6 +176,14 @@ std::string case_token(const ExperimentConfig &config) {
 }
 
 std::string candidate_filename(const CapacityCase &test_case) {
+    if (!test_case.payload_instance_id.empty()) {
+        std::ostringstream out;
+        out << "VSX_ONEBIT_" << test_case.case_id << "_"
+            << test_case.config_id << "_"
+            << test_case.payload_instance_id << "_1080p_b"
+            << test_case.config.block_width << "_1bit_s100_r5.mp4";
+        return out.str();
+    }
     if (!test_case.boundary_case_id.empty())
         return "VSX_BOUNDARY_" + test_case.boundary_case_id + "_" +
             test_case.config_id + "_" +
@@ -481,15 +489,35 @@ CaseResult decode_video(
     const auto technical =
         youtube_test_lab::analyze_video(video_path);
     result.codec = technical.codec;
+    result.pixel_format = technical.pixel_format;
     result.returned_width = technical.width;
     result.returned_height = technical.height;
     result.returned_fps = technical.fps;
     result.bitrate = technical.bitrate;
+    result.returned_duration = technical.duration_seconds;
     result.metadata_valid =
         technical.width == config.resolution_width &&
         technical.height == config.resolution_height &&
         std::abs(technical.fps - config.fps) < 0.1 &&
         technical.duration_seconds >= 1.95;
+    if (source_type != "master-lossless") {
+        const ResilientVideoConfig expected_video{
+            .width = config.resolution_width,
+            .height = config.resolution_height,
+            .fps = config.fps,
+            .codec = "libx264",
+            .container = "mp4",
+            .explicit_frame_duration = true};
+        const auto validation =
+            youtube_test_lab::validate_upload_candidate(
+                video_path, expected_video, kMinimumFrames, 1.95);
+        result.pixel_format = validation.video.pixel_format;
+        result.returned_duration = validation.video.duration_seconds;
+        result.metadata_valid = validation.passed &&
+            video_path.extension() == ".mp4";
+        if (!validation.passed && result.error.empty())
+            result.error = validation.error;
+    }
     const auto started = Clock::now();
     Decoder decoder;
     std::unordered_set<uint64_t> packet_ids;
@@ -819,9 +847,10 @@ bool ExperimentConfig::valid(std::string *reason) const {
         return false;
     };
     if (block_width != block_height ||
-        (block_width != 4 && block_width != 6 &&
+        (block_width != 3 && block_width != 4 &&
+         block_width != 5 && block_width != 6 &&
          block_width != 8))
-        return fail("block size must be 4, 6, or 8");
+        return fail("block size must be 3, 4, 5, 6, or 8");
     if (bits_per_block != 1 && bits_per_block != 2)
         return fail("bits per block must be 1 or 2");
     if (signal_milli != 750 && signal_milli != 1000 &&
@@ -1003,8 +1032,10 @@ CapacityMetrics compute_capacity(
 }
 
 const std::vector<double> &dct_basis(const int block_size) {
-    if (block_size != 4 && block_size != 6 && block_size != 8)
-        throw std::invalid_argument("DCT block size must be 4, 6, or 8");
+    if (block_size != 3 && block_size != 4 && block_size != 5 &&
+        block_size != 6 && block_size != 8)
+        throw std::invalid_argument(
+            "DCT block size must be 3, 4, 5, 6, or 8");
     static std::mutex mutex;
     static std::map<int, std::vector<double>> cache;
     std::scoped_lock lock(mutex);
@@ -1263,6 +1294,30 @@ std::vector<ExperimentConfig> boundary_1080p_configs() {
         make(4, 1, 500)};
 }
 
+std::vector<ExperimentConfig> onebit_verification_configs() {
+    const auto make = [](const int block) {
+        auto config = production_baseline_config();
+        config.block_width = block;
+        config.block_height = block;
+        config.bits_per_block = 1;
+        config.signal_milli = 1000;
+        config.repair_basis_points = 500;
+        config.resolution_width = 1920;
+        config.resolution_height = 1080;
+        config.fps = 30;
+        config.modulation_version = kModulation1Version;
+        std::string reason;
+        if (!config.valid(&reason))
+            throw std::invalid_argument(reason);
+        if (1920 % block != 0 || 1080 % block != 0)
+            throw std::invalid_argument(
+                "one-bit geometry must divide 1920x1080 exactly");
+        return config;
+    };
+    // Verification order is intentional and must not be density-sorted.
+    return {make(8), make(6), make(5), make(4), make(4), make(3)};
+}
+
 std::vector<CapacityCase> build_initial_cases(
     const RunOptions &options, const std::string &experiment_id) {
     std::vector<ExperimentConfig> configs;
@@ -1272,6 +1327,8 @@ std::vector<CapacityCase> build_initial_cases(
         configs = stage1_configs();
     else if (options.preset == Preset::Boundary1080p)
         configs = boundary_1080p_configs();
+    else if (options.preset == Preset::OneBitVerification1080p)
+        configs = onebit_verification_configs();
     else {
         const uint64_t raw_count = checked_mul(
             checked_mul(
@@ -1349,6 +1406,39 @@ std::vector<CapacityCase> build_initial_cases(
                             : config.block_width == 6 &&
                                     config.bits_per_block == 2
                                 ? 3.62 : 4.00;
+        } else if (options.preset == Preset::OneBitVerification1080p) {
+            static constexpr std::array<const char *, 6> ids{
+                "R00", "R01", "G04", "R02", "R03", "G05"};
+            static constexpr std::array<const char *, 6> roles{
+                "Production control", "Safe candidate retest",
+                "Geometry sweep", "4x same-payload retest",
+                "4x independent-payload verification", "Geometry sweep"};
+            const auto index = sequence++;
+            test_case.case_id = ids[index];
+            test_case.boundary_case_id = ids[index];
+            test_case.role = roles[index];
+            test_case.production_codec_path = index == 0;
+            test_case.boundary_density_gain =
+                64.0 / static_cast<double>(
+                    config.block_width * config.block_height);
+            test_case.payload_mode =
+                (index == 0 || index == 1 || index == 3)
+                    ? "reused" : "new";
+            test_case.payload_family_id =
+                (index == 2 || index == 4 || index == 5)
+                    ? "ONEBIT-GEOMETRY-MASTER-V1"
+                    : payload_family_id(config);
+            const std::string identity = experiment_id + "|" +
+                test_case.case_id + "|" +
+                (index == 4 ? "independent" : "verification");
+            test_case.payload_instance_id =
+                stable_hash_id(identity, 8);
+            test_case.deterministic_stream_id =
+                (index == 2 || index == 5)
+                    ? "VSX-ONEBIT-GEOMETRY-STREAM-V1"
+                    : index == 4
+                        ? "VSX-ONEBIT-INDEPENDENT-4X-V1"
+                        : deterministic_stream_id(config);
         } else {
             std::ostringstream id;
             id << "CAP-" << test_case.config_id << "-"
@@ -1365,7 +1455,16 @@ std::vector<CapacityCase> build_initial_cases(
             fair_capacity.minimum_payload_bytes;
         test_case.effective_payload_bytes =
             fair_capacity.minimum_payload_bytes;
-        test_case.payload_seed = stable_seed(config);
+        test_case.payload_prefix_bytes =
+            test_case.effective_payload_bytes;
+        test_case.payload_seed =
+            options.preset == Preset::OneBitVerification1080p
+                ? (test_case.case_id == "R03"
+                    ? 0x8F31D4A7C2905B6EULL
+                    : (test_case.role == "Geometry sweep"
+                        ? 0x1746A9C35E20D8B1ULL
+                        : stable_seed(config)))
+                : stable_seed(config);
         test_case.requested_simulation_profile =
             options.simulations.empty()
                 ? "yt-sim-1080p-medium"
@@ -1395,6 +1494,8 @@ Preflight estimate(const RunOptions &options) {
                                  24 + 16 + 18)
             : options.preset == Preset::Boundary1080p
                 ? 7
+            : options.preset == Preset::OneBitVerification1080p
+                ? 6
             : std::min<uint64_t>(
                   options.maximum_cases,
                   checked_mul(
@@ -1423,9 +1524,11 @@ Preflight estimate(const RunOptions &options) {
         result.estimated_output_bytes =
             result.estimated_output_bytes * 3;
         result.estimated_total_frames *= 3;
-    } else if (options.preset == Preset::Boundary1080p) {
+    } else if (options.preset == Preset::Boundary1080p ||
+               options.preset == Preset::OneBitVerification1080p) {
         // One upload candidate plus light/medium/heavy simulations.
-        result.estimated_transcodes = 7 * 3;
+        result.estimated_transcodes =
+            (options.preset == Preset::Boundary1080p ? 7 : 6) * 3;
         result.estimated_output_bytes *= 4;
         result.estimated_total_frames *= 4;
     }
@@ -1936,8 +2039,75 @@ void prepare_directories(const std::filesystem::path &root) {
     for (const auto *directory : {
              "payloads", "masters", "candidates", "simulations",
              "youtube_shortlist", "imported", "restored",
-             "reports", "youtube_upload"})
+             "reports", "youtube_upload", "tools", "returned_downloads"})
         std::filesystem::create_directories(root / directory);
+}
+
+void attach_onebit_source(
+    ExperimentManifest &manifest,
+    const std::filesystem::path &source_manifest_path) {
+    if (source_manifest_path.empty())
+        throw std::invalid_argument(
+            "onebit-verification-1080p requires --source-manifest");
+    const auto absolute = std::filesystem::absolute(source_manifest_path);
+    const auto source = read_manifest(absolute);
+    if (source.preset != Preset::Boundary1080p)
+        throw std::invalid_argument(
+            "source manifest must be a boundary-1080p experiment");
+    manifest.source_experiment_id = source.experiment_id;
+    manifest.source_manifest_path = absolute.string();
+    manifest.source_manifest_sha256 =
+        youtube_test_lab::sha256_file(absolute);
+    manifest.source_payload_validation = "Pending";
+    const std::map<std::string, std::string> mapping{
+        {"R00", "B00"}, {"R01", "B02"}, {"R02", "B06"}};
+    for (auto &target : manifest.cases) {
+        const auto mapped = mapping.find(target.case_id);
+        if (mapped == mapping.end()) continue;
+        const auto found = std::find_if(
+            source.cases.begin(), source.cases.end(),
+            [&](const CapacityCase &value) {
+                return value.case_id == mapped->second;
+            });
+        if (found == source.cases.end())
+            throw std::runtime_error(
+                "source manifest is missing " + mapped->second);
+        if (found->config_id != target.config_id)
+            throw std::runtime_error(
+                "source config mismatch for " + target.case_id);
+        target.source_case_id = found->case_id;
+        target.source_config_id = found->config_id;
+        target.source_payload_sha256 = found->source_sha256;
+        target.payload_seed = found->payload_seed;
+        target.deterministic_stream_id = found->deterministic_stream_id;
+        target.payload_family_id = found->payload_family_id;
+        target.requested_payload_bytes = found->effective_payload_bytes;
+        target.effective_payload_bytes = found->effective_payload_bytes;
+        target.payload_prefix_bytes = found->effective_payload_bytes;
+        target.payload_instance_id = found->source_sha256.substr(0, 8);
+        for (const auto &result : found->results) {
+            if (result.source_type != "real-youtube-roundtrip") continue;
+            HistoricalEvidence evidence;
+            evidence.source_experiment_id = source.experiment_id;
+            evidence.source_case_id = found->case_id;
+            evidence.config_id = found->config_id;
+            evidence.payload_instance_id = target.payload_instance_id;
+            evidence.source_payload_sha256 = found->source_sha256;
+            evidence.session_label = result.analysis_session_label;
+            evidence.returned_file_sha256 = result.analyzed_file_sha256;
+            evidence.packet_recovery_percent =
+                result.telemetry.packet_recovery_percent;
+            evidence.recovery_margin_percent =
+                result.telemetry.recovery_margin_percent;
+            evidence.exact = result.metadata_valid &&
+                result.decode_completed && result.sha256_match;
+            evidence.observation_fingerprint = stable_hash_id(
+                source.experiment_id + "|" + found->case_id + "|" +
+                result.analysis_session_label + "|" +
+                result.analyzed_file_sha256, 16);
+            manifest.historical_evidence.push_back(std::move(evidence));
+        }
+    }
 }
 
 void execute_case(
@@ -2093,14 +2263,17 @@ void execute_boundary_case(
     test_case.mandatory_gates_passed = false;
     test_case.simulation_warning = false;
     test_case.local_gate_status.clear();
-    if (test_case.boundary_case_id == "B00" &&
+    if ((test_case.boundary_case_id == "B00" ||
+         test_case.case_id == "R00") &&
         test_case.config.canonical_serialization() !=
             production_baseline_config().canonical_serialization())
         throw std::runtime_error(
             "Boundary B00 no longer matches the production baseline");
 
     const auto payload = root / "payloads" /
-        ("payload_" + test_case.payload_family_id + ".bin");
+        ("payload_" + (test_case.payload_instance_id.empty()
+            ? test_case.payload_family_id
+            : test_case.payload_instance_id) + ".bin");
     const auto master =
         root / "masters" / (test_case.case_id + ".mkv");
     const auto candidate =
@@ -2111,10 +2284,37 @@ void execute_boundary_case(
         root / "restored" / (test_case.case_id + "_candidate.bin");
 
     if (!std::filesystem::exists(payload)) {
-        youtube_test_lab::generate_payload(
-            payload, youtube_test_lab::DataType::Random,
-            test_case.effective_payload_bytes,
-            test_case.payload_seed);
+        if (!test_case.source_case_id.empty()) {
+            const auto source_manifest =
+                std::filesystem::path(manifest.source_manifest_path);
+            const auto source = read_manifest(source_manifest);
+            const auto found = std::find_if(
+                source.cases.begin(), source.cases.end(),
+                [&](const CapacityCase &value) {
+                    return value.case_id == test_case.source_case_id;
+                });
+            if (found == source.cases.end())
+                throw std::runtime_error("source-reuse failure: case missing");
+            const auto source_payload = resolve_path(
+                source_manifest.parent_path(), found->payload_path);
+            if (std::filesystem::exists(source_payload)) {
+                std::filesystem::copy_file(
+                    source_payload, payload,
+                    std::filesystem::copy_options::none);
+                test_case.source_payload_reused = true;
+            } else {
+                youtube_test_lab::generate_payload(
+                    payload, youtube_test_lab::DataType::Random,
+                    test_case.effective_payload_bytes,
+                    test_case.payload_seed);
+                test_case.source_payload_regenerated = true;
+            }
+        } else {
+            youtube_test_lab::generate_payload(
+                payload, youtube_test_lab::DataType::Random,
+                test_case.effective_payload_bytes,
+                test_case.payload_seed);
+        }
     } else if (std::filesystem::file_size(payload) !=
                test_case.effective_payload_bytes) {
         throw std::runtime_error(
@@ -2122,6 +2322,16 @@ void execute_boundary_case(
     }
     test_case.source_sha256 =
         youtube_test_lab::sha256_file(payload);
+    if (!test_case.source_payload_sha256.empty() &&
+        test_case.source_sha256 != test_case.source_payload_sha256) {
+        std::error_code ignored;
+        std::filesystem::remove(payload, ignored);
+        test_case.source_payload_validation = "SHA-256 mismatch";
+        throw std::runtime_error(
+            "source-reuse failure: payload SHA-256 mismatch");
+    }
+    test_case.source_payload_validation = "Exact SHA-256 match";
+    test_case.payload_entropy_estimate = 8.0;
     test_case.payload_path = relative_path(root, payload);
     test_case.master_path = relative_path(root, master);
     test_case.candidate_path = relative_path(root, candidate);
@@ -2324,18 +2534,28 @@ void generate_boundary_upload(
     std::error_code error;
     std::filesystem::remove_all(next, error);
     std::filesystem::create_directories(next);
+    const bool onebit =
+        manifest.preset == Preset::OneBitVerification1080p;
     std::ofstream checklist(
-        next / "boundary_upload_checklist.md",
+        next / (onebit ? "upload_checklist.md"
+                       : "boundary_upload_checklist.md"),
         std::ios::binary | std::ios::trunc);
     if (!checklist)
         throw std::runtime_error(
             "could not write Boundary upload checklist");
     checklist
-        << "# YouTube Boundary 1080p upload checklist\n\n"
-        << "Upload only the MP4 files in this directory, in B00-B06 "
-           "order. Do not upload masters or simulation artifacts. "
-           "After YouTube processing, download the original 1920x1080 "
-           "stream for returned-folder analysis.\n\n"
+        << (onebit ? "# YouTube 1-bit Verification upload checklist\n\n"
+                   : "# YouTube Boundary 1080p upload checklist\n\n")
+        << (onebit
+            ? "Upload exactly these 6 videos together using YouTube Studio "
+              "multi-select, in R00, R01, G04, R02, R03, G05 order. Use "
+              "Unlisted visibility and Not made for kids. Do not rename files "
+              "or titles. Wait until 1080p processing completes before "
+              "downloading. Do not upload masters or simulations.\n\n"
+            : "Upload only the MP4 files in this directory, in B00-B06 "
+              "order. Do not upload masters or simulation artifacts. "
+              "After YouTube processing, download the original 1920x1080 "
+              "stream for returned-folder analysis.\n\n")
         << "| Case | File | Config | Gain | Repair | Local validation | "
            "Simulation | Duration | Candidate bytes | Suggested title |\n"
         << "|---|---|---|---:|---:|---|---|---:|---:|---|\n";
@@ -2371,6 +2591,9 @@ void generate_boundary_upload(
                 << q(test_case.boundary_case_id) << ",\n"
                 << "  \"config_id\": " << q(test_case.config_id)
                 << ",\n"
+                << "  \"case_id\": " << q(test_case.case_id) << ",\n"
+                << "  \"payload_instance_id\": "
+                << q(test_case.payload_instance_id) << ",\n"
                 << "  \"block_size\": "
                 << test_case.config.block_width << ",\n"
                 << "  \"bits_per_block\": "
@@ -2436,6 +2659,27 @@ void generate_boundary_upload(
             << test_case.boundary_density_gain << "x|\n";
     }
     checklist.close();
+    if (onebit) {
+        std::ofstream titles(next / "upload_titles.txt", std::ios::binary);
+        std::ofstream csv(next / "batch_metadata.csv", std::ios::binary);
+        csv << "order,case_id,config_id,payload_instance_id,title,file,duration,resolution,local_sha\n";
+        std::size_t order = 1;
+        for (const auto &c : manifest.cases) {
+            const auto title = "VidStoreX 1-bit " + c.case_id + " " +
+                std::to_string(c.config.block_width) + "x" +
+                std::to_string(c.config.block_height);
+            titles << title << "\n";
+            csv << order++ << "," << c.case_id << "," << c.config_id
+                << "," << c.payload_instance_id << "," << q(title)
+                << "," << candidate_filename(c) << ","
+                << c.capacity.expected_duration_seconds << ",1920x1080,"
+                << c.source_sha256 << "\n";
+        }
+        std::filesystem::copy_file(
+            "tools/download_returned_playlist.ps1",
+            root / "tools" / "download_returned_playlist.ps1",
+            std::filesystem::copy_options::overwrite_existing);
+    }
     const auto history = root / "youtube_upload_history";
     if (std::filesystem::exists(destination)) {
         bool has_artifacts = false;
@@ -2499,11 +2743,19 @@ ExperimentManifest run(
     }
     manifest.cases = build_initial_cases(
         options, manifest.experiment_id);
+    if (options.preset == Preset::OneBitVerification1080p) {
+        manifest.maximum_cases = 6;
+        manifest.maximum_shortlist_videos = 6;
+        manifest.mandatory_stage1_profiles.clear();
+        manifest.mandatory_stage3_profiles.clear();
+        attach_onebit_source(manifest, options.source_manifest);
+    }
     const auto root =
         options.output_root /
         (options.preset == Preset::Boundary1080p
              ? "youtube_boundary_lab"
-             : "youtube_capacity_lab") /
+             : options.preset == Preset::OneBitVerification1080p
+                 ? "youtube_1bit_lab" : "youtube_capacity_lab") /
         manifest.experiment_id;
     prepare_directories(root);
     const auto manifest_path = root / "manifest.json";
@@ -2531,7 +2783,8 @@ ExperimentManifest run(
                 return false;
             }
             try {
-                if (manifest.preset == Preset::Boundary1080p)
+                if (manifest.preset == Preset::Boundary1080p ||
+                    manifest.preset == Preset::OneBitVerification1080p)
                     execute_boundary_case(
                         manifest, test_case, root);
                 else
@@ -2569,7 +2822,19 @@ ExperimentManifest run(
             : options.simulations.front();
     if (!run_range(0, initial_profile))
         return manifest;
-    if (options.preset == Preset::Boundary1080p) {
+    if (options.preset == Preset::Boundary1080p ||
+        options.preset == Preset::OneBitVerification1080p) {
+        if (options.preset == Preset::OneBitVerification1080p) {
+            const bool exact = std::all_of(
+                manifest.cases.begin(), manifest.cases.end(),
+                [](const CapacityCase &c) {
+                    return c.source_case_id.empty() ||
+                        c.source_payload_validation == "Exact SHA-256 match";
+                });
+            manifest.source_payload_validation = exact
+                ? "All reused source payloads exact"
+                : "Source payload validation failed";
+        }
         write_manifest_atomic(manifest, manifest_path);
         generate_boundary_upload(manifest, root);
         write_reports(manifest, root / "reports");
@@ -2712,7 +2977,8 @@ void resume(const std::filesystem::path &manifest_path,
                 return false;
             }
             try {
-                if (manifest.preset == Preset::Boundary1080p)
+                if (manifest.preset == Preset::Boundary1080p ||
+                    manifest.preset == Preset::OneBitVerification1080p)
                     execute_boundary_case(
                         manifest, test_case, root);
                 else
@@ -2736,7 +3002,8 @@ void resume(const std::filesystem::path &manifest_path,
         return true;
     };
     if (!process_pending(0)) return;
-    if (manifest.preset == Preset::Boundary1080p) {
+    if (manifest.preset == Preset::Boundary1080p ||
+        manifest.preset == Preset::OneBitVerification1080p) {
         write_manifest_atomic(manifest, manifest_path);
         generate_boundary_upload(manifest, root);
         write_reports(manifest, root / "reports");
@@ -3332,6 +3599,211 @@ BoundaryInference infer_boundary(
     return inference;
 }
 
+OneBitInference infer_onebit_geometry(
+    const ExperimentManifest &manifest) {
+    OneBitInference out;
+    const std::array<std::pair<int, double>, 5> geometry{{
+        {8, 1.0}, {6, 64.0 / 36.0}, {5, 64.0 / 25.0},
+        {4, 4.0}, {3, 64.0 / 9.0}}};
+    const auto exact = [](const CapacityCase &c, const CaseResult &r) {
+        return r.source_type == "real-youtube-roundtrip" &&
+            r.metadata_valid && r.decode_completed && r.sha256_match &&
+            r.returned_width == c.config.resolution_width &&
+            r.returned_height == c.config.resolution_height &&
+            r.telemetry.recovery_margin_packets >= 0;
+    };
+    const auto find_case = [&](const std::string &id) -> const CapacityCase * {
+        const auto it = std::find_if(manifest.cases.begin(), manifest.cases.end(),
+            [&](const CapacityCase &c) { return c.case_id == id; });
+        return it == manifest.cases.end() ? nullptr : &*it;
+    };
+    const auto case_state = [&](const std::string &id) {
+        const auto *c = find_case(id);
+        if (!c) return 0; // untested
+        bool seen = false, pass = false;
+        for (const auto &r : c->results) {
+            if (r.source_type != "real-youtube-roundtrip") continue;
+            seen = true;
+            pass = pass || exact(*c, r);
+        }
+        return !seen ? 0 : pass ? 1 : -1;
+    };
+    for (const auto &[block, gain] : geometry) {
+        GeometryDensityResult density;
+        density.block_size = block;
+        density.gain = gain;
+        std::set<std::string> evidence_uploads;
+        for (const auto &c : manifest.cases) {
+            if (c.config.block_width != block) continue;
+            bool seen = false, passed = false;
+            for (const auto &r : c.results) {
+                if (r.source_type != "real-youtube-roundtrip") continue;
+                seen = true;
+                if (exact(c, r)) {
+                    passed = true;
+                    evidence_uploads.insert(r.analysis_session_label + "|" +
+                                            r.analyzed_file_sha256);
+                    density.best_margin_percent = std::max(
+                        density.best_margin_percent,
+                        r.telemetry.recovery_margin_percent);
+                }
+            }
+            if (passed) ++density.current_passes;
+            else if (seen) ++density.failures;
+        }
+        for (const auto &e : manifest.historical_evidence) {
+            const auto matching = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const CapacityCase &c) {
+                    return c.config_id == e.config_id &&
+                           c.config.block_width == block;
+                });
+            if (matching != manifest.cases.end() && e.exact) {
+                ++density.historical_passes;
+                evidence_uploads.insert(e.session_label + "|" +
+                                        e.returned_file_sha256);
+                density.best_margin_percent = std::max(
+                    density.best_margin_percent,
+                    e.recovery_margin_percent);
+            }
+        }
+        if (density.current_passes == 0 && density.failures == 0)
+            density.evidence = GeometryEvidence::Untested;
+        else if (density.failures != 0 && density.current_passes != 0)
+            density.evidence = GeometryEvidence::MixedResult;
+        else if (density.failures != 0)
+            density.evidence = GeometryEvidence::Fail;
+        else if (block == 4) {
+            const bool historical = density.historical_passes > 0;
+            const bool same = case_state("R02") == 1;
+            const bool independent = case_state("R03") == 1;
+            density.evidence = historical && same && independent
+                ? GeometryEvidence::VerifiedPass
+                : GeometryEvidence::InitialPass;
+        } else {
+            density.evidence = evidence_uploads.size() >= 2 &&
+                    density.current_passes > 0 &&
+                    density.historical_passes > 0
+                ? GeometryEvidence::VerifiedPass
+                : GeometryEvidence::InitialPass;
+        }
+        out.densities.push_back(density);
+    }
+    const int control = case_state("R00");
+    if (control < 0) {
+        out.production_control = "Fail";
+        out.status = "Invalid production control";
+        out.boundary_bracket = "Invalid production control";
+        out.recommended_next_experiment =
+            "Retest the production control before interpreting geometry";
+        return out;
+    }
+    if (control == 0) {
+        out.recommended_next_experiment =
+            "Analyze R00 and all required returned videos";
+        return out;
+    }
+    out.production_control = "Pass";
+    const bool hist4 = std::any_of(manifest.historical_evidence.begin(),
+        manifest.historical_evidence.end(), [](const HistoricalEvidence &e) {
+            return e.source_case_id == "B06" && e.exact;
+        });
+    const int same4 = case_state("R02"), independent4 = case_state("R03");
+    if (hist4 && same4 == 1 && independent4 == 1)
+        out.four_x_state = "4x candidate verified across session and payload";
+    else if (same4 == 1 && independent4 == 0)
+        out.four_x_state = "4x repeated-session evidence; independent payload pending";
+    else if (independent4 == 1 && same4 != 1)
+        out.four_x_state =
+            "4x independent-payload evidence; same-payload retest failed or missing";
+    else if (same4 < 0 || independent4 < 0)
+        out.four_x_state = "Mixed result";
+
+    bool failure_below = false;
+    bool missing = false;
+    for (const auto &d : out.densities) {
+        const bool pass = d.evidence == GeometryEvidence::InitialPass ||
+                          d.evidence == GeometryEvidence::VerifiedPass;
+        if (d.evidence == GeometryEvidence::Fail ||
+            d.evidence == GeometryEvidence::MixedResult)
+            failure_below = true;
+        else if (pass && failure_below)
+            out.non_monotonic = true;
+        if (pass) out.highest_initial_exact_density = d.gain;
+        if (d.evidence == GeometryEvidence::VerifiedPass)
+            out.highest_verified_exact_density = d.gain;
+        if (d.evidence == GeometryEvidence::Untested) missing = true;
+    }
+    if (out.non_monotonic) {
+        out.status = "Non-monotonic / inconclusive";
+        out.boundary_bracket = out.status;
+        out.recommended_next_experiment =
+            "Repeat conflicting geometry with matched payload, bitrate and returned codec";
+    } else if (missing) {
+        out.status = "Insufficient observations";
+        out.boundary_bracket = out.status;
+        out.recommended_next_experiment = "Complete the six-video returned-folder analysis";
+    } else if (out.densities.back().evidence == GeometryEvidence::InitialPass ||
+               out.densities.back().evidence == GeometryEvidence::VerifiedPass) {
+        out.status = "At least 7.11x; finer geometry experiment required";
+        out.boundary_bracket = "At least 7.11x";
+        out.experimental_candidate = find_case("G05")
+            ? find_case("G05")->config_id : "";
+        out.recommended_next_experiment = "Run a finer 1-bit geometry sweep";
+    } else {
+        for (std::size_t i = 1; i < out.densities.size(); ++i) {
+            const auto &prev = out.densities[i - 1];
+            const auto &current = out.densities[i];
+            if ((prev.evidence == GeometryEvidence::InitialPass ||
+                 prev.evidence == GeometryEvidence::VerifiedPass) &&
+                (current.evidence == GeometryEvidence::Fail ||
+                 current.evidence == GeometryEvidence::MixedResult)) {
+                out.lowest_failure_above = current.gain;
+                std::ostringstream text;
+                text << std::fixed << std::setprecision(2) << prev.gain
+                     << "x <= 1-bit geometry boundary < "
+                     << std::setprecision(2) << current.gain << "x";
+                out.boundary_bracket = text.str();
+                out.status = "Bracketed";
+            }
+        }
+    }
+    if (const auto *r02 = find_case("R02");
+        out.four_x_state.starts_with("4x candidate verified")) {
+        out.safe_candidate = r02->config_id;
+        out.balanced_candidate = r02->config_id;
+        out.retest_required = false;
+    } else if (const auto *r01 = find_case("R01")) {
+        const auto six = std::find_if(out.densities.begin(), out.densities.end(),
+            [](const GeometryDensityResult &d) { return d.block_size == 6; });
+        if (six != out.densities.end() &&
+            six->evidence == GeometryEvidence::VerifiedPass) {
+            out.safe_candidate = r01->config_id;
+            out.balanced_candidate = r01->config_id;
+        }
+    }
+    if (out.experimental_candidate.empty() &&
+        out.highest_initial_exact_density)
+        for (const auto &c : manifest.cases)
+            if (std::abs(c.boundary_density_gain -
+                         *out.highest_initial_exact_density) < 0.001)
+                out.experimental_candidate = c.config_id;
+    return out;
+}
+
+void verify_source_payloads(const std::filesystem::path &manifest_path) {
+    const auto manifest = read_manifest(manifest_path);
+    if (manifest.preset != Preset::OneBitVerification1080p)
+        throw std::invalid_argument("manifest is not a one-bit verification experiment");
+    for (const auto &c : manifest.cases) {
+        if (c.source_case_id.empty()) continue;
+        const auto payload = resolve_path(manifest_path.parent_path(), c.payload_path);
+        if (!std::filesystem::exists(payload) ||
+            youtube_test_lab::sha256_file(payload) != c.source_payload_sha256)
+            throw std::runtime_error("source payload verification failed for " + c.case_id);
+    }
+}
+
 std::vector<RepairComparison> compare_boundary_repairs(
     const ExperimentManifest &manifest) {
     std::vector<RepairComparison> comparisons;
@@ -3421,7 +3893,11 @@ void analyze_folder(
     for (const auto &test_case : manifest.cases)
         for (const auto &result : test_case.results)
             if (!result.analyzed_file_sha256.empty())
-                seen.insert(result.analyzed_file_sha256);
+                seen.insert(manifest.experiment_id + "|" +
+                    test_case.case_id + "|" + test_case.config_id + "|" +
+                    test_case.payload_instance_id + "|" +
+                    result.analyzed_file_sha256 + "|" +
+                    result.analysis_session_label);
     for (const auto &entry :
          std::filesystem::directory_iterator(folder)) {
         if (!entry.is_regular_file()) continue;
@@ -3432,21 +3908,34 @@ void analyze_folder(
         CapacityCase *matched = nullptr;
         const std::string filename =
             entry.path().filename().string();
-        for (auto &test_case : manifest.cases) {
-            if (filename.find(test_case.config_id) !=
-                std::string::npos) {
-                if (matched && matched->config_id !=
-                               test_case.config_id) {
-                    matched = nullptr;
-                    break;
-                }
+        for (auto &test_case : manifest.cases)
+            if (filename.find(test_case.case_id) != std::string::npos &&
+                filename.find(test_case.config_id) != std::string::npos &&
+                (test_case.payload_instance_id.empty() ||
+                 filename.find(test_case.payload_instance_id) != std::string::npos)) {
                 matched = &test_case;
+                break;
             }
-        }
+        if (!matched)
+            for (auto &test_case : manifest.cases)
+                if (filename.find(test_case.config_id) != std::string::npos) {
+                    if (matched) { matched = nullptr; break; }
+                    matched = &test_case;
+                }
         if (!matched) continue;
         const std::string file_hash =
             youtube_test_lab::sha256_file(entry.path());
-        if (!seen.insert(file_hash).second) {
+        const std::string effective_session = session_label.empty()
+            ? manifest.preset == Preset::Boundary1080p
+                ? "Boundary initial YouTube test"
+                : manifest.preset == Preset::OneBitVerification1080p
+                    ? "1-bit verification retest" : "Initial YouTube test"
+            : session_label;
+        const std::string fingerprint = manifest.experiment_id + "|" +
+            matched->case_id + "|" + matched->config_id + "|" +
+            matched->payload_instance_id + "|" + file_hash + "|" +
+            effective_session;
+        if (!seen.insert(fingerprint).second) {
             matched->last_real_analysis_event =
                 "Real YouTube duplicate observation";
             continue;
@@ -3496,12 +3985,7 @@ void analyze_folder(
             imported, payload, restored, matched->config,
             expected.packet_stream.empty() ? nullptr : &expected,
             "real-youtube-roundtrip", {});
-        result.analysis_session_label =
-            session_label.empty()
-                ? manifest.preset == Preset::Boundary1080p
-                    ? "Boundary initial YouTube test"
-                    : "Initial YouTube test"
-                : session_label;
+        result.analysis_session_label = effective_session;
         result.imported_at = now_utc();
         result.analyzed_at = now_utc();
         result.config_id = matched->config_id;
@@ -3530,6 +4014,8 @@ std::string to_string(const Preset value) {
         case Preset::Smoke: return "smoke";
         case Preset::Staged: return "staged";
         case Preset::Boundary1080p: return "boundary-1080p";
+        case Preset::OneBitVerification1080p:
+            return "onebit-verification-1080p";
         case Preset::Custom: return "custom";
     }
     return "unknown";
@@ -3559,6 +4045,8 @@ Preset preset_from_string(const std::string &value) {
     if (value == "staged") return Preset::Staged;
     if (value == "boundary-1080p")
         return Preset::Boundary1080p;
+    if (value == "onebit-verification-1080p")
+        return Preset::OneBitVerification1080p;
     if (value == "custom") return Preset::Custom;
     throw std::runtime_error(
         "unknown Capacity Lab preset: " + value);
@@ -3598,11 +4086,13 @@ void write_result_json(std::ostream &out,
         << ",\"analyzed_file_sha256\":"
         << q(result.analyzed_file_sha256)
         << ",\"codec\":" << q(result.codec)
+        << ",\"pixel_format\":" << q(result.pixel_format)
         << ",\"returned_width\":" << result.returned_width
         << ",\"returned_height\":" << result.returned_height
         << ",\"returned_fps\":" << result.returned_fps
         << ",\"bitrate\":" << result.bitrate
         << ",\"file_size\":" << result.file_size
+        << ",\"returned_duration\":" << result.returned_duration
         << ",\"encode_seconds\":" << result.encode_seconds
         << ",\"transcode_seconds\":" << result.transcode_seconds
         << ",\"decode_seconds\":" << result.decode_seconds
@@ -3676,6 +4166,8 @@ CaseResult parse_result(const std::string &object) {
         json_string(object, "analyzed_file_sha256").value_or("");
     result.codec =
         json_string(object, "codec").value_or("");
+    result.pixel_format =
+        json_string(object, "pixel_format").value_or("");
     result.returned_width = static_cast<int>(
         json_number(object, "returned_width").value_or(0));
     result.returned_height = static_cast<int>(
@@ -3686,6 +4178,8 @@ CaseResult parse_result(const std::string &object) {
         json_number(object, "bitrate").value_or(0));
     result.file_size = static_cast<uint64_t>(
         json_number(object, "file_size").value_or(0));
+    result.returned_duration =
+        json_number(object, "returned_duration").value_or(0);
     result.encode_seconds =
         json_number(object, "encode_seconds").value_or(0);
     result.transcode_seconds =
@@ -3780,6 +4274,14 @@ void write_manifest_atomic(
             << "  \"include_simulation_failures\": "
             << (manifest.include_simulation_failures
                     ? "true" : "false") << ",\n"
+            << "  \"source_experiment_id\": "
+            << q(manifest.source_experiment_id) << ",\n"
+            << "  \"source_manifest_path\": "
+            << q(manifest.source_manifest_path) << ",\n"
+            << "  \"source_manifest_sha256\": "
+            << q(manifest.source_manifest_sha256) << ",\n"
+            << "  \"source_payload_validation\": "
+            << q(manifest.source_payload_validation) << ",\n"
             << "  \"baseline_config_id\": "
             << q(manifest.baseline.config_id()) << ",\n"
             << "  \"mandatory_stage1_profiles\": [";
@@ -3877,6 +4379,27 @@ void write_manifest_atomic(
                 << q(c.deterministic_stream_id) << ",\n"
                 << "      \"payload_family_id\": "
                 << q(c.payload_family_id) << ",\n"
+                << "      \"payload_instance_id\": "
+                << q(c.payload_instance_id) << ",\n"
+                << "      \"role\": " << q(c.role) << ",\n"
+                << "      \"payload_mode\": "
+                << q(c.payload_mode) << ",\n"
+                << "      \"source_case_id\": "
+                << q(c.source_case_id) << ",\n"
+                << "      \"source_config_id\": "
+                << q(c.source_config_id) << ",\n"
+                << "      \"source_payload_sha256\": "
+                << q(c.source_payload_sha256) << ",\n"
+                << "      \"source_payload_reused\": "
+                << (c.source_payload_reused ? "true" : "false") << ",\n"
+                << "      \"source_payload_regenerated\": "
+                << (c.source_payload_regenerated ? "true" : "false") << ",\n"
+                << "      \"source_payload_validation\": "
+                << q(c.source_payload_validation) << ",\n"
+                << "      \"payload_prefix_bytes\": "
+                << c.payload_prefix_bytes << ",\n"
+                << "      \"payload_entropy_estimate\": "
+                << c.payload_entropy_estimate << ",\n"
                 << "      \"source_sha256\": "
                 << q(c.source_sha256) << ",\n"
                 << "      \"payload_path\": "
@@ -3971,7 +4494,24 @@ void write_manifest_atomic(
             if (i + 1 != manifest.cases.size()) out << ",";
             out << "\n";
         }
-        out << "  ]\n}\n";
+        out << "  ],\n  \"historical_evidence\": [";
+        for (std::size_t i = 0; i < manifest.historical_evidence.size(); ++i) {
+            const auto &e = manifest.historical_evidence[i];
+            if (i) out << ",";
+            out << "\n    {\"source_experiment_id\":" << q(e.source_experiment_id)
+                << ",\"source_case_id\":" << q(e.source_case_id)
+                << ",\"config_id\":" << q(e.config_id)
+                << ",\"payload_instance_id\":" << q(e.payload_instance_id)
+                << ",\"source_payload_sha256\":" << q(e.source_payload_sha256)
+                << ",\"session_label\":" << q(e.session_label)
+                << ",\"returned_file_sha256\":" << q(e.returned_file_sha256)
+                << ",\"observation_fingerprint\":" << q(e.observation_fingerprint)
+                << ",\"packet_recovery_percent\":" << e.packet_recovery_percent
+                << ",\"recovery_margin_percent\":" << e.recovery_margin_percent
+                << ",\"exact\":" << (e.exact ? "true" : "false") << "}";
+        }
+        if (!manifest.historical_evidence.empty()) out << "\n  ";
+        out << "]\n}\n";
         if (!out)
             throw std::runtime_error(
                 "could not flush Capacity Lab manifest");
@@ -3994,7 +4534,7 @@ ExperimentManifest read_manifest(
             "manifest is not a YouTube Capacity Lab experiment");
     const int schema = static_cast<int>(
         json_number(json, "schema_version").value_or(0));
-    if (schema != kManifestSchemaVersion)
+    if (schema != 4 && schema != kManifestSchemaVersion)
         throw std::runtime_error(
             "unsupported Capacity Lab manifest schema");
     ExperimentManifest manifest;
@@ -4033,6 +4573,14 @@ ExperimentManifest read_manifest(
     manifest.cancelled = json_bool(json, "cancelled");
     manifest.include_simulation_failures =
         json_bool(json, "include_simulation_failures");
+    manifest.source_experiment_id =
+        json_string(json, "source_experiment_id").value_or("");
+    manifest.source_manifest_path =
+        json_string(json, "source_manifest_path").value_or("");
+    manifest.source_manifest_sha256 =
+        json_string(json, "source_manifest_sha256").value_or("");
+    manifest.source_payload_validation =
+        json_string(json, "source_payload_validation").value_or("");
     manifest.baseline = production_baseline_config();
     for (const auto &object : extract_objects(json, "cases")) {
         CapacityCase c;
@@ -4113,6 +4661,28 @@ ExperimentManifest read_manifest(
         c.payload_family_id =
             json_string(object, "payload_family_id")
                 .value_or("");
+        c.payload_instance_id =
+            json_string(object, "payload_instance_id").value_or("");
+        c.role = json_string(object, "role").value_or("");
+        c.payload_mode =
+            json_string(object, "payload_mode").value_or("");
+        c.source_case_id =
+            json_string(object, "source_case_id").value_or("");
+        c.source_config_id =
+            json_string(object, "source_config_id").value_or("");
+        c.source_payload_sha256 =
+            json_string(object, "source_payload_sha256").value_or("");
+        c.source_payload_reused =
+            json_bool(object, "source_payload_reused");
+        c.source_payload_regenerated =
+            json_bool(object, "source_payload_regenerated");
+        c.source_payload_validation =
+            json_string(object, "source_payload_validation").value_or("");
+        c.payload_prefix_bytes =
+            json_u64(object, "payload_prefix_bytes").value_or(
+                c.effective_payload_bytes);
+        c.payload_entropy_estimate =
+            json_number(object, "payload_entropy_estimate").value_or(0);
         c.source_sha256 =
             json_string(object, "source_sha256").value_or("");
         c.payload_path =
@@ -4208,6 +4778,30 @@ ExperimentManifest read_manifest(
         }
         manifest.cases.push_back(std::move(c));
     }
+    for (const auto &object : extract_objects(json, "historical_evidence")) {
+        HistoricalEvidence e;
+        e.source_experiment_id =
+            json_string(object, "source_experiment_id").value_or("");
+        e.source_case_id =
+            json_string(object, "source_case_id").value_or("");
+        e.config_id = json_string(object, "config_id").value_or("");
+        e.payload_instance_id =
+            json_string(object, "payload_instance_id").value_or("");
+        e.source_payload_sha256 =
+            json_string(object, "source_payload_sha256").value_or("");
+        e.session_label =
+            json_string(object, "session_label").value_or("");
+        e.returned_file_sha256 =
+            json_string(object, "returned_file_sha256").value_or("");
+        e.observation_fingerprint =
+            json_string(object, "observation_fingerprint").value_or("");
+        e.packet_recovery_percent =
+            json_number(object, "packet_recovery_percent").value_or(0);
+        e.recovery_margin_percent =
+            json_number(object, "recovery_margin_percent").value_or(0);
+        e.exact = json_bool(object, "exact");
+        manifest.historical_evidence.push_back(std::move(e));
+    }
     if (manifest.experiment_id.empty())
         throw std::runtime_error(
             "Capacity manifest has no experiment id");
@@ -4252,6 +4846,162 @@ std::string pass_label(const CaseResult *result) {
         result->metadata_valid &&
         result->sha256_match
         ? "Pass" : "Warning";
+}
+
+std::string geometry_evidence_string(const GeometryEvidence value) {
+    switch (value) {
+        case GeometryEvidence::Untested: return "Untested";
+        case GeometryEvidence::InitialPass: return "Initial pass";
+        case GeometryEvidence::VerifiedPass: return "Verified pass";
+        case GeometryEvidence::MixedResult: return "Mixed result";
+        case GeometryEvidence::Fail: return "Fail";
+    }
+    return "Untested";
+}
+
+void write_onebit_reports(
+    const ExperimentManifest &manifest,
+    const std::filesystem::path &reports_directory) {
+    std::filesystem::create_directories(reports_directory);
+    const auto inference = infer_onebit_geometry(manifest);
+    std::set<std::string> sessions;
+    for (const auto &c : manifest.cases)
+        for (const auto &r : c.results)
+            if (r.source_type == "real-youtube-roundtrip")
+                sessions.insert(r.analysis_session_label);
+    std::ofstream md(reports_directory / "onebit_report.md", std::ios::binary);
+    md << "# YouTube 1-bit Verification\n\n"
+       << "> Repair fixed at 5% to isolate geometry. Local simulation is "
+          "diagnostic and never counts as real YouTube evidence.\n\n"
+       << "## A. Experiment summary\n\n"
+       << "- Experiment ID: `" << manifest.experiment_id << "`\n"
+       << "- Source experiment: `" << manifest.source_experiment_id << "`\n"
+       << "- Source manifest SHA: `" << manifest.source_manifest_sha256 << "`\n"
+       << "- Preset: `onebit-verification-1080p`\n"
+       << "- Case count: " << manifest.cases.size() << "\n"
+       << "- Session count: " << sessions.size() << "\n"
+       << "- Fixed variables: 1920x1080, 30 FPS, 1 bit/block, signal 1.00x, repair 5%\n\n"
+       << "## B. Previous evidence\n\n"
+       << "| Source case | Config | Payload | Session | Recovery | Margin | SHA | Result |\n"
+       << "|---|---|---|---|---:|---:|---|---|\n";
+    for (const auto &e : manifest.historical_evidence)
+        md << "|" << e.source_case_id << "|" << e.config_id << "|"
+           << e.payload_instance_id << "|" << e.session_label << "|"
+           << e.packet_recovery_percent << "%|" << e.recovery_margin_percent
+           << "%|" << e.source_payload_sha256 << "|"
+           << (e.exact ? "Exact" : "Failed") << "|\n";
+    md << "\n## C. Planned matrix\n\n"
+       << "| Case | Role | Block | Bits | Signal | Repair | Gain | Payload mode | Payload SHA | Frames | Duration |\n"
+       << "|---|---|---:|---:|---:|---:|---:|---|---|---:|---:|\n";
+    for (const auto &c : manifest.cases)
+        md << "|" << c.case_id << "|" << c.role << "|"
+           << c.config.block_width << "x" << c.config.block_height
+           << "|1|1.00x|5%|" << std::fixed << std::setprecision(4)
+           << c.boundary_density_gain << "x|" << c.payload_mode << "|"
+           << c.source_sha256 << "|" << c.capacity.expected_frames << "|"
+           << c.capacity.expected_duration_seconds << " s|\n";
+    md << "\n## D. Local validation\n\n"
+       << "| Case | Source reuse | Master SHA | Candidate SHA | Light | Medium | Heavy | Ready |\n"
+       << "|---|---|---|---|---|---|---|---|\n";
+    for (const auto &c : manifest.cases) {
+        const CaseResult *master = nullptr, *candidate = nullptr;
+        for (const auto &r : c.results) {
+            if (r.source_type == "master-lossless") master = &r;
+            if (r.source_type == "upload-candidate") candidate = &r;
+        }
+        md << "|" << c.case_id << "|" << c.source_payload_validation << "|"
+           << (master && master->sha256_match ? "Exact" : "Not run") << "|"
+           << (candidate && candidate->sha256_match ? "Exact" : "Not run") << "|"
+           << pass_label(profile_result(c, "yt-sim-1080p-light")) << "|"
+           << pass_label(profile_result(c, "yt-sim-1080p-medium")) << "|"
+           << pass_label(profile_result(c, "yt-sim-1080p-heavy")) << "|"
+           << (c.mandatory_gates_passed ? "Yes" : "No") << "|\n";
+    }
+    md << "\n## E. Real YouTube observations\n\n"
+       << "| Case | Payload | Session | Codec | Resolution | Bitrate | Valid/Missing packets | Erasure | Recovery | Margin | BER/SER | SHA | Result |\n"
+       << "|---|---|---|---|---|---:|---|---:|---:|---:|---|---|---|\n";
+    bool observed = false;
+    for (const auto &c : manifest.cases)
+        for (const auto &r : c.results)
+            if (r.source_type == "real-youtube-roundtrip") {
+                observed = true;
+                const double erasure = r.telemetry.source_packets
+                    ? 100.0 * r.telemetry.missing_packets /
+                      r.telemetry.source_packets : 0.0;
+                md << "|" << c.case_id << "|" << c.payload_instance_id << "|"
+                   << r.analysis_session_label << "|" << r.codec << "|"
+                   << r.returned_width << "x" << r.returned_height << "|"
+                   << r.bitrate << "|" << r.telemetry.valid_unique_packets << "/"
+                   << r.telemetry.missing_packets << "|" << erasure << "%|"
+                   << r.telemetry.packet_recovery_percent << "%|"
+                   << r.telemetry.recovery_margin_percent << "%|"
+                   << r.telemetry.raw_ber << "/" << r.telemetry.raw_ser << "|"
+                   << (r.sha256_match ? "Exact" : "Mismatch") << "|"
+                   << real_youtube_status(c) << "|\n";
+            }
+    if (!observed) md << "|-|-|-|-|-|-|-|-|-|-|-|-|Insufficient observations|\n";
+    md << "\n## F. 4x verification\n\n- Historical B06, R02 same-payload, and R03 independent-payload are all required.\n"
+       << "- Combined state: " << inference.four_x_state << "\n\n"
+       << "## G. Geometry sweep\n\n"
+       << "| Block | Gain | Historical passes | Current passes | Failures | Best margin | Evidence level | Status |\n"
+       << "|---:|---:|---:|---:|---:|---:|---|---|\n";
+    for (const auto &d : inference.densities)
+        md << "|" << d.block_size << "x" << d.block_size << "|" << d.gain
+           << "x|" << d.historical_passes << "|" << d.current_passes << "|"
+           << d.failures << "|" << d.best_margin_percent << "%|"
+           << geometry_evidence_string(d.evidence) << "|"
+           << geometry_evidence_string(d.evidence) << "|\n";
+    md << "\n## H. Geometry inference\n\n- Control status: " << inference.production_control
+       << "\n- Boundary bracket: " << inference.boundary_bracket
+       << "\n- Status: " << inference.status
+       << "\n- Non-monotonic: " << (inference.non_monotonic ? "Yes" : "No")
+       << "\n- Confidence limitation: real returned-video evidence is required.\n\n"
+       << "## I. Profile recommendations\n\n- Production unchanged: 8x8 / 1-bit / 5%\n"
+       << "- Safe candidate: " << (inference.safe_candidate.empty() ? "None" : inference.safe_candidate)
+       << "\n- Balanced candidate: " << (inference.balanced_candidate.empty() ? "None" : inference.balanced_candidate)
+       << "\n- Experimental candidate: " << (inference.experimental_candidate.empty() ? "None" : inference.experimental_candidate)
+       << "\n\n## J. Next experiment\n\n" << inference.recommended_next_experiment << "\n";
+
+    std::ofstream cases(reports_directory / "onebit_cases.csv", std::ios::binary);
+    cases << "case_id,config_id,payload_instance_id,role,block,gain,payload_bytes,frames,duration,source_sha,local_status\n";
+    for (const auto &c : manifest.cases)
+        cases << c.case_id << "," << c.config_id << "," << c.payload_instance_id
+              << "," << q(c.role) << "," << c.config.block_width << ","
+              << c.boundary_density_gain << "," << c.effective_payload_bytes << ","
+              << c.capacity.expected_frames << "," << c.capacity.expected_duration_seconds
+              << "," << c.source_sha256 << "," << q(local_evidence_status(c)) << "\n";
+    std::ofstream observations(reports_directory / "onebit_observations.csv", std::ios::binary);
+    observations << "case_id,config_id,payload_instance_id,session,returned_sha,codec,resolution,recovery,margin,ber,ser,exact,failure_reason\n";
+    for (const auto &c : manifest.cases) for (const auto &r : c.results)
+        if (r.source_type == "real-youtube-roundtrip")
+            observations << c.case_id << "," << c.config_id << ","
+                << c.payload_instance_id << "," << q(r.analysis_session_label) << ","
+                << r.analyzed_file_sha256 << "," << r.codec << ","
+                << r.returned_width << "x" << r.returned_height << ","
+                << r.telemetry.packet_recovery_percent << ","
+                << r.telemetry.recovery_margin_percent << ","
+                << r.telemetry.raw_ber << "," << r.telemetry.raw_ser << ","
+                << (r.sha256_match ? "true" : "false") << "," << q(r.error) << "\n";
+    std::ofstream geometry(reports_directory / "onebit_geometry.csv", std::ios::binary);
+    geometry << "block,gain,historical_passes,current_passes,failures,best_margin,status\n";
+    for (const auto &d : inference.densities)
+        geometry << d.block_size << "," << d.gain << "," << d.historical_passes
+                 << "," << d.current_passes << "," << d.failures << ","
+                 << d.best_margin_percent << "," << q(geometry_evidence_string(d.evidence)) << "\n";
+    const auto write_json = [&](const std::filesystem::path &path, bool evidence) {
+        std::ofstream out(path, std::ios::binary);
+        out << "{\n  \"experiment_id\": " << q(manifest.experiment_id)
+            << ",\n  \"source_experiment_id\": " << q(manifest.source_experiment_id)
+            << ",\n  \"boundary_status\": " << q(inference.status)
+            << ",\n  \"boundary_bracket\": " << q(inference.boundary_bracket)
+            << ",\n  \"four_x_state\": " << q(inference.four_x_state)
+            << ",\n  \"safe_candidate\": " << q(inference.safe_candidate)
+            << ",\n  \"historical_evidence_count\": "
+            << manifest.historical_evidence.size()
+            << ",\n  \"evidence_only\": " << (evidence ? "true" : "false") << "\n}\n";
+    };
+    write_json(reports_directory / "onebit_summary.json", false);
+    write_json(reports_directory / "onebit_evidence.json", true);
 }
 
 void write_boundary_reports(
@@ -4346,6 +5096,12 @@ void write_boundary_reports(
             << "> Local simulation is diagnostic evidence, not a real "
                "YouTube gate or a YouTube result. No boundary is claimed "
                "without returned-video observations.\n\n"
+            << "> The mixed density axis combines two different modulation "
+               "families. Its non-monotonic result is specifically explained "
+               "by the 4x 4x4/1-bit exact pass alongside failures in lower-"
+               "density 2-bit profiles; it is not a single geometry limit. "
+               "The 4x result is initial exact evidence; retest required. "
+               "All tested 2-bit profiles are paused due to real YouTube failure.\n\n"
             << "## A. Experiment summary\n\n"
             << "- Experiment ID: `" << manifest.experiment_id << "`\n"
             << "- Preset: `boundary-1080p`\n"
@@ -4450,6 +5206,22 @@ void write_boundary_reports(
                 << "|" << repair.duration_delta_seconds
                 << "|" << repair.sha_effect
                 << "|" << repair.inference << "|\n";
+        out << "\n### 1-bit geometry evidence\n\n"
+            << "| Case | Block | Result | Interpretation |\n|---|---:|---|---|\n";
+        for (const auto &c : manifest.cases)
+            if (c.config.bits_per_block == 1)
+                out << "|" << c.case_id << "|" << c.config.block_width
+                    << "|" << real_youtube_status(c) << "|"
+                    << (c.config.block_width == 4
+                        ? "Initial exact evidence; retest required"
+                        : "Geometry evidence") << "|\n";
+        out << "\n### 2-bit modulation evidence\n\n"
+            << "| Case | Block | Result | Interpretation |\n|---|---:|---|---|\n";
+        for (const auto &c : manifest.cases)
+            if (c.config.bits_per_block == 2)
+                out << "|" << c.case_id << "|" << c.config.block_width
+                    << "|" << real_youtube_status(c)
+                    << "|Paused due to real YouTube failure|\n";
         out << "\n## G. Final inference\n\n"
             << "- Control: " << inference.baseline_status << "\n"
             << "- Highest exact pass: "
@@ -4545,6 +5317,10 @@ void write_boundary_reports(
 void write_reports(
     const ExperimentManifest &source_manifest,
     const std::filesystem::path &reports_directory) {
+    if (source_manifest.preset == Preset::OneBitVerification1080p) {
+        write_onebit_reports(source_manifest, reports_directory);
+        return;
+    }
     if (source_manifest.preset == Preset::Boundary1080p) {
         write_boundary_reports(
             source_manifest, reports_directory);

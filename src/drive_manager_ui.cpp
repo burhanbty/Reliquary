@@ -28,6 +28,7 @@
 #include <QJsonObject>
 #include <QFile>
 #include <QApplication>
+#include <QClipboard>
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QStatusBar>
@@ -885,7 +886,7 @@ void DriveManagerUI::setupUI() {
     capacityPresetCombo = new QComboBox();
     capacityPresetCombo->addItems(
         {"Smoke", "Staged Sweep", "YouTube Boundary 1080p",
-         "Custom"});
+         "YouTube 1-bit Verification", "Custom"});
     capacityOutputEdit = new QLineEdit();
     capacityOutputEdit->setPlaceholderText(
         "Experiment parent output directory");
@@ -894,6 +895,11 @@ void DriveManagerUI::setupUI() {
     capacityManifestEdit->setPlaceholderText(
         "Capacity manifest.json");
     auto *capacityManifestBrowse = new QPushButton("Manifest...");
+    capacitySourceManifestEdit = new QLineEdit();
+    capacitySourceManifestEdit->setPlaceholderText(
+        "Required source Boundary manifest.json");
+    auto *capacitySourceBrowse =
+        new QPushButton("Select Source Boundary Manifest");
     capacityBlocksEdit = new QLineEdit("8,6,4");
     capacityBitsEdit = new QLineEdit("1,2");
     capacitySignalsEdit = new QLineEdit("0.75,1.0,1.25,1.5");
@@ -938,6 +944,9 @@ void DriveManagerUI::setupUI() {
     capacityGrid->addWidget(new QLabel("Manifest:"), 1, 0);
     capacityGrid->addWidget(capacityManifestEdit, 1, 1, 1, 3);
     capacityGrid->addWidget(capacityManifestBrowse, 1, 4);
+    capacityGrid->addWidget(new QLabel("Source Boundary Manifest:"), 2, 0);
+    capacityGrid->addWidget(capacitySourceManifestEdit, 2, 1, 1, 3);
+    capacityGrid->addWidget(capacitySourceBrowse, 2, 4);
     capacityGrid->addWidget(new QLabel("Block sizes:"), 2, 0);
     capacityGrid->addWidget(capacityBlocksEdit, 2, 1);
     capacityGrid->addWidget(new QLabel("Bits/block:"), 2, 2);
@@ -977,6 +986,8 @@ void DriveManagerUI::setupUI() {
         new QPushButton("Generate YouTube Shortlist");
     capacityAnalyzeFolderButton =
         new QPushButton("Analyze Returned Folder");
+    auto *capacityCopyDownloadButton =
+        new QPushButton("Copy Batch Download Command");
     capacityReportButton = new QPushButton("Refresh Reports");
     capacityOpenFolderButton =
         new QPushButton("Open Experiment Folder");
@@ -990,6 +1001,7 @@ void DriveManagerUI::setupUI() {
         capacityAnalyzeFolderButton, 1, 1);
     capacityActionsGrid->addWidget(capacityReportButton, 1, 2);
     capacityActionsGrid->addWidget(capacityOpenFolderButton, 1, 3);
+    capacityActionsGrid->addWidget(capacityCopyDownloadButton, 1, 4);
     capacityLayout->addWidget(capacityActions);
     capacityProgress = new QProgressBar();
     capacityProgress->setRange(0, 100);
@@ -1010,28 +1022,38 @@ void DriveManagerUI::setupUI() {
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](const int index) {
         const bool boundary = index == 2;
-        const bool custom = index == 3;
+        const bool onebit = index == 3;
+        const bool fixedExperiment = boundary || onebit;
+        const bool custom = index == 4;
         for (auto *edit : {capacityBlocksEdit, capacityBitsEdit,
                            capacitySignalsEdit, capacityRepairsEdit})
             edit->setEnabled(custom);
         capacityResolutionCombo->setEnabled(custom);
-        capacitySimulationCombo->setEnabled(!boundary);
-        capacityMaximumCasesSpin->setEnabled(!boundary);
-        capacityShortlistSpin->setEnabled(!boundary);
-        capacityIncludeSimulationFailuresCheck->setEnabled(boundary);
-        capacityShortlistButton->setEnabled(!boundary);
+        capacitySimulationCombo->setEnabled(!fixedExperiment);
+        capacityMaximumCasesSpin->setEnabled(!fixedExperiment);
+        capacityShortlistSpin->setEnabled(!fixedExperiment);
+        capacitySourceManifestEdit->setEnabled(onebit);
+        capacityIncludeSimulationFailuresCheck->setEnabled(fixedExperiment);
+        capacityShortlistButton->setEnabled(!fixedExperiment);
         capacityEstimateButton->setText(
+            onebit ? "Estimate 1-bit Verification" :
             boundary ? "Estimate Boundary Sweep" : "Estimate");
         capacityStartButton->setText(
+            onebit ? "Generate 6 Upload Videos" :
             boundary ? "Generate Boundary Videos" : "Start");
         capacityReportButton->setText(
+            onebit ? "Refresh 1-bit Report" :
             boundary ? "Refresh Boundary Report"
                      : "Refresh Reports");
         capacityOpenFolderButton->setText(
             boundary ? "Open Boundary Folder"
                      : "Open Experiment Folder");
         capacityEstimateLabel->setText(
-            boundary
+            onebit
+                ? "Exactly 6 videos: R00, R01, G04, R02, R03, G05. "
+                  "Locked to 1920x1080, 30 FPS, 1-bit, signal 1.00x, "
+                  "repair 5%. Source Boundary manifest is required."
+                : boundary
                 ? "B00-B06: exactly 7 videos, 1920x1080, 30 FPS, "
                   "signal 1.00x. Matrix: 8x8/1-bit r5; 6x6/1-bit "
                   "r2/r5; 8x8/2-bit r2/r5; 6x6/2-bit r5; "
@@ -1047,6 +1069,7 @@ void DriveManagerUI::setupUI() {
     capacityRepairsEdit->setEnabled(false);
     capacityResolutionCombo->setEnabled(false);
     capacityIncludeSimulationFailuresCheck->setEnabled(false);
+    capacitySourceManifestEdit->setEnabled(false);
     connect(capacityOutputBrowse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getExistingDirectory(
             this, "Capacity Lab output directory");
@@ -1057,6 +1080,12 @@ void DriveManagerUI::setupUI() {
             this, "Select Capacity Lab manifest", {},
             "JSON manifest (manifest.json)");
         if (!path.isEmpty()) capacityManifestEdit->setText(path);
+    });
+    connect(capacitySourceBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, "Select Source Boundary Manifest", {},
+            "JSON manifest (manifest.json)");
+        if (!path.isEmpty()) capacitySourceManifestEdit->setText(path);
     });
     connect(capacityReturnedBrowse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getExistingDirectory(
@@ -1071,6 +1100,8 @@ void DriveManagerUI::setupUI() {
                 capacityPresetCombo->currentIndex() == 1 ? "staged" :
                 capacityPresetCombo->currentIndex() == 2
                     ? "boundary-1080p" :
+                capacityPresetCombo->currentIndex() == 3
+                    ? "onebit-verification-1080p" :
                 "custom";
             QStringList args{
                 "capacitylab", command, "--preset", preset,
@@ -1090,9 +1121,13 @@ void DriveManagerUI::setupUI() {
                      << "--repair-percent" << capacityRepairsEdit->text()
                      << "--resolution"
                      << capacityResolutionCombo->currentText();
+            if (preset == "onebit-verification-1080p")
+                args << "--source-manifest"
+                     << capacitySourceManifestEdit->text();
             if (capacityEstimateOnlyCheck->isChecked())
                 args << "--estimate-only";
-            if (preset == "boundary-1080p" &&
+            if ((preset == "boundary-1080p" ||
+                 preset == "onebit-verification-1080p") &&
                 capacityIncludeSimulationFailuresCheck->isChecked())
                 args << "--include-simulation-failures";
             return args;
@@ -1132,6 +1167,8 @@ void DriveManagerUI::setupUI() {
             "--session-label",
             capacityPresetCombo->currentIndex() == 2
                 ? "Boundary initial YouTube test"
+                : capacityPresetCombo->currentIndex() == 3
+                    ? "1-bit verification retest"
                 : "Initial YouTube test"});
     });
     connect(capacityReportButton, &QPushButton::clicked, this, [this] {
@@ -1142,6 +1179,13 @@ void DriveManagerUI::setupUI() {
                 ? "boundary-report" : "report",
             "--manifest",
             capacityManifestEdit->text(), "--format", "markdown"});
+    });
+    connect(capacityCopyDownloadButton, &QPushButton::clicked, this, [this] {
+        if (capacityManifestEdit->text().isEmpty()) return;
+        const QString root = QFileInfo(capacityManifestEdit->text()).absolutePath();
+        QApplication::clipboard()->setText(
+            "& '" + root + "/tools/download_returned_playlist.ps1' "
+            "-PlaylistUrl \"<youtube-playlist-url>\"");
     });
     connect(capacityOpenFolderButton, &QPushButton::clicked, this, [this] {
         if (capacityManifestEdit->text().isEmpty()) return;

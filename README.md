@@ -888,3 +888,33 @@ VidStoreX is distributed under the **GNU General Public License, version 3 or
 later (GPL-3.0-or-later)**. See [LICENSE.txt](LICENSE.txt) for the complete
 license text. Existing copyright and third-party notices are retained in the
 repository.
+### YouTube 1-bit Verification
+
+The mixed Boundary result is non-monotonic because it combines two modulation
+families: the 4x4/1-bit profile produced initial exact evidence while lower
+density 2-bit profiles failed after real YouTube encoding. The 1-bit symbol
+mapping and the 2-bit four-level mapping are not interchangeable points on a
+single geometry axis. The 4x initial pass is therefore not a production
+guarantee; production remains the 8x8/1-bit/5% Resilient profile.
+
+`onebit-verification-1080p` creates exactly six 1920x1080, 30 FPS, 1-bit,
+1.00x-signal, 5%-repair videos in `R00, R01, G04, R02, R03, G05` order. It
+requires `--source-manifest`: R00, R01, and R02 reuse and SHA-verify Boundary
+B00, B02, and B06 payloads. R03 uses an independent deterministic payload;
+the new 5x5 and 3x3 geometry points use prefixes of one deterministic random
+stream family. Repair is fixed at 5% to isolate geometry.
+
+Upload the six files together manually in YouTube Studio. The experiment
+contains `upload_checklist.md`, titles, CSV metadata, sidecars, and
+`tools/download_returned_playlist.ps1`; the latter downloads a playlist's
+video-only 1920x1080 streams, preferring H.264 without merging or transcoding.
+Historical observations remain read-only provenance. Repeated exact evidence
+requires distinct sessions/uploads, at least one current observation, positive
+recovery margin, and independent-payload evidence. Local light/medium/heavy
+H.264 simulation is diagnostic only and never counts as real YouTube proof.
+
+```powershell
+media_storage capacitylab run --preset onebit-verification-1080p `
+  --source-manifest C:\path\to\boundary\manifest.json `
+  --output C:\path\to\onebit-staged
+```

@@ -384,6 +384,7 @@ private:
     QComboBox *capacityPresetCombo = nullptr;
     QLineEdit *capacityOutputEdit = nullptr;
     QLineEdit *capacityManifestEdit = nullptr;
+    QLineEdit *capacitySourceManifestEdit = nullptr;
     QLineEdit *capacityReturnedFolderEdit = nullptr;
     QLineEdit *capacityBlocksEdit = nullptr;
     QLineEdit *capacityBitsEdit = nullptr;

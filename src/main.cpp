@@ -278,9 +278,9 @@ static void print_usage(const char *program) {
         << "  " << program
         << " testlab report --suite <manifest.json> --format <json|csv|markdown>\n"
         << "  " << program
-        << " capacitylab estimate --preset <smoke|staged|boundary-1080p|custom> --output <folder>\n"
+        << " capacitylab estimate --preset <smoke|staged|boundary-1080p|onebit-verification-1080p|custom> --output <folder>\n"
         << "  " << program
-        << " capacitylab run --preset <smoke|staged|boundary-1080p|custom> --output <folder>\n"
+        << " capacitylab run --preset <smoke|staged|boundary-1080p|onebit-verification-1080p|custom> --output <folder>\n"
         << "    [--block-size 8,6,4] [--bits-per-block 1,2] "
            "[--signal 0.75,1.0,1.25,1.5]\n"
         << "    [--repair-percent 0,1,2,5] "
@@ -305,6 +305,9 @@ static void print_usage(const char *program) {
            "--format <json|csv|markdown>\n"
         << "  " << program
         << " capacitylab boundary-status --manifest <manifest.json>\n"
+        << " capacitylab onebit-report --manifest <manifest.json> --format markdown\n"
+        << " capacitylab onebit-status --manifest <manifest.json>\n"
+        << " capacitylab verify-source-payloads --manifest <manifest.json>\n"
         << "\nTest Lab only supports Resilient mode. Local simulation is not "
            "a guaranteed copy of YouTube processing.\n";
 }
@@ -874,16 +877,20 @@ static int do_capacitylab(const int argc, char *argv[]) {
                 options.preset = Preset::Staged;
             else if (value == "boundary-1080p")
                 options.preset = Preset::Boundary1080p;
+            else if (value == "onebit-verification-1080p")
+                options.preset = Preset::OneBitVerification1080p;
             else if (value == "custom")
                 options.preset = Preset::Custom;
             else
                 throw std::invalid_argument(
                     "capacity preset must be smoke, staged, "
-                    "boundary-1080p, or custom");
+                    "boundary-1080p, onebit-verification-1080p, or custom");
         } else if (arg == "--output") {
             options.output_root = require_value("--output");
         } else if (arg == "--manifest" || arg == "--suite") {
             manifest_path = require_value(arg.c_str());
+        } else if (arg == "--source-manifest") {
+            options.source_manifest = require_value("--source-manifest");
         } else if (arg == "--folder") {
             returned_folder = require_value("--folder");
         } else if (arg == "--session-label") {
@@ -1033,7 +1040,8 @@ static int do_capacitylab(const int argc, char *argv[]) {
             options.output_root /
             (options.preset == Preset::Boundary1080p
                  ? "youtube_boundary_lab"
-                 : "youtube_capacity_lab") /
+                 : options.preset == Preset::OneBitVerification1080p
+                     ? "youtube_1bit_lab" : "youtube_capacity_lab") /
             result.experiment_id / "manifest.json";
         std::cout << "CAPACITY_MANIFEST "
                   << std::filesystem::absolute(path).string()
@@ -1161,8 +1169,40 @@ static int do_capacitylab(const int argc, char *argv[]) {
             << "BOUNDARY_NEXT " << status.next_experiment << "\n";
         return 0;
     }
+    if (subcommand == "verify-source-payloads") {
+        verify_source_payloads(manifest_path);
+        std::cout << "ONEBIT_SOURCE_PAYLOADS exact\n";
+        return 0;
+    }
+    if (subcommand == "onebit-status") {
+        const auto manifest = read_manifest(manifest_path);
+        if (manifest.preset != Preset::OneBitVerification1080p)
+            throw std::invalid_argument(
+                "onebit-status requires a onebit-verification-1080p manifest");
+        const auto status = infer_onebit_geometry(manifest);
+        std::cout << "ONEBIT_PRODUCTION_CONTROL " << status.production_control << "\n"
+                  << "ONEBIT_SOURCE_VALIDATION " << manifest.source_payload_validation << "\n"
+                  << "ONEBIT_HISTORICAL_EVIDENCE " << manifest.historical_evidence.size() << "\n";
+        for (const auto &c : manifest.cases)
+            std::cout << "ONEBIT_CASE " << c.case_id << " "
+                      << real_youtube_status(c) << "\n";
+        for (const auto &d : status.densities)
+            std::cout << "ONEBIT_GEOMETRY " << d.block_size << "x" << d.block_size
+                      << " gain=" << d.gain << " status="
+                      << static_cast<int>(d.evidence) << "\n";
+        std::cout << "ONEBIT_4X " << status.four_x_state << "\n"
+                  << "ONEBIT_BOUNDARY " << status.boundary_bracket << "\n"
+                  << "ONEBIT_SAFE " << (status.safe_candidate.empty() ? "none" : status.safe_candidate) << "\n"
+                  << "ONEBIT_BALANCED " << (status.balanced_candidate.empty() ? "none" : status.balanced_candidate) << "\n"
+                  << "ONEBIT_EXPERIMENTAL " << (status.experimental_candidate.empty() ? "none" : status.experimental_candidate) << "\n"
+                  << "ONEBIT_NON_MONOTONIC " << (status.non_monotonic ? "yes" : "no") << "\n"
+                  << "ONEBIT_RETEST_REQUIRED " << (status.retest_required ? "yes" : "no") << "\n"
+                  << "ONEBIT_NEXT " << status.recommended_next_experiment << "\n";
+        return 0;
+    }
     if (subcommand == "report" ||
-        subcommand == "boundary-report") {
+        subcommand == "boundary-report" ||
+        subcommand == "onebit-report") {
         if (report_format != "markdown" &&
             report_format != "json" &&
             report_format != "csv")
@@ -1173,6 +1213,10 @@ static int do_capacitylab(const int argc, char *argv[]) {
             manifest.preset != Preset::Boundary1080p)
             throw std::invalid_argument(
                 "boundary-report requires a boundary-1080p manifest");
+        if (subcommand == "onebit-report" &&
+            manifest.preset != Preset::OneBitVerification1080p)
+            throw std::invalid_argument(
+                "onebit-report requires a onebit-verification-1080p manifest");
         write_reports(
             manifest,
             std::filesystem::absolute(manifest_path)

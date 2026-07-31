@@ -13,7 +13,7 @@
 
 namespace youtube_capacity_lab {
 
-inline constexpr int kManifestSchemaVersion = 4;
+inline constexpr int kManifestSchemaVersion = 5;
 inline constexpr std::size_t kDefaultMaximumCases = 64;
 inline constexpr std::size_t kAbsoluteMaximumCases = 192;
 inline constexpr uint64_t kDefaultMaximumDiskBytes =
@@ -30,7 +30,9 @@ inline constexpr const char *kModulation2Version =
 inline constexpr const char *kThresholdVersion =
     "nearest-level-v1";
 
-enum class Preset { Smoke, Staged, Boundary1080p, Custom };
+enum class Preset {
+    Smoke, Staged, Boundary1080p, OneBitVerification1080p, Custom
+};
 enum class CaseState {
     Pending,
     Running,
@@ -151,11 +153,13 @@ struct CaseResult {
     std::string analyzed_at;
     std::string analyzed_file_sha256;
     std::string codec;
+    std::string pixel_format;
     int returned_width = 0;
     int returned_height = 0;
     double returned_fps = 0.0;
     int64_t bitrate = 0;
     uint64_t file_size = 0;
+    double returned_duration = 0.0;
     double encode_seconds = 0.0;
     double transcode_seconds = 0.0;
     double decode_seconds = 0.0;
@@ -180,6 +184,17 @@ struct CapacityCase {
     uint64_t payload_seed = 0;
     std::string deterministic_stream_id;
     std::string payload_family_id;
+    std::string payload_instance_id;
+    std::string role;
+    std::string payload_mode;
+    std::string source_case_id;
+    std::string source_config_id;
+    std::string source_payload_sha256;
+    bool source_payload_reused = false;
+    bool source_payload_regenerated = false;
+    std::string source_payload_validation;
+    uint64_t payload_prefix_bytes = 0;
+    double payload_entropy_estimate = 0.0;
     std::string source_sha256;
     std::string payload_path;
     std::string master_path;
@@ -210,6 +225,20 @@ struct CapacityCase {
     std::vector<CaseResult> results;
 };
 
+struct HistoricalEvidence {
+    std::string source_experiment_id;
+    std::string source_case_id;
+    std::string config_id;
+    std::string payload_instance_id;
+    std::string source_payload_sha256;
+    std::string session_label;
+    std::string returned_file_sha256;
+    std::string observation_fingerprint;
+    double packet_recovery_percent = 0.0;
+    double recovery_margin_percent = 0.0;
+    bool exact = false;
+};
+
 struct ExperimentManifest {
     int schema_version = kManifestSchemaVersion;
     std::string experiment_id;
@@ -222,6 +251,11 @@ struct ExperimentManifest {
     uint64_t maximum_disk_bytes = kDefaultMaximumDiskBytes;
     bool cancelled = false;
     bool include_simulation_failures = false;
+    std::string source_experiment_id;
+    std::string source_manifest_path;
+    std::string source_manifest_sha256;
+    std::string source_payload_validation;
+    std::vector<HistoricalEvidence> historical_evidence;
     std::vector<std::string> mandatory_stage1_profiles{
         "yt-sim-1080p-medium"};
     std::vector<std::string> mandatory_stage3_profiles{
@@ -282,6 +316,7 @@ struct RunOptions {
     bool allow_low_disk = false;
     bool estimate_only = false;
     bool include_simulation_failures = false;
+    std::filesystem::path source_manifest;
 };
 
 struct Preflight {
@@ -329,6 +364,37 @@ struct BoundaryInference {
     std::string next_experiment;
 };
 
+enum class GeometryEvidence {
+    Untested, InitialPass, VerifiedPass, MixedResult, Fail
+};
+
+struct GeometryDensityResult {
+    int block_size = 0;
+    double gain = 0.0;
+    std::size_t historical_passes = 0;
+    std::size_t current_passes = 0;
+    std::size_t failures = 0;
+    double best_margin_percent = 0.0;
+    GeometryEvidence evidence = GeometryEvidence::Untested;
+};
+
+struct OneBitInference {
+    std::string production_control = "Not uploaded/tested";
+    std::vector<GeometryDensityResult> densities;
+    std::string four_x_state = "Untested";
+    std::optional<double> highest_initial_exact_density;
+    std::optional<double> highest_verified_exact_density;
+    std::optional<double> lowest_failure_above;
+    std::string status = "Insufficient observations";
+    std::string boundary_bracket = "Insufficient observations";
+    std::string safe_candidate;
+    std::string balanced_candidate;
+    std::string experimental_candidate;
+    bool non_monotonic = false;
+    bool retest_required = true;
+    std::string recommended_next_experiment;
+};
+
 struct RepairComparison {
     int block_size = 0;
     int bits_per_block = 0;
@@ -367,6 +433,7 @@ void inverse_dct(const std::vector<double> &coefficients, int block_size,
 [[nodiscard]] std::vector<ExperimentConfig> smoke_configs();
 [[nodiscard]] std::vector<ExperimentConfig> stage1_configs();
 [[nodiscard]] std::vector<ExperimentConfig> boundary_1080p_configs();
+[[nodiscard]] std::vector<ExperimentConfig> onebit_verification_configs();
 [[nodiscard]] std::vector<CapacityCase> build_initial_cases(
     const RunOptions &options, const std::string &experiment_id);
 [[nodiscard]] Preflight estimate(const RunOptions &options);
@@ -393,6 +460,9 @@ void analyze_folder(const std::filesystem::path &manifest_path,
                     const std::string &session_label = {});
 [[nodiscard]] BoundaryInference infer_boundary(
     const ExperimentManifest &manifest);
+[[nodiscard]] OneBitInference infer_onebit_geometry(
+    const ExperimentManifest &manifest);
+void verify_source_payloads(const std::filesystem::path &manifest_path);
 [[nodiscard]] std::vector<RepairComparison> compare_boundary_repairs(
     const ExperimentManifest &manifest);
 [[nodiscard]] std::string local_evidence_status(

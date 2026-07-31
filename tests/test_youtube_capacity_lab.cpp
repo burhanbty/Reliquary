@@ -215,7 +215,7 @@ TEST(CapacityConfig, ProductionBaselineIsUnchanged) {
 TEST(CapacityConfig, InvalidBlockBitsSignalRepairAndResolutionReject) {
     std::string reason;
     auto config = config_for(8, 1);
-    config.block_width = config.block_height = 5;
+    config.block_width = config.block_height = 7;
     EXPECT_FALSE(config.valid(&reason));
     config = config_for(8, 3);
     EXPECT_FALSE(config.valid(&reason));
@@ -251,7 +251,9 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         std::tuple{1920, 1080, 8, 240},
         std::tuple{1920, 1080, 6, 320},
+        std::tuple{1920, 1080, 5, 384},
         std::tuple{1920, 1080, 4, 480},
+        std::tuple{1920, 1080, 3, 640},
         std::tuple{3840, 2160, 8, 480},
         std::tuple{3840, 2160, 6, 640},
         std::tuple{3840, 2160, 4, 960}));
@@ -293,7 +295,7 @@ TEST_P(CapacityTransformTest, ForwardInverseRoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(
     SupportedSizes, CapacityTransformTest,
-    testing::Values(4, 6, 8));
+    testing::Values(3, 4, 5, 6, 8));
 
 TEST(CapacityTransform, BasisIsCached) {
     EXPECT_EQ(&dct_basis(6), &dct_basis(6));
@@ -1109,5 +1111,179 @@ TEST(CapacityRealEvidence,
         text.find("Local candidate; Real YouTube failed"),
         std::string::npos);
     report.close();
+    std::filesystem::remove_all(root);
+}
+
+TEST(OneBitPreset, HasExactlySixCasesInVerificationOrder) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    const auto cases = build_initial_cases(options, "ONEBIT");
+    const std::array<std::string, 6> ids{
+        "R00", "R01", "G04", "R02", "R03", "G05"};
+    const std::array<int, 6> blocks{8, 6, 5, 4, 4, 3};
+    ASSERT_EQ(cases.size(), 6U);
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        EXPECT_EQ(cases[i].case_id, ids[i]);
+        EXPECT_EQ(cases[i].config.block_width, blocks[i]);
+        EXPECT_EQ(cases[i].config.resolution_width, 1920);
+        EXPECT_EQ(cases[i].config.resolution_height, 1080);
+        EXPECT_EQ(cases[i].config.bits_per_block, 1);
+        EXPECT_EQ(cases[i].config.signal_milli, 1000);
+        EXPECT_EQ(cases[i].config.repair_basis_points, 500);
+        EXPECT_EQ(1920 % blocks[i], 0);
+        EXPECT_EQ(1080 % blocks[i], 0);
+        EXPECT_NEAR(cases[i].boundary_density_gain,
+                    64.0 / (blocks[i] * blocks[i]), 1e-9);
+    }
+    EXPECT_EQ(cases[3].config_id, cases[4].config_id);
+    EXPECT_NE(cases[3].payload_instance_id,
+              cases[4].payload_instance_id);
+    EXPECT_NE(cases[3].payload_seed, cases[4].payload_seed);
+    EXPECT_EQ(cases[2].deterministic_stream_id,
+              cases[5].deterministic_stream_id);
+}
+
+TEST(OneBitPreflight, IsBoundedToSixCasesAndThreeSimulations) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.output_root = std::filesystem::temp_directory_path();
+    const auto result = estimate(options);
+    EXPECT_EQ(result.staged_maximum_cases, 6U);
+    EXPECT_EQ(result.estimated_transcodes, 18U);
+}
+
+TEST(OneBitInference, VerifiedFourXAndBracket) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    for (auto &c : manifest.cases)
+        add_real_observation(c, c.case_id != "G05",
+                             "1-bit verification retest");
+    HistoricalEvidence b06;
+    b06.source_case_id = "B06";
+    b06.config_id = manifest.cases[3].config_id;
+    b06.session_label = "Boundary initial YouTube test";
+    b06.returned_file_sha256 = "historical-b06";
+    b06.exact = true;
+    manifest.historical_evidence.push_back(b06);
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_EQ(inferred.four_x_state,
+              "4x candidate verified across session and payload");
+    EXPECT_EQ(inferred.status, "Bracketed");
+    EXPECT_NE(inferred.boundary_bracket.find("4.00x"),
+              std::string::npos);
+    EXPECT_FALSE(inferred.safe_candidate.empty());
+}
+
+TEST(OneBitInference, ControlFailureInvalidatesAllDecisions) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    for (auto &c : manifest.cases)
+        add_real_observation(c, c.case_id != "R00");
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_EQ(inferred.status, "Invalid production control");
+    EXPECT_TRUE(inferred.safe_candidate.empty());
+}
+
+TEST(OneBitReports, WritesAllRequiredArtifacts) {
+    const auto root = unique_temp("onebit-reports");
+    ExperimentManifest manifest;
+    manifest.experiment_id = "ONEBIT";
+    manifest.preset = Preset::OneBitVerification1080p;
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    write_reports(manifest, root);
+    for (const auto *name : {"onebit_report.md", "onebit_summary.json",
+             "onebit_cases.csv", "onebit_observations.csv",
+             "onebit_geometry.csv", "onebit_evidence.json"})
+        EXPECT_TRUE(std::filesystem::exists(root / name));
+    std::filesystem::remove_all(root);
+}
+
+TEST(OneBitInference, IndependentFailureMakesFourXMixedAndUnsafe) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    for (auto &c : manifest.cases)
+        add_real_observation(c, c.case_id != "R03" && c.case_id != "G05");
+    HistoricalEvidence history;
+    history.source_case_id = "B06";
+    history.config_id = manifest.cases[3].config_id;
+    history.exact = true;
+    manifest.historical_evidence.push_back(history);
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_EQ(inferred.four_x_state, "Mixed result");
+    EXPECT_NE(inferred.safe_candidate, manifest.cases[3].config_id);
+}
+
+TEST(OneBitInference, ThreeByThreePassRequiresFinerExperiment) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    for (auto &c : manifest.cases) add_real_observation(c, true);
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_EQ(inferred.status,
+              "At least 7.11x; finer geometry experiment required");
+    EXPECT_EQ(inferred.experimental_candidate,
+              manifest.cases.back().config_id);
+    EXPECT_TRUE(inferred.safe_candidate.empty());
+}
+
+TEST(OneBitInference, LowerDensityFailureThenHigherPassIsNonMonotonic) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    for (auto &c : manifest.cases)
+        add_real_observation(c, c.case_id != "G04" && c.case_id != "G05");
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_TRUE(inferred.non_monotonic);
+    EXPECT_EQ(inferred.status, "Non-monotonic / inconclusive");
+}
+
+TEST(OneBitManifest, RoundtripPreservesProvenanceAndPayloadInstances) {
+    const auto root = unique_temp("onebit-manifest");
+    std::filesystem::create_directories(root);
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.experiment_id = "ONEBIT";
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.source_experiment_id = "BOUNDARY";
+    manifest.source_manifest_sha256 = "abc";
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    HistoricalEvidence evidence;
+    evidence.source_case_id = "B06";
+    evidence.config_id = manifest.cases[3].config_id;
+    evidence.exact = true;
+    manifest.historical_evidence.push_back(evidence);
+    const auto path = root / "manifest.json";
+    write_manifest_atomic(manifest, path);
+    const auto loaded = read_manifest(path);
+    EXPECT_EQ(loaded.schema_version, 5);
+    EXPECT_EQ(loaded.source_experiment_id, "BOUNDARY");
+    ASSERT_EQ(loaded.historical_evidence.size(), 1U);
+    EXPECT_EQ(loaded.cases[3].config_id, loaded.cases[4].config_id);
+    EXPECT_NE(loaded.cases[3].payload_instance_id,
+              loaded.cases[4].payload_instance_id);
     std::filesystem::remove_all(root);
 }
