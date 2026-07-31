@@ -22,6 +22,7 @@ $commonArgs = @(
     '--yes-playlist',
     '--no-part',
     '--restrict-filenames',
+    '--write-info-json',
     '--output', (Join-Path $outputRoot '%(title)s [%(id)s].%(ext)s')
 )
 if ($UseBrowserCookies) {
@@ -48,9 +49,16 @@ $files = Get-ChildItem -LiteralPath $outputRoot -File |
     Where-Object { $_.Extension -in @('.mp4', '.webm', '.mkv') }
 $index = @()
 foreach ($file in $files) {
-    $metadataJson = & $ytDlp.Source '--dump-single-json' '--no-playlist' $file.FullName 2>$null
     $metadata = $null
-    try { $metadata = $metadataJson | ConvertFrom-Json } catch { }
+    $infoPath = Join-Path $outputRoot ($file.BaseName + '.info.json')
+    if (Test-Path -LiteralPath $infoPath) {
+        try {
+            $metadata = Get-Content -LiteralPath $infoPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            Write-Warning "Could not parse yt-dlp metadata for $($file.Name)."
+        }
+    }
     $index += [ordered]@{
         file = $file.Name
         codec = if ($metadata) { $metadata.vcodec } else { 'unknown' }
