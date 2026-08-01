@@ -146,6 +146,7 @@ struct RecoveryTelemetry {
 struct CaseResult {
     std::string config_id;
     std::string boundary_case_id;
+    std::string payload_instance_id;
     std::string source_type;
     std::string simulation_profile;
     std::string analysis_session_label;
@@ -368,18 +369,39 @@ enum class GeometryEvidence {
     Untested, InitialPass, VerifiedPass, MixedResult, Fail
 };
 
+struct CaseObservationResult {
+    std::string case_id;
+    std::string config_id;
+    std::string payload_instance_id;
+    std::size_t current_observation_count = 0;
+    std::size_t exact_pass_count = 0;
+    std::size_t failure_count = 0;
+    std::size_t duplicate_count = 0;
+    double best_recovery = 0.0;
+    double best_margin = 0.0;
+    std::string current_status = "untested";
+    std::vector<std::string> failure_reasons;
+};
+
 struct GeometryDensityResult {
     int block_size = 0;
     double gain = 0.0;
     std::size_t historical_passes = 0;
+    std::size_t historical_failures = 0;
     std::size_t current_passes = 0;
     std::size_t failures = 0;
+    std::size_t unique_configs = 0;
+    std::size_t unique_cases = 0;
+    std::size_t unique_payload_instances = 0;
+    std::size_t observation_count = 0;
+    std::size_t exact_pass_count = 0;
     double best_margin_percent = 0.0;
     GeometryEvidence evidence = GeometryEvidence::Untested;
 };
 
 struct OneBitInference {
     std::string production_control = "Not uploaded/tested";
+    std::vector<CaseObservationResult> cases;
     std::vector<GeometryDensityResult> densities;
     std::string four_x_state = "Untested";
     std::optional<double> highest_initial_exact_density;
@@ -462,6 +484,8 @@ void analyze_folder(const std::filesystem::path &manifest_path,
     const ExperimentManifest &manifest);
 [[nodiscard]] OneBitInference infer_onebit_geometry(
     const ExperimentManifest &manifest);
+[[nodiscard]] std::vector<CaseObservationResult>
+infer_onebit_case_observations(const ExperimentManifest &manifest);
 void verify_source_payloads(const std::filesystem::path &manifest_path);
 [[nodiscard]] std::vector<RepairComparison> compare_boundary_repairs(
     const ExperimentManifest &manifest);

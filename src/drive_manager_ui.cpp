@@ -1006,9 +1006,10 @@ void DriveManagerUI::setupUI() {
     capacityProgress = new QProgressBar();
     capacityProgress->setRange(0, 100);
     capacityLayout->addWidget(capacityProgress);
-    capacityResults = new QTableWidget(0, 19);
+    capacityResults = new QTableWidget(0, 21);
     capacityResults->setHorizontalHeaderLabels({
-        "Case", "Config", "Stage", "Block", "Bits", "Signal", "Repair",
+        "Case", "Config", "Payload instance", "Source SHA prefix",
+        "Stage", "Block", "Bits", "Signal", "Repair",
         "Resolution", "Useful KiB/s", "Gain", "Candidate",
         "Recovery", "Margin", "BER/SER", "SHA", "Pareto",
         "Local evidence", "Real YouTube", "Overall / Boundary"});
@@ -1176,7 +1177,9 @@ void DriveManagerUI::setupUI() {
         startTestLabProcess({
             "capacitylab",
             capacityPresetCombo->currentIndex() == 2
-                ? "boundary-report" : "report",
+                ? "boundary-report"
+                : capacityPresetCombo->currentIndex() == 3
+                    ? "onebit-report" : "report",
             "--manifest",
             capacityManifestEdit->text(), "--format", "markdown"});
     });
@@ -2789,6 +2792,10 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
                 ? "-"
                 : item.value("boundary_case_id").toString(),
             item.value("config_id").toString(),
+            item.value("payload_instance_id").toString().isEmpty()
+                ? "-" : item.value("payload_instance_id").toString(),
+            item.value("source_sha256").toString().left(8).isEmpty()
+                ? "-" : item.value("source_sha256").toString().left(8),
             QString::number(item.value("stage").toInt()),
             QString::number(item.value("block_width").toInt()),
             QString::number(item.value("bits_per_block").toInt()),

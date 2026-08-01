@@ -1,0 +1,56 @@
+{
+  "schema_version": 5,
+  "manifest_type": "youtube-capacity-lab",
+  "experiment_id": "SANITIZED-ONEBIT",
+  "preset": "onebit-verification-1080p",
+  "source_payload_validation": "All reused source payloads exact",
+  "cases": [
+    {
+      "case_id": "R00", "boundary_case_id": "R00",
+      "config_id": "90ED2AFA3076", "block_width": 8, "block_height": 8,
+      "role": "Production control", "boundary_density_gain": 1.0,
+      "payload_instance_id": "control1", "source_sha256": "control-source-sha",
+      "results": [{"config_id":"90ED2AFA3076","boundary_case_id":"R00","payload_instance_id":"control1","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-r00","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":true,"decode_completed":true,"sha256_match":true,"recovery_margin_packets":5,"recovery_margin_percent":5,"packet_recovery_percent":100}]
+    },
+    {
+      "case_id": "R01", "boundary_case_id": "R01",
+      "config_id": "2C3E3171ADFB", "block_width": 6, "block_height": 6,
+      "role": "Safe candidate retest", "boundary_density_gain": 1.7777777777777777,
+      "payload_instance_id": "safe0001", "source_sha256": "safe-source-sha",
+      "results": [{"config_id":"2C3E3171ADFB","boundary_case_id":"R01","payload_instance_id":"safe0001","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-r01","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":true,"decode_completed":true,"sha256_match":true,"recovery_margin_packets":5,"recovery_margin_percent":5,"packet_recovery_percent":100}]
+    },
+    {
+      "case_id": "G04", "boundary_case_id": "G04",
+      "config_id": "D9FC942B9EDF", "block_width": 5, "block_height": 5,
+      "role": "Geometry sweep", "boundary_density_gain": 2.56,
+      "payload_instance_id": "geometry5", "source_sha256": "geometry-five-source-sha",
+      "results": [{"config_id":"D9FC942B9EDF","boundary_case_id":"G04","payload_instance_id":"geometry5","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-g04","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":true,"decode_completed":true,"sha256_match":true,"recovery_margin_packets":5,"recovery_margin_percent":5,"packet_recovery_percent":100}]
+    },
+    {
+      "case_id": "R02", "boundary_case_id": "R02",
+      "config_id": "538F2B009FAB", "block_width": 4, "block_height": 4,
+      "role": "4x same-payload retest", "boundary_density_gain": 4.0,
+      "payload_instance_id": "same0001", "source_sha256": "same-payload-source-sha",
+      "results": [{"config_id":"538F2B009FAB","boundary_case_id":"R02","payload_instance_id":"same0001","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-r02","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":false,"decode_completed":true,"sha256_match":true,"error":"Non-monotonic timestamps","recovery_margin_packets":5,"recovery_margin_percent":5,"packet_recovery_percent":100}]
+    },
+    {
+      "case_id": "R03", "boundary_case_id": "R03",
+      "config_id": "538F2B009FAB", "block_width": 4, "block_height": 4,
+      "role": "4x independent-payload verification", "boundary_density_gain": 4.0,
+      "payload_instance_id": "indp0001", "source_sha256": "independent-payload-source-sha",
+      "results": [{"config_id":"538F2B009FAB","boundary_case_id":"R03","payload_instance_id":"indp0001","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-r03","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":false,"decode_completed":true,"sha256_match":true,"error":"Non-monotonic timestamps","recovery_margin_packets":5,"recovery_margin_percent":5,"packet_recovery_percent":100}]
+    },
+    {
+      "case_id": "G05", "boundary_case_id": "G05",
+      "config_id": "85E2D1FC041C", "block_width": 3, "block_height": 3,
+      "role": "Geometry sweep", "boundary_density_gain": 7.111111111111111,
+      "payload_instance_id": "geometry3", "source_sha256": "geometry-three-source-sha",
+      "results": [{"config_id":"85E2D1FC041C","boundary_case_id":"G05","payload_instance_id":"geometry3","source_type":"real-youtube-roundtrip","analysis_session_label":"current","analyzed_file_sha256":"returned-g05","codec":"h264","returned_width":1920,"returned_height":1080,"metadata_valid":true,"decode_completed":false,"sha256_match":false,"error":"insufficient packets to assemble payload","recovery_margin_packets":-700,"recovery_margin_percent":-12.41,"packet_recovery_percent":83.4}]
+    }
+  ],
+  "historical_evidence": [
+    {"source_case_id":"historical-control","config_id":"90ED2AFA3076","payload_instance_id":"control1","session_label":"historical","returned_file_sha256":"hist-r00","recovery_margin_percent":5,"packet_recovery_percent":100,"exact":true},
+    {"source_case_id":"historical-safe","config_id":"2C3E3171ADFB","payload_instance_id":"safe0001","session_label":"historical","returned_file_sha256":"hist-r01","recovery_margin_percent":5,"packet_recovery_percent":100,"exact":true},
+    {"source_case_id":"historical-four","config_id":"538F2B009FAB","payload_instance_id":"same0001","session_label":"historical","returned_file_sha256":"hist-r02","recovery_margin_percent":5,"packet_recovery_percent":100,"exact":true}
+  ]
+}

@@ -1166,17 +1166,100 @@ TEST(OneBitInference, VerifiedFourXAndBracket) {
     HistoricalEvidence b06;
     b06.source_case_id = "B06";
     b06.config_id = manifest.cases[3].config_id;
+    b06.payload_instance_id = manifest.cases[3].payload_instance_id;
     b06.session_label = "Boundary initial YouTube test";
     b06.returned_file_sha256 = "historical-b06";
     b06.exact = true;
+    b06.recovery_margin_percent = 5.0;
     manifest.historical_evidence.push_back(b06);
     const auto inferred = infer_onebit_geometry(manifest);
     EXPECT_EQ(inferred.four_x_state,
-              "4x candidate verified across session and payload");
+              "Verified across session and payload");
+    const auto four = std::find_if(inferred.densities.begin(),
+        inferred.densities.end(), [](const GeometryDensityResult &density) {
+            return density.block_size == 4;
+        });
+    ASSERT_NE(four, inferred.densities.end());
+    EXPECT_EQ(four->unique_configs, 1U);
+    EXPECT_EQ(four->unique_cases, 2U);
+    EXPECT_EQ(four->unique_payload_instances, 2U);
+    EXPECT_EQ(four->current_passes, 2U);
+    EXPECT_EQ(four->failures, 0U);
     EXPECT_EQ(inferred.status, "Bracketed");
     EXPECT_NE(inferred.boundary_bracket.find("4.00x"),
               std::string::npos);
     EXPECT_FALSE(inferred.safe_candidate.empty());
+}
+
+TEST(OneBitInference, SameConfigDifferentCasesRemainIndependentPasses) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    auto &r02 = manifest.cases[3];
+    auto &r03 = manifest.cases[4];
+    add_real_observation(r02, true, "retest", true, 5.0);
+    add_real_observation(r03, true, "retest", true, 5.0);
+    r02.results.back().metadata_valid = false;
+    r02.results.back().error = "Non-monotonic timestamps";
+    r03.results.back().metadata_valid = false;
+    r03.results.back().error = "Non-monotonic timestamps";
+
+    const auto cases = infer_onebit_case_observations(manifest);
+    ASSERT_EQ(cases.size(), 6U);
+    EXPECT_EQ(cases[3].config_id, cases[4].config_id);
+    EXPECT_NE(cases[3].payload_instance_id, cases[4].payload_instance_id);
+    EXPECT_EQ(cases[3].exact_pass_count, 1U);
+    EXPECT_EQ(cases[4].exact_pass_count, 1U);
+    EXPECT_EQ(cases[3].failure_count, 0U);
+    EXPECT_EQ(cases[4].failure_count, 0U);
+    EXPECT_EQ(cases[3].current_status, "pass");
+    EXPECT_EQ(cases[4].current_status, "pass");
+}
+
+TEST(OneBitInference, SameConfigPassAndFailureProduceMixedGeometry) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    add_real_observation(manifest.cases[0], true);
+    add_real_observation(manifest.cases[3], true);
+    add_real_observation(manifest.cases[4], false);
+    const auto inferred = infer_onebit_geometry(manifest);
+    const auto four = std::find_if(inferred.densities.begin(),
+        inferred.densities.end(), [](const GeometryDensityResult &density) {
+            return density.block_size == 4;
+        });
+    ASSERT_NE(four, inferred.densities.end());
+    EXPECT_EQ(four->current_passes, 1U);
+    EXPECT_EQ(four->failures, 1U);
+    EXPECT_EQ(four->evidence, GeometryEvidence::MixedResult);
+}
+
+TEST(OneBitInference, MissingIndependentPayloadRemainsPending) {
+    RunOptions options;
+    options.preset = Preset::OneBitVerification1080p;
+    options.maximum_cases = 6;
+    ExperimentManifest manifest;
+    manifest.preset = Preset::OneBitVerification1080p;
+    manifest.cases = build_initial_cases(options, "ONEBIT");
+    add_real_observation(manifest.cases[0], true);
+    add_real_observation(manifest.cases[3], true, "retest", true, 5.0);
+    HistoricalEvidence history;
+    history.source_case_id = "historical-four";
+    history.config_id = manifest.cases[3].config_id;
+    history.payload_instance_id = manifest.cases[3].payload_instance_id;
+    history.recovery_margin_percent = 5.0;
+    history.exact = true;
+    manifest.historical_evidence.push_back(history);
+    const auto inferred = infer_onebit_geometry(manifest);
+    EXPECT_EQ(inferred.four_x_state,
+              "Repeated-session evidence; independent payload pending");
+    EXPECT_TRUE(inferred.safe_candidate.empty());
 }
 
 TEST(OneBitInference, ControlFailureInvalidatesAllDecisions) {
@@ -1271,6 +1354,14 @@ TEST(OneBitManifest, RoundtripPreservesProvenanceAndPayloadInstances) {
     manifest.source_experiment_id = "BOUNDARY";
     manifest.source_manifest_sha256 = "abc";
     manifest.cases = build_initial_cases(options, "ONEBIT");
+    add_real_observation(manifest.cases[3], true);
+    add_real_observation(manifest.cases[4], true);
+    manifest.cases[3].results.back().boundary_case_id = "R02";
+    manifest.cases[3].results.back().payload_instance_id =
+        manifest.cases[3].payload_instance_id;
+    manifest.cases[4].results.back().boundary_case_id = "R03";
+    manifest.cases[4].results.back().payload_instance_id =
+        manifest.cases[4].payload_instance_id;
     HistoricalEvidence evidence;
     evidence.source_case_id = "B06";
     evidence.config_id = manifest.cases[3].config_id;
@@ -1285,5 +1376,73 @@ TEST(OneBitManifest, RoundtripPreservesProvenanceAndPayloadInstances) {
     EXPECT_EQ(loaded.cases[3].config_id, loaded.cases[4].config_id);
     EXPECT_NE(loaded.cases[3].payload_instance_id,
               loaded.cases[4].payload_instance_id);
+    ASSERT_EQ(loaded.cases[3].results.size(), 1U);
+    ASSERT_EQ(loaded.cases[4].results.size(), 1U);
+    EXPECT_EQ(loaded.cases[3].results[0].boundary_case_id, "R02");
+    EXPECT_EQ(loaded.cases[4].results[0].boundary_case_id, "R03");
+    EXPECT_NE(loaded.cases[3].results[0].payload_instance_id,
+              loaded.cases[4].results[0].payload_instance_id);
+    std::filesystem::remove_all(root);
+}
+
+TEST(OneBitManifestReplay, SanitizedMultiPayloadEvidenceBracketsFourToSeven) {
+    const auto fixture = std::filesystem::path(__FILE__).parent_path() /
+        "fixtures" / "onebit_multi_payload_manifest.json";
+    const auto manifest = read_manifest(fixture);
+    const auto inferred = infer_onebit_geometry(manifest);
+    ASSERT_EQ(inferred.cases.size(), 6U);
+    EXPECT_EQ(inferred.cases[3].case_id, "R02");
+    EXPECT_EQ(inferred.cases[4].case_id, "R03");
+    EXPECT_EQ(inferred.cases[3].exact_pass_count, 1U);
+    EXPECT_EQ(inferred.cases[4].exact_pass_count, 1U);
+    EXPECT_EQ(inferred.four_x_state,
+              "Verified across session and payload");
+    EXPECT_EQ(inferred.status, "Bracketed");
+    EXPECT_EQ(inferred.boundary_bracket,
+              "4.00x <= 1-bit geometry boundary < 7.11x");
+    EXPECT_EQ(inferred.safe_candidate, "538F2B009FAB");
+    const auto four = std::find_if(inferred.densities.begin(),
+        inferred.densities.end(), [](const GeometryDensityResult &density) {
+            return density.block_size == 4;
+        });
+    ASSERT_NE(four, inferred.densities.end());
+    EXPECT_EQ(four->historical_passes, 1U);
+    EXPECT_EQ(four->current_passes, 2U);
+    EXPECT_EQ(four->failures, 0U);
+}
+
+TEST(OneBitReports, MarkdownJsonAndCsvShareCentralInference) {
+    const auto fixture = std::filesystem::path(__FILE__).parent_path() /
+        "fixtures" / "onebit_multi_payload_manifest.json";
+    const auto root = unique_temp("onebit-consistency");
+    const auto manifest = read_manifest(fixture);
+    write_reports(manifest, root);
+    const auto read_all = [](const std::filesystem::path &path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(input),
+                           std::istreambuf_iterator<char>());
+    };
+    const auto markdown = read_all(root / "onebit_report.md");
+    const auto summary = read_all(root / "onebit_summary.json");
+    const auto geometry = read_all(root / "onebit_geometry.csv");
+    const auto cases = read_all(root / "onebit_cases.csv");
+    EXPECT_NE(markdown.find(
+        "4.00x <= 1-bit geometry boundary < 7.11x"), std::string::npos);
+    EXPECT_NE(markdown.find(
+        "Combined state: Verified across session and payload"),
+        std::string::npos);
+    EXPECT_NE(summary.find(
+        "\"four_x_state\": \"Verified across session and payload\""),
+        std::string::npos);
+    EXPECT_NE(summary.find(
+        "\"safe_candidate\": \"538F2B009FAB\""), std::string::npos);
+    EXPECT_NE(geometry.find(
+        "Verified across session and payload"), std::string::npos);
+    EXPECT_NE(geometry.find(
+        "4.00x <= 1-bit geometry boundary < 7.11x"), std::string::npos);
+    EXPECT_NE(cases.find("R02,538F2B009FAB,same0001"),
+              std::string::npos);
+    EXPECT_NE(cases.find("R03,538F2B009FAB,indp0001"),
+              std::string::npos);
     std::filesystem::remove_all(root);
 }

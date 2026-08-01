@@ -3599,73 +3599,245 @@ BoundaryInference infer_boundary(
     return inference;
 }
 
+namespace {
+
+bool onebit_observation_exact(
+    const CapacityCase &test_case, const CaseResult &result) {
+    // A timestamp warning can make metadata_valid false after the decoded
+    // payload has already been reconstructed exactly.  Geometry evidence is
+    // about payload recovery, so the authoritative gates are decode/SHA,
+    // expected geometry, and a non-negative recovery margin.
+    return result.source_type == "real-youtube-roundtrip" &&
+        result.decode_completed && result.sha256_match &&
+        result.returned_width == test_case.config.resolution_width &&
+        result.returned_height == test_case.config.resolution_height &&
+        result.telemetry.recovery_margin_packets >= 0;
+}
+
+std::string onebit_failure_reason(
+    const CapacityCase &test_case, const CaseResult &result) {
+    if (!result.error.empty()) return result.error;
+    if (!result.decode_completed) return "decode failed";
+    if (!result.sha256_match) return "SHA mismatch";
+    if (result.returned_width != test_case.config.resolution_width ||
+        result.returned_height != test_case.config.resolution_height)
+        return "unexpected returned resolution";
+    if (result.telemetry.recovery_margin_packets < 0)
+        return "negative recovery margin";
+    return "observation failed exact recovery gates";
+}
+
+bool status_passes(const std::string &status) {
+    return status == "pass" || status == "mixed";
+}
+
+bool status_fails(const std::string &status) {
+    return status == "fail" || status == "mixed";
+}
+
+} // namespace
+
+std::vector<CaseObservationResult> infer_onebit_case_observations(
+    const ExperimentManifest &manifest) {
+    std::vector<CaseObservationResult> out;
+    out.reserve(manifest.cases.size());
+    for (const auto &test_case : manifest.cases)
+        out.push_back({test_case.case_id, test_case.config_id,
+                       test_case.payload_instance_id});
+
+    std::vector<std::set<std::string>> fingerprints(out.size());
+    const auto unique_index = [&](const auto &predicate)
+        -> std::optional<std::size_t> {
+        std::optional<std::size_t> found;
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+            if (!predicate(manifest.cases[i])) continue;
+            if (found) return std::nullopt;
+            found = i;
+        }
+        return found;
+    };
+
+    for (std::size_t owner = 0; owner < manifest.cases.size(); ++owner) {
+        const auto &owner_case = manifest.cases[owner];
+        for (const auto &observation : owner_case.results) {
+            if (observation.source_type != "real-youtube-roundtrip")
+                continue;
+            std::optional<std::size_t> target;
+            bool explicit_case = false;
+            if (!observation.boundary_case_id.empty())
+                target = unique_index([&](const CapacityCase &candidate) {
+                    return candidate.case_id == observation.boundary_case_id ||
+                        candidate.boundary_case_id ==
+                            observation.boundary_case_id;
+                });
+            if (target) explicit_case = true;
+            // A result nested in a manifest case is an explicit case binding.
+            if (!target) {
+                target = owner;
+                explicit_case = true;
+            }
+            if (!explicit_case && !observation.payload_instance_id.empty())
+                if (const auto payload = unique_index(
+                        [&](const CapacityCase &candidate) {
+                            return candidate.payload_instance_id ==
+                                observation.payload_instance_id;
+                        }))
+                    target = payload;
+            if (!target && !observation.config_id.empty())
+                target = unique_index([&](const CapacityCase &candidate) {
+                    return candidate.config_id == observation.config_id;
+                });
+            if (!target) continue;
+
+            const auto &test_case = manifest.cases[*target];
+            auto &result = out[*target];
+            const std::string fingerprint = test_case.case_id + "|" +
+                test_case.payload_instance_id + "|" +
+                observation.analysis_session_label + "|" +
+                observation.analyzed_file_sha256;
+            if (!fingerprints[*target].insert(fingerprint).second) {
+                ++result.duplicate_count;
+                continue;
+            }
+            ++result.current_observation_count;
+            result.best_recovery = std::max(result.best_recovery,
+                observation.telemetry.packet_recovery_percent);
+            result.best_margin = result.current_observation_count == 1
+                ? observation.telemetry.recovery_margin_percent
+                : std::max(result.best_margin,
+                    observation.telemetry.recovery_margin_percent);
+            if (onebit_observation_exact(test_case, observation)) {
+                ++result.exact_pass_count;
+            } else {
+                ++result.failure_count;
+                result.failure_reasons.push_back(
+                    onebit_failure_reason(test_case, observation));
+            }
+        }
+    }
+    for (auto &result : out) {
+        if (result.exact_pass_count != 0 && result.failure_count != 0)
+            result.current_status = "mixed";
+        else if (result.exact_pass_count != 0)
+            result.current_status = "pass";
+        else if (result.failure_count != 0)
+            result.current_status = "fail";
+    }
+    return out;
+}
+
 OneBitInference infer_onebit_geometry(
     const ExperimentManifest &manifest) {
     OneBitInference out;
+    out.cases = infer_onebit_case_observations(manifest);
     const std::array<std::pair<int, double>, 5> geometry{{
         {8, 1.0}, {6, 64.0 / 36.0}, {5, 64.0 / 25.0},
         {4, 4.0}, {3, 64.0 / 9.0}}};
-    const auto exact = [](const CapacityCase &c, const CaseResult &r) {
-        return r.source_type == "real-youtube-roundtrip" &&
-            r.metadata_valid && r.decode_completed && r.sha256_match &&
-            r.returned_width == c.config.resolution_width &&
-            r.returned_height == c.config.resolution_height &&
-            r.telemetry.recovery_margin_packets >= 0;
-    };
-    const auto find_case = [&](const std::string &id) -> const CapacityCase * {
-        const auto it = std::find_if(manifest.cases.begin(), manifest.cases.end(),
-            [&](const CapacityCase &c) { return c.case_id == id; });
-        return it == manifest.cases.end() ? nullptr : &*it;
-    };
-    const auto case_state = [&](const std::string &id) {
-        const auto *c = find_case(id);
-        if (!c) return 0; // untested
-        bool seen = false, pass = false;
-        for (const auto &r : c->results) {
-            if (r.source_type != "real-youtube-roundtrip") continue;
-            seen = true;
-            pass = pass || exact(*c, r);
+
+    std::set<std::string> historical_four_payloads;
+    std::set<std::string> historical_four_configs;
+    bool historical_four_failure = false;
+    for (const auto &e : manifest.historical_evidence) {
+        const auto matching = std::find_if(
+            manifest.cases.begin(), manifest.cases.end(),
+            [&](const CapacityCase &test_case) {
+                return test_case.config_id == e.config_id &&
+                    test_case.config.block_width == 4;
+            });
+        if (matching == manifest.cases.end()) continue;
+        if (!e.exact || e.recovery_margin_percent <= 0.0) {
+            historical_four_failure = true;
+        } else {
+            historical_four_configs.insert(e.config_id);
+            if (!e.payload_instance_id.empty())
+                historical_four_payloads.insert(e.payload_instance_id);
         }
-        return !seen ? 0 : pass ? 1 : -1;
-    };
+    }
+    bool same_payload_pass = false;
+    bool independent_payload_pass = false;
+    bool four_failure = false;
+    std::set<std::string> same_payload_configs;
+    std::set<std::string> independent_payload_configs;
+    for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+        const auto &test_case = manifest.cases[i];
+        if (test_case.config.block_width != 4) continue;
+        const auto &result = out.cases[i];
+        four_failure = four_failure || result.failure_count != 0;
+        if (!status_passes(result.current_status) ||
+            result.best_margin <= 0.0 ||
+            !historical_four_configs.contains(test_case.config_id))
+            continue;
+        const bool same = historical_four_payloads.contains(
+            test_case.payload_instance_id);
+        const bool independent = !test_case.payload_instance_id.empty() &&
+            !same;
+        same_payload_pass = same_payload_pass || same;
+        independent_payload_pass = independent_payload_pass || independent;
+        if (same) same_payload_configs.insert(test_case.config_id);
+        if (independent)
+            independent_payload_configs.insert(test_case.config_id);
+    }
+    std::set<std::string> verified_four_configs;
+    std::set_intersection(same_payload_configs.begin(),
+        same_payload_configs.end(), independent_payload_configs.begin(),
+        independent_payload_configs.end(),
+        std::inserter(verified_four_configs,
+            verified_four_configs.begin()));
+    four_failure = four_failure || historical_four_failure;
+    if (four_failure) {
+        out.four_x_state = "Mixed result";
+    } else if (!historical_four_configs.empty() && same_payload_pass &&
+               independent_payload_pass &&
+               !verified_four_configs.empty()) {
+        out.four_x_state = "Verified across session and payload";
+    } else if (same_payload_pass && !independent_payload_pass) {
+        out.four_x_state =
+            "Repeated-session evidence; independent payload pending";
+    } else if (independent_payload_pass) {
+        out.four_x_state =
+            "Independent-payload evidence; same-payload retest missing";
+    }
+
     for (const auto &[block, gain] : geometry) {
         GeometryDensityResult density;
         density.block_size = block;
         density.gain = gain;
-        std::set<std::string> evidence_uploads;
-        for (const auto &c : manifest.cases) {
-            if (c.config.block_width != block) continue;
-            bool seen = false, passed = false;
-            for (const auto &r : c.results) {
-                if (r.source_type != "real-youtube-roundtrip") continue;
-                seen = true;
-                if (exact(c, r)) {
-                    passed = true;
-                    evidence_uploads.insert(r.analysis_session_label + "|" +
-                                            r.analyzed_file_sha256);
-                    density.best_margin_percent = std::max(
-                        density.best_margin_percent,
-                        r.telemetry.recovery_margin_percent);
-                }
-            }
-            if (passed) ++density.current_passes;
-            else if (seen) ++density.failures;
+        std::set<std::string> configs, cases, payloads;
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+            const auto &test_case = manifest.cases[i];
+            if (test_case.config.block_width != block) continue;
+            const auto &result = out.cases[i];
+            configs.insert(test_case.config_id);
+            cases.insert(test_case.case_id);
+            if (!test_case.payload_instance_id.empty())
+                payloads.insert(test_case.payload_instance_id);
+            const bool had_observation = density.observation_count != 0;
+            density.observation_count += result.current_observation_count;
+            density.exact_pass_count += result.exact_pass_count;
+            if (status_passes(result.current_status))
+                ++density.current_passes;
+            if (status_fails(result.current_status))
+                ++density.failures;
+            if (result.current_observation_count != 0)
+                density.best_margin_percent = had_observation
+                    ? std::max(density.best_margin_percent,
+                        result.best_margin)
+                    : result.best_margin;
         }
+        density.unique_configs = configs.size();
+        density.unique_cases = cases.size();
+        density.unique_payload_instances = payloads.size();
         for (const auto &e : manifest.historical_evidence) {
-            const auto matching = std::find_if(
-                manifest.cases.begin(), manifest.cases.end(),
-                [&](const CapacityCase &c) {
-                    return c.config_id == e.config_id &&
-                           c.config.block_width == block;
-                });
-            if (matching != manifest.cases.end() && e.exact) {
-                ++density.historical_passes;
-                evidence_uploads.insert(e.session_label + "|" +
-                                        e.returned_file_sha256);
-                density.best_margin_percent = std::max(
-                    density.best_margin_percent,
-                    e.recovery_margin_percent);
-            }
+            if (!configs.contains(e.config_id)) continue;
+            const bool had_evidence = density.observation_count != 0 ||
+                density.historical_passes != 0 ||
+                density.historical_failures != 0;
+            if (e.exact) ++density.historical_passes;
+            else ++density.historical_failures;
+            density.best_margin_percent = had_evidence
+                ? std::max(density.best_margin_percent,
+                    e.recovery_margin_percent)
+                : e.recovery_margin_percent;
         }
         if (density.current_passes == 0 && density.failures == 0)
             density.evidence = GeometryEvidence::Untested;
@@ -3673,121 +3845,124 @@ OneBitInference infer_onebit_geometry(
             density.evidence = GeometryEvidence::MixedResult;
         else if (density.failures != 0)
             density.evidence = GeometryEvidence::Fail;
-        else if (block == 4) {
-            const bool historical = density.historical_passes > 0;
-            const bool same = case_state("R02") == 1;
-            const bool independent = case_state("R03") == 1;
-            density.evidence = historical && same && independent
-                ? GeometryEvidence::VerifiedPass
-                : GeometryEvidence::InitialPass;
-        } else {
-            density.evidence = evidence_uploads.size() >= 2 &&
-                    density.current_passes > 0 &&
-                    density.historical_passes > 0
-                ? GeometryEvidence::VerifiedPass
-                : GeometryEvidence::InitialPass;
-        }
+        else if (block == 4 &&
+                 out.four_x_state == "Verified across session and payload")
+            density.evidence = GeometryEvidence::VerifiedPass;
+        else if (density.historical_passes > 0 &&
+                 density.historical_failures == 0)
+            density.evidence = GeometryEvidence::VerifiedPass;
+        else
+            density.evidence = GeometryEvidence::InitialPass;
         out.densities.push_back(density);
     }
-    const int control = case_state("R00");
-    if (control < 0) {
+
+    std::optional<std::size_t> control_index;
+    for (std::size_t i = 0; i < manifest.cases.size(); ++i)
+        if (manifest.cases[i].role.find("Production control") !=
+            std::string::npos) {
+            control_index = i;
+            break;
+        }
+    if (!control_index && !manifest.cases.empty()) control_index = 0;
+    const std::string control = control_index
+        ? out.cases[*control_index].current_status : "untested";
+    if (status_fails(control)) {
         out.production_control = "Fail";
         out.status = "Invalid production control";
-        out.boundary_bracket = "Invalid production control";
+        out.boundary_bracket = out.status;
         out.recommended_next_experiment =
             "Retest the production control before interpreting geometry";
         return out;
     }
-    if (control == 0) {
+    if (!status_passes(control)) {
         out.recommended_next_experiment =
-            "Analyze R00 and all required returned videos";
+            "Analyze the production control and required returned videos";
         return out;
     }
     out.production_control = "Pass";
-    const bool hist4 = std::any_of(manifest.historical_evidence.begin(),
-        manifest.historical_evidence.end(), [](const HistoricalEvidence &e) {
-            return e.source_case_id == "B06" && e.exact;
-        });
-    const int same4 = case_state("R02"), independent4 = case_state("R03");
-    if (hist4 && same4 == 1 && independent4 == 1)
-        out.four_x_state = "4x candidate verified across session and payload";
-    else if (same4 == 1 && independent4 == 0)
-        out.four_x_state = "4x repeated-session evidence; independent payload pending";
-    else if (independent4 == 1 && same4 != 1)
-        out.four_x_state =
-            "4x independent-payload evidence; same-payload retest failed or missing";
-    else if (same4 < 0 || independent4 < 0)
-        out.four_x_state = "Mixed result";
 
-    bool failure_below = false;
-    bool missing = false;
-    for (const auto &d : out.densities) {
-        const bool pass = d.evidence == GeometryEvidence::InitialPass ||
-                          d.evidence == GeometryEvidence::VerifiedPass;
-        if (d.evidence == GeometryEvidence::Fail ||
-            d.evidence == GeometryEvidence::MixedResult)
-            failure_below = true;
-        else if (pass && failure_below)
-            out.non_monotonic = true;
-        if (pass) out.highest_initial_exact_density = d.gain;
-        if (d.evidence == GeometryEvidence::VerifiedPass)
-            out.highest_verified_exact_density = d.gain;
-        if (d.evidence == GeometryEvidence::Untested) missing = true;
+    bool failure_seen = false;
+    for (const auto &density : out.densities) {
+        const bool pass = density.evidence == GeometryEvidence::InitialPass ||
+            density.evidence == GeometryEvidence::VerifiedPass;
+        const bool fail = density.evidence == GeometryEvidence::Fail ||
+            density.evidence == GeometryEvidence::MixedResult;
+        if (pass && failure_seen) out.non_monotonic = true;
+        if (fail) failure_seen = true;
+        if (pass) out.highest_initial_exact_density = density.gain;
+        if (density.evidence == GeometryEvidence::VerifiedPass)
+            out.highest_verified_exact_density = density.gain;
     }
     if (out.non_monotonic) {
         out.status = "Non-monotonic / inconclusive";
         out.boundary_bracket = out.status;
         out.recommended_next_experiment =
-            "Repeat conflicting geometry with matched payload, bitrate and returned codec";
-    } else if (missing) {
-        out.status = "Insufficient observations";
-        out.boundary_bracket = out.status;
-        out.recommended_next_experiment = "Complete the six-video returned-folder analysis";
-    } else if (out.densities.back().evidence == GeometryEvidence::InitialPass ||
-               out.densities.back().evidence == GeometryEvidence::VerifiedPass) {
-        out.status = "At least 7.11x; finer geometry experiment required";
-        out.boundary_bracket = "At least 7.11x";
-        out.experimental_candidate = find_case("G05")
-            ? find_case("G05")->config_id : "";
-        out.recommended_next_experiment = "Run a finer 1-bit geometry sweep";
-    } else {
-        for (std::size_t i = 1; i < out.densities.size(); ++i) {
-            const auto &prev = out.densities[i - 1];
-            const auto &current = out.densities[i];
-            if ((prev.evidence == GeometryEvidence::InitialPass ||
-                 prev.evidence == GeometryEvidence::VerifiedPass) &&
-                (current.evidence == GeometryEvidence::Fail ||
-                 current.evidence == GeometryEvidence::MixedResult)) {
-                out.lowest_failure_above = current.gain;
-                std::ostringstream text;
-                text << std::fixed << std::setprecision(2) << prev.gain
-                     << "x <= 1-bit geometry boundary < "
-                     << std::setprecision(2) << current.gain << "x";
-                out.boundary_bracket = text.str();
-                out.status = "Bracketed";
-            }
+            "Repeat conflicting geometry with matched payload and codec";
+    } else if (out.highest_initial_exact_density) {
+        const auto failure = std::find_if(out.densities.begin(),
+            out.densities.end(), [&](const GeometryDensityResult &density) {
+                return density.gain > *out.highest_initial_exact_density &&
+                    (density.evidence == GeometryEvidence::Fail ||
+                     density.evidence == GeometryEvidence::MixedResult);
+            });
+        if (failure != out.densities.end()) {
+            out.lowest_failure_above = failure->gain;
+            std::ostringstream text;
+            text << std::fixed << std::setprecision(2)
+                 << *out.highest_initial_exact_density
+                 << "x <= 1-bit geometry boundary < "
+                 << failure->gain << "x";
+            out.boundary_bracket = text.str();
+            out.status = "Bracketed";
+        } else if (out.densities.back().evidence ==
+                       GeometryEvidence::InitialPass ||
+                   out.densities.back().evidence ==
+                       GeometryEvidence::VerifiedPass) {
+            out.status = "At least 7.11x; finer geometry experiment required";
+            out.boundary_bracket = "At least 7.11x";
+            out.recommended_next_experiment =
+                "Run a finer 1-bit geometry sweep";
+        } else {
+            out.recommended_next_experiment =
+                "Complete the missing returned-video observations";
         }
     }
-    if (const auto *r02 = find_case("R02");
-        out.four_x_state.starts_with("4x candidate verified")) {
-        out.safe_candidate = r02->config_id;
-        out.balanced_candidate = r02->config_id;
+
+    if (out.four_x_state == "Verified across session and payload" &&
+        out.production_control == "Pass" && !four_failure &&
+        !verified_four_configs.empty()) {
+        out.safe_candidate = *verified_four_configs.begin();
+        out.balanced_candidate = out.safe_candidate;
         out.retest_required = false;
-    } else if (const auto *r01 = find_case("R01")) {
-        const auto six = std::find_if(out.densities.begin(), out.densities.end(),
-            [](const GeometryDensityResult &d) { return d.block_size == 6; });
-        if (six != out.densities.end() &&
-            six->evidence == GeometryEvidence::VerifiedPass) {
-            out.safe_candidate = r01->config_id;
-            out.balanced_candidate = r01->config_id;
+    } else {
+        for (const auto &density : out.densities) {
+            if (density.evidence != GeometryEvidence::VerifiedPass ||
+                density.failures != 0 || density.block_size == 4)
+                continue;
+            for (const auto &test_case : manifest.cases)
+                if (test_case.config.block_width == density.block_size) {
+                    out.safe_candidate = test_case.config_id;
+                    out.balanced_candidate = test_case.config_id;
+                    break;
+                }
         }
     }
-    if (out.experimental_candidate.empty() &&
-        out.highest_initial_exact_density)
-        for (const auto &c : manifest.cases)
-            if (std::abs(c.boundary_density_gain -
-                         *out.highest_initial_exact_density) < 0.001)
-                out.experimental_candidate = c.config_id;
+    const double safe_gain = out.safe_candidate.empty() ? 0.0 : [&] {
+        for (const auto &test_case : manifest.cases)
+            if (test_case.config_id == out.safe_candidate)
+                return test_case.boundary_density_gain;
+        return 0.0;
+    }();
+    for (const auto &density : out.densities) {
+        if (density.gain <= safe_gain || density.failures != 0 ||
+            density.current_passes == 0)
+            continue;
+        for (const auto &test_case : manifest.cases)
+            if (test_case.config.block_width == density.block_size) {
+                out.experimental_candidate = test_case.config_id;
+                break;
+            }
+    }
     return out;
 }
 
@@ -3905,23 +4080,32 @@ void analyze_folder(
         if (extension != ".mp4" && extension != ".webm" &&
             extension != ".mkv")
             continue;
-        CapacityCase *matched = nullptr;
         const std::string filename =
             entry.path().filename().string();
-        for (auto &test_case : manifest.cases)
-            if (filename.find(test_case.case_id) != std::string::npos &&
-                filename.find(test_case.config_id) != std::string::npos &&
-                (test_case.payload_instance_id.empty() ||
-                 filename.find(test_case.payload_instance_id) != std::string::npos)) {
-                matched = &test_case;
-                break;
+        const auto unique_filename_match = [&](const auto &identifier)
+            -> CapacityCase * {
+            CapacityCase *found = nullptr;
+            for (auto &test_case : manifest.cases) {
+                const auto value = identifier(test_case);
+                if (value.empty() || filename.find(value) == std::string::npos)
+                    continue;
+                if (found) return nullptr;
+                found = &test_case;
             }
+            return found;
+        };
+        // Case is authoritative, payload instance is the second discriminator,
+        // and config is only a safe fallback when it identifies one case.
+        CapacityCase *matched = unique_filename_match(
+            [](const CapacityCase &test_case) { return test_case.case_id; });
         if (!matched)
-            for (auto &test_case : manifest.cases)
-                if (filename.find(test_case.config_id) != std::string::npos) {
-                    if (matched) { matched = nullptr; break; }
-                    matched = &test_case;
-                }
+            matched = unique_filename_match([](const CapacityCase &test_case) {
+                return test_case.payload_instance_id;
+            });
+        if (!matched)
+            matched = unique_filename_match([](const CapacityCase &test_case) {
+                return test_case.config_id;
+            });
         if (!matched) continue;
         const std::string file_hash =
             youtube_test_lab::sha256_file(entry.path());
@@ -3991,6 +4175,8 @@ void analyze_folder(
         result.config_id = matched->config_id;
         result.boundary_case_id =
             matched->boundary_case_id;
+        result.payload_instance_id =
+            matched->payload_instance_id;
         result.analyzed_file_sha256 = file_hash;
         matched->results.push_back(std::move(result));
         matched->local_evidence_status =
@@ -4076,6 +4262,8 @@ void write_result_json(std::ostream &out,
         << "\"config_id\":" << q(result.config_id)
         << ",\"boundary_case_id\":"
         << q(result.boundary_case_id)
+        << ",\"payload_instance_id\":"
+        << q(result.payload_instance_id)
         << ",\"source_type\":" << q(result.source_type)
         << ",\"simulation_profile\":"
         << q(result.simulation_profile)
@@ -4152,6 +4340,8 @@ CaseResult parse_result(const std::string &object) {
         json_string(object, "config_id").value_or("");
     result.boundary_case_id =
         json_string(object, "boundary_case_id").value_or("");
+    result.payload_instance_id =
+        json_string(object, "payload_instance_id").value_or("");
     result.source_type =
         json_string(object, "source_type").value_or("");
     result.simulation_profile =
@@ -4774,6 +4964,9 @@ ExperimentManifest read_manifest(
             if (parsed.boundary_case_id.empty())
                 parsed.boundary_case_id =
                     c.boundary_case_id;
+            if (parsed.payload_instance_id.empty())
+                parsed.payload_instance_id =
+                    c.payload_instance_id;
             c.results.push_back(std::move(parsed));
         }
         manifest.cases.push_back(std::move(c));
@@ -4882,23 +5075,28 @@ void write_onebit_reports(
        << "- Session count: " << sessions.size() << "\n"
        << "- Fixed variables: 1920x1080, 30 FPS, 1 bit/block, signal 1.00x, repair 5%\n\n"
        << "## B. Previous evidence\n\n"
-       << "| Source case | Config | Payload | Session | Recovery | Margin | SHA | Result |\n"
-       << "|---|---|---|---|---:|---:|---|---|\n";
+       << "| Source case | Config | Payload instance | Source SHA prefix | Session | Recovery | Margin | Result |\n"
+       << "|---|---|---|---|---|---:|---:|---|\n";
     for (const auto &e : manifest.historical_evidence)
         md << "|" << e.source_case_id << "|" << e.config_id << "|"
-           << e.payload_instance_id << "|" << e.session_label << "|"
+           << e.payload_instance_id << "|"
+           << e.source_payload_sha256.substr(
+                  0, std::min<std::size_t>(8, e.source_payload_sha256.size()))
+           << "|" << e.session_label << "|"
            << e.packet_recovery_percent << "%|" << e.recovery_margin_percent
-           << "%|" << e.source_payload_sha256 << "|"
-           << (e.exact ? "Exact" : "Failed") << "|\n";
+           << "%|" << (e.exact ? "Exact" : "Failed") << "|\n";
     md << "\n## C. Planned matrix\n\n"
-       << "| Case | Role | Block | Bits | Signal | Repair | Gain | Payload mode | Payload SHA | Frames | Duration |\n"
-       << "|---|---|---:|---:|---:|---:|---:|---|---|---:|---:|\n";
+       << "| Case | Role | Block | Bits | Signal | Repair | Gain | Payload mode | Payload instance | Source SHA prefix | Frames | Duration |\n"
+       << "|---|---|---:|---:|---:|---:|---:|---|---|---|---:|---:|\n";
     for (const auto &c : manifest.cases)
         md << "|" << c.case_id << "|" << c.role << "|"
            << c.config.block_width << "x" << c.config.block_height
            << "|1|1.00x|5%|" << std::fixed << std::setprecision(4)
            << c.boundary_density_gain << "x|" << c.payload_mode << "|"
-           << c.source_sha256 << "|" << c.capacity.expected_frames << "|"
+           << c.payload_instance_id << "|"
+           << c.source_sha256.substr(
+                  0, std::min<std::size_t>(8, c.source_sha256.size()))
+           << "|" << c.capacity.expected_frames << "|"
            << c.capacity.expected_duration_seconds << " s|\n";
     md << "\n## D. Local validation\n\n"
        << "| Case | Source reuse | Master SHA | Candidate SHA | Light | Medium | Heavy | Ready |\n"
@@ -4918,7 +5116,7 @@ void write_onebit_reports(
            << (c.mandatory_gates_passed ? "Yes" : "No") << "|\n";
     }
     md << "\n## E. Real YouTube observations\n\n"
-       << "| Case | Payload | Session | Codec | Resolution | Bitrate | Valid/Missing packets | Erasure | Recovery | Margin | BER/SER | SHA | Result |\n"
+       << "| Case | Payload instance | Session | Codec | Resolution | Bitrate | Valid/Missing packets | Erasure | Recovery | Margin | BER/SER | SHA | Result |\n"
        << "|---|---|---|---|---|---:|---|---:|---:|---:|---|---|---|\n";
     bool observed = false;
     for (const auto &c : manifest.cases)
@@ -4936,12 +5134,16 @@ void write_onebit_reports(
                    << r.telemetry.packet_recovery_percent << "%|"
                    << r.telemetry.recovery_margin_percent << "%|"
                    << r.telemetry.raw_ber << "/" << r.telemetry.raw_ser << "|"
-                   << (r.sha256_match ? "Exact" : "Mismatch") << "|"
+                   << (onebit_observation_exact(c, r) ? "Exact" : "Mismatch") << "|"
                    << real_youtube_status(c) << "|\n";
             }
     if (!observed) md << "|-|-|-|-|-|-|-|-|-|-|-|-|Insufficient observations|\n";
-    md << "\n## F. 4x verification\n\n- Historical B06, R02 same-payload, and R03 independent-payload are all required.\n"
-       << "- Combined state: " << inference.four_x_state << "\n\n"
+    md << "\n## F. 4x verification\n\n"
+       << "- Historical exact, same-payload retest exact, and independent-payload exact evidence are all required.\n"
+       << "- Combined state: " << inference.four_x_state << "\n"
+       << (inference.four_x_state == "Verified across session and payload"
+               ? "- 4x candidate verified across session and payload\n\n"
+               : "\n")
        << "## G. Geometry sweep\n\n"
        << "| Block | Gain | Historical passes | Current passes | Failures | Best margin | Evidence level | Status |\n"
        << "|---:|---:|---:|---:|---:|---:|---|---|\n";
@@ -4960,16 +5162,29 @@ void write_onebit_reports(
        << "- Safe candidate: " << (inference.safe_candidate.empty() ? "None" : inference.safe_candidate)
        << "\n- Balanced candidate: " << (inference.balanced_candidate.empty() ? "None" : inference.balanced_candidate)
        << "\n- Experimental candidate: " << (inference.experimental_candidate.empty() ? "None" : inference.experimental_candidate)
+       << "\n- Verified 4x candidate: "
+       << (inference.four_x_state == "Verified across session and payload"
+               ? inference.safe_candidate : "None")
+       << "\n- Production promotion still requires explicit user decision."
        << "\n\n## J. Next experiment\n\n" << inference.recommended_next_experiment << "\n";
 
     std::ofstream cases(reports_directory / "onebit_cases.csv", std::ios::binary);
-    cases << "case_id,config_id,payload_instance_id,role,block,gain,payload_bytes,frames,duration,source_sha,local_status\n";
-    for (const auto &c : manifest.cases)
+    cases << "case_id,config_id,payload_instance_id,role,block,gain,payload_bytes,frames,duration,source_sha256,local_status,current_observation_count,exact_pass_count,failure_count,duplicate_count,best_recovery,best_margin,current_status,failure_reasons\n";
+    for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+        const auto &c = manifest.cases[i];
+        const auto &result = inference.cases[i];
         cases << c.case_id << "," << c.config_id << "," << c.payload_instance_id
               << "," << q(c.role) << "," << c.config.block_width << ","
               << c.boundary_density_gain << "," << c.effective_payload_bytes << ","
               << c.capacity.expected_frames << "," << c.capacity.expected_duration_seconds
-              << "," << c.source_sha256 << "," << q(local_evidence_status(c)) << "\n";
+              << "," << c.source_sha256 << "," << q(local_evidence_status(c))
+              << "," << result.current_observation_count
+              << "," << result.exact_pass_count << "," << result.failure_count
+              << "," << result.duplicate_count << "," << result.best_recovery
+              << "," << result.best_margin << "," << result.current_status
+              << "," << q(result.failure_reasons.empty()
+                    ? "" : result.failure_reasons.front()) << "\n";
+    }
     std::ofstream observations(reports_directory / "onebit_observations.csv", std::ios::binary);
     observations << "case_id,config_id,payload_instance_id,session,returned_sha,codec,resolution,recovery,margin,ber,ser,exact,failure_reason\n";
     for (const auto &c : manifest.cases) for (const auto &r : c.results)
@@ -4981,13 +5196,20 @@ void write_onebit_reports(
                 << r.telemetry.packet_recovery_percent << ","
                 << r.telemetry.recovery_margin_percent << ","
                 << r.telemetry.raw_ber << "," << r.telemetry.raw_ser << ","
-                << (r.sha256_match ? "true" : "false") << "," << q(r.error) << "\n";
+                << (onebit_observation_exact(c, r) ? "true" : "false")
+                << "," << q(onebit_observation_exact(c, r) ? "" : r.error) << "\n";
     std::ofstream geometry(reports_directory / "onebit_geometry.csv", std::ios::binary);
-    geometry << "block,gain,historical_passes,current_passes,failures,best_margin,status\n";
+    geometry << "block,gain,unique_configs,unique_cases,unique_payload_instances,observation_count,exact_pass_count,historical_passes,historical_failures,current_passes,failures,best_margin,status,four_x_state,boundary_status,boundary_bracket,safe_candidate\n";
     for (const auto &d : inference.densities)
-        geometry << d.block_size << "," << d.gain << "," << d.historical_passes
+        geometry << d.block_size << "," << d.gain << "," << d.unique_configs
+                 << "," << d.unique_cases << "," << d.unique_payload_instances
+                 << "," << d.observation_count << "," << d.exact_pass_count
+                 << "," << d.historical_passes << "," << d.historical_failures
                  << "," << d.current_passes << "," << d.failures << ","
-                 << d.best_margin_percent << "," << q(geometry_evidence_string(d.evidence)) << "\n";
+                 << d.best_margin_percent << "," << q(geometry_evidence_string(d.evidence))
+                 << "," << q(inference.four_x_state) << "," << q(inference.status)
+                 << "," << q(inference.boundary_bracket) << ","
+                 << q(inference.safe_candidate) << "\n";
     const auto write_json = [&](const std::filesystem::path &path, bool evidence) {
         std::ofstream out(path, std::ios::binary);
         out << "{\n  \"experiment_id\": " << q(manifest.experiment_id)
@@ -4996,6 +5218,39 @@ void write_onebit_reports(
             << ",\n  \"boundary_bracket\": " << q(inference.boundary_bracket)
             << ",\n  \"four_x_state\": " << q(inference.four_x_state)
             << ",\n  \"safe_candidate\": " << q(inference.safe_candidate)
+            << ",\n  \"balanced_candidate\": " << q(inference.balanced_candidate)
+            << ",\n  \"experimental_candidate\": " << q(inference.experimental_candidate)
+            << ",\n  \"production_profile_changed\": false"
+            << ",\n  \"cases\": [";
+        for (std::size_t i = 0; i < inference.cases.size(); ++i) {
+            const auto &result = inference.cases[i];
+            if (i) out << ",";
+            out << "\n    {\"case_id\":" << q(result.case_id)
+                << ",\"config_id\":" << q(result.config_id)
+                << ",\"payload_instance_id\":" << q(result.payload_instance_id)
+                << ",\"current_observation_count\":" << result.current_observation_count
+                << ",\"exact_pass_count\":" << result.exact_pass_count
+                << ",\"failure_count\":" << result.failure_count
+                << ",\"duplicate_count\":" << result.duplicate_count
+                << ",\"best_recovery\":" << result.best_recovery
+                << ",\"best_margin\":" << result.best_margin
+                << ",\"current_status\":" << q(result.current_status) << "}";
+        }
+        if (!inference.cases.empty()) out << "\n  ";
+        out << "],\n  \"geometry\": [";
+        for (std::size_t i = 0; i < inference.densities.size(); ++i) {
+            const auto &d = inference.densities[i];
+            if (i) out << ",";
+            out << "\n    {\"block\":" << d.block_size
+                << ",\"gain\":" << d.gain
+                << ",\"historical_passes\":" << d.historical_passes
+                << ",\"current_passes\":" << d.current_passes
+                << ",\"failures\":" << d.failures
+                << ",\"best_margin\":" << d.best_margin_percent
+                << ",\"status\":" << q(geometry_evidence_string(d.evidence)) << "}";
+        }
+        if (!inference.densities.empty()) out << "\n  ";
+        out << "]"
             << ",\n  \"historical_evidence_count\": "
             << manifest.historical_evidence.size()
             << ",\n  \"evidence_only\": " << (evidence ? "true" : "false") << "\n}\n";
