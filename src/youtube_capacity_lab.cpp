@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <execution>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -176,6 +177,16 @@ std::string case_token(const ExperimentConfig &config) {
 }
 
 std::string candidate_filename(const CapacityCase &test_case) {
+    if (!test_case.session_group.empty()) {
+        std::ostringstream out;
+        out << "VSX_STRESS_" << test_case.case_id << "_"
+            << test_case.config_id << "_"
+            << test_case.payload_instance_id << "_1080p_b"
+            << test_case.config.block_width << "_1bit_s100_r"
+            << std::fixed << std::setprecision(0)
+            << test_case.config.repair_percent() << ".mp4";
+        return out.str();
+    }
     if (!test_case.payload_instance_id.empty()) {
         std::ostringstream out;
         out << "VSX_ONEBIT_" << test_case.case_id << "_"
@@ -224,10 +235,25 @@ const std::array<double, 4> &effective_modulation_levels(
     const ExperimentConfig &config) {
     static std::mutex mutex;
     static std::map<std::string, std::array<double, 4>> cache;
-    const std::string key = config.canonical_serialization();
+    static thread_local const ExperimentConfig *last_config = nullptr;
+    static thread_local int last_block = 0;
+    static thread_local int last_bits = 0;
+    static thread_local int last_signal = 0;
     static thread_local std::string last_key;
     static thread_local const std::array<double, 4> *last = nullptr;
-    if (last && last_key == key) return *last;
+    if (last && last_config == &config &&
+        last_block == config.block_width &&
+        last_bits == config.bits_per_block &&
+        last_signal == config.signal_milli)
+        return *last;
+    const std::string key = config.canonical_serialization();
+    if (last && last_key == key) {
+        last_config = &config;
+        last_block = config.block_width;
+        last_bits = config.bits_per_block;
+        last_signal = config.signal_milli;
+        return *last;
+    }
     std::scoped_lock lock(mutex);
     auto [it, inserted] = cache.try_emplace(key);
     if (inserted) {
@@ -244,6 +270,10 @@ const std::array<double, 4> &effective_modulation_levels(
                 coefficients[1];
         }
     }
+    last_config = &config;
+    last_block = config.block_width;
+    last_bits = config.bits_per_block;
+    last_signal = config.signal_milli;
     last_key = key;
     last = &it->second;
     return *last;
@@ -524,8 +554,6 @@ CaseResult decode_video(
     std::unordered_map<uint32_t, uint32_t> chunk_thresholds;
     std::vector<std::byte> accumulated;
     std::vector<std::byte> raw_frame;
-    std::vector<std::byte> decoded_bytes;
-    std::vector<SymbolDecision> decisions;
     double confidence_sum = 0.0;
     result.telemetry.minimum_confidence = 1.0;
     std::size_t expected_offset = 0;
@@ -536,11 +564,14 @@ CaseResult decode_video(
             config.bits_per_block : 0;
     try {
         VideoDecoder video(video_path.string());
-        while (video.decode_next_gray8_frame(raw_frame)) {
+        struct ExtractedFrame {
+            std::vector<std::byte> bytes;
+            std::vector<SymbolDecision> decisions;
+        };
+        auto consume_frame = [&](ExtractedFrame &frame) {
+            auto &decoded_bytes = frame.bytes;
+            auto &decisions = frame.decisions;
             ++result.telemetry.frames_read;
-            extract_frame_bytes(
-                raw_frame, config, decoded_bytes,
-                expected ? &decisions : nullptr);
             if (expected) {
                 const std::size_t compare_bytes = std::min(
                     decoded_bytes.size(),
@@ -623,7 +654,30 @@ CaseResult decode_video(
                     ++result.telemetry.crc_invalid_packets;
                 }
             }
+        };
+        std::vector<std::vector<std::byte>> raw_frames;
+        raw_frames.reserve(16);
+        auto flush_frames = [&] {
+            if (raw_frames.empty()) return;
+            std::vector<ExtractedFrame> extracted(raw_frames.size());
+            std::vector<std::size_t> indices(raw_frames.size());
+            std::iota(indices.begin(), indices.end(), 0);
+            std::for_each(
+                std::execution::par, indices.begin(), indices.end(),
+                [&](const std::size_t index) {
+                    extract_frame_bytes(
+                        raw_frames[index], config,
+                        extracted[index].bytes,
+                        expected ? &extracted[index].decisions : nullptr);
+                });
+            for (auto &frame : extracted) consume_frame(frame);
+            raw_frames.clear();
+        };
+        while (video.decode_next_gray8_frame(raw_frame)) {
+            raw_frames.push_back(std::move(raw_frame));
+            if (raw_frames.size() == 16) flush_frames();
         }
+        flush_frames();
         result.telemetry.required_packet_threshold =
             expected ? expected->source_packets :
             std::accumulate(
@@ -859,8 +913,11 @@ bool ExperimentConfig::valid(std::string *reason) const {
     if (repair_basis_points != 0 &&
         repair_basis_points != 100 &&
         repair_basis_points != 200 &&
-        repair_basis_points != 500)
-        return fail("repair must be 0, 1, 2, or 5 percent");
+        repair_basis_points != 500 &&
+        repair_basis_points != 2000 &&
+        repair_basis_points != 3500 &&
+        repair_basis_points != 5000)
+        return fail("repair must be 0, 1, 2, 5, 20, 35, or 50 percent");
     if (!((resolution_width == 1920 &&
            resolution_height == 1080) ||
           (resolution_width == 3840 &&
@@ -1318,6 +1375,76 @@ std::vector<ExperimentConfig> onebit_verification_configs() {
     return {make(8), make(6), make(5), make(4), make(4), make(3)};
 }
 
+std::vector<ExperimentConfig> onebit_stress_configs() {
+    const auto make = [](const int block, const int repair_basis_points) {
+        auto config = production_baseline_config();
+        config.block_width = block;
+        config.block_height = block;
+        config.bits_per_block = 1;
+        config.signal_milli = 1000;
+        config.repair_basis_points = repair_basis_points;
+        config.resolution_width = 1920;
+        config.resolution_height = 1080;
+        config.fps = 30;
+        config.modulation_version = kModulation1Version;
+        std::string reason;
+        if (!config.valid(&reason))
+            throw std::invalid_argument(reason);
+        return config;
+    };
+    const auto four = make(4, 500);
+    return {four, four, four, four, four, four,
+            make(3, 2000), make(3, 3500), make(3, 5000)};
+}
+
+namespace {
+
+void plan_case_payload(CapacityCase &test_case,
+                       const uint64_t payload_bytes) {
+    const uint64_t aligned = std::max<uint64_t>(
+        test_case.capacity.minimum_payload_bytes,
+        ceil_div(payload_bytes, SYMBOL_SIZE_BYTES) * SYMBOL_SIZE_BYTES);
+    test_case.requested_payload_bytes = aligned;
+    test_case.effective_payload_bytes = aligned;
+    test_case.payload_prefix_bytes = aligned;
+    auto &capacity = test_case.capacity;
+    capacity.expected_source_packets = ceil_div(aligned, SYMBOL_SIZE_BYTES);
+    capacity.expected_repair_packets = static_cast<uint64_t>(std::ceil(
+        capacity.expected_source_packets *
+        test_case.config.repair_percent() / 100.0));
+    capacity.expected_total_packets = capacity.expected_source_packets +
+        capacity.expected_repair_packets;
+    capacity.expected_frames = std::max<uint64_t>(kMinimumFrames, ceil_div(
+        checked_mul(capacity.expected_total_packets, PACKET_SIZE,
+                    "stress packet bytes"),
+        capacity.geometry.raw_bytes_per_frame));
+    capacity.expected_duration_seconds =
+        static_cast<double>(capacity.expected_frames) / test_case.config.fps;
+    capacity.useful_payload_bytes_per_second =
+        aligned / capacity.expected_duration_seconds;
+    const uint64_t pixels = checked_mul(
+        static_cast<uint64_t>(test_case.config.resolution_width),
+        static_cast<uint64_t>(test_case.config.resolution_height),
+        "stress pixels");
+    capacity.estimated_master_bytes =
+        checked_mul(pixels, capacity.expected_frames,
+                    "stress master estimate") / 3;
+    capacity.estimated_candidate_bytes =
+        checked_mul(pixels, capacity.expected_frames,
+                    "stress candidate estimate") / 18;
+    capacity.estimated_required_disk_bytes = aligned +
+        capacity.estimated_master_bytes +
+        capacity.estimated_candidate_bytes * 4;
+    capacity.estimated_peak_memory_bytes =
+        checked_mul(pixels, 5, "stress memory estimate") +
+        checked_mul(capacity.expected_total_packets, PACKET_SIZE,
+                    "stress packet memory estimate");
+    test_case.estimated_output_size_bytes =
+        capacity.estimated_candidate_bytes;
+}
+
+} // namespace
+
 std::vector<CapacityCase> build_initial_cases(
     const RunOptions &options, const std::string &experiment_id) {
     std::vector<ExperimentConfig> configs;
@@ -1329,6 +1456,8 @@ std::vector<CapacityCase> build_initial_cases(
         configs = boundary_1080p_configs();
     else if (options.preset == Preset::OneBitVerification1080p)
         configs = onebit_verification_configs();
+    else if (options.preset == Preset::OneBitStressValidation1080p)
+        configs = onebit_stress_configs();
     else {
         const uint64_t raw_count = checked_mul(
             checked_mul(
@@ -1376,6 +1505,7 @@ std::vector<CapacityCase> build_initial_cases(
     std::vector<CapacityCase> cases;
     cases.reserve(configs.size());
     std::size_t sequence = 0;
+    uint64_t repair_sweep_payload = 0;
     for (const auto &config : configs) {
         CapacityCase test_case;
         test_case.config = config;
@@ -1439,6 +1569,41 @@ std::vector<CapacityCase> build_initial_cases(
                     : index == 4
                         ? "VSX-ONEBIT-INDEPENDENT-4X-V1"
                         : deterministic_stream_id(config);
+        } else if (options.preset == Preset::OneBitStressValidation1080p) {
+            static constexpr std::array<const char *, 9> ids{
+                "P4A-S", "P4A-M", "P4A-L", "P4B-S", "P4B-M", "P4B-L",
+                "R3-20", "R3-35", "R3-50"};
+            static constexpr std::array<const char *, 9> groups{
+                "session_a", "session_a", "session_a",
+                "session_b", "session_b", "session_b",
+                "repair_sweep", "repair_sweep", "repair_sweep"};
+            static constexpr std::array<const char *, 9> roles{
+                "4x small payload", "4x medium payload", "4x large payload",
+                "4x small payload", "4x medium payload", "4x large payload",
+                "3x3 repair rescue 20%", "3x3 repair rescue 35%",
+                "3x3 repair rescue 50%"};
+            const auto index = sequence++;
+            test_case.case_id = ids[index];
+            test_case.boundary_case_id = ids[index];
+            test_case.session_group = groups[index];
+            test_case.role = roles[index];
+            test_case.boundary_density_gain =
+                64.0 / static_cast<double>(
+                    config.block_width * config.block_height);
+            const bool repair_case = index >= 6;
+            test_case.payload_family_id = repair_case
+                ? "STRESS-3X3-REPAIR-SWEEP-V1"
+                : "STRESS-4X-INDEPENDENT-PAYLOADS-V1";
+            test_case.payload_instance_id = stable_hash_id(
+                repair_case
+                    ? experiment_id + "|repair-sweep-shared-payload"
+                    : experiment_id + "|" + test_case.case_id +
+                        "|independent-payload",
+                12);
+            test_case.deterministic_stream_id = repair_case
+                ? "VSX-STRESS-3X3-SHARED-STREAM-V1"
+                : "VSX-STRESS-" + test_case.case_id + "-STREAM-V1";
+            test_case.payload_mode = repair_case ? "shared" : "independent";
         } else {
             std::ostringstream id;
             id << "CAP-" << test_case.config_id << "-"
@@ -1458,7 +1623,12 @@ std::vector<CapacityCase> build_initial_cases(
         test_case.payload_prefix_bytes =
             test_case.effective_payload_bytes;
         test_case.payload_seed =
-            options.preset == Preset::OneBitVerification1080p
+            options.preset == Preset::OneBitStressValidation1080p
+                ? (test_case.session_group == "repair_sweep"
+                    ? 0x35A0B17C92D44E61ULL
+                    : 0xA41C9E375D206B8FULL + sequence *
+                        0x9E3779B97F4A7C15ULL)
+            : options.preset == Preset::OneBitVerification1080p
                 ? (test_case.case_id == "R03"
                     ? 0x8F31D4A7C2905B6EULL
                     : (test_case.role == "Geometry sweep"
@@ -1469,8 +1639,52 @@ std::vector<CapacityCase> build_initial_cases(
             options.simulations.empty()
                 ? "yt-sim-1080p-medium"
                 : options.simulations.front();
-        (void) experiment_id;
+        if (options.preset == Preset::OneBitStressValidation1080p) {
+            const bool repair_case = test_case.session_group == "repair_sweep";
+            if (repair_case) {
+                if (repair_sweep_payload == 0)
+                    repair_sweep_payload = static_cast<uint64_t>(
+                        test_case.capacity.useful_payload_bytes_per_second *
+                        96.0);
+                plan_case_payload(test_case, repair_sweep_payload);
+            } else {
+                const double target_seconds =
+                    test_case.case_id.ends_with("-S") ? 24.0 :
+                    test_case.case_id.ends_with("-M") ? 96.0 : 250.0;
+                plan_case_payload(test_case, static_cast<uint64_t>(
+                    test_case.capacity.useful_payload_bytes_per_second *
+                    target_seconds));
+            }
+            test_case.expected_returned_path =
+                "returned/" + test_case.session_group + "/" +
+                candidate_filename(test_case);
+        } else {
+            test_case.estimated_output_size_bytes =
+                test_case.capacity.estimated_candidate_bytes;
+        }
         cases.push_back(std::move(test_case));
+    }
+    if (options.preset == Preset::OneBitStressValidation1080p) {
+        constexpr uint64_t per_video_limit =
+            1536ULL * 1024 * 1024;
+        constexpr uint64_t matrix_limit =
+            6ULL * 1024 * 1024 * 1024;
+        uint64_t total = 0;
+        uint64_t maximum = 0;
+        for (std::size_t i = 0; i < 6; ++i) {
+            total += cases[i].estimated_output_size_bytes;
+            maximum = std::max(maximum,
+                               cases[i].estimated_output_size_bytes);
+        }
+        const double scale = std::min(
+            maximum > per_video_limit
+                ? static_cast<double>(per_video_limit) / maximum : 1.0,
+            total > matrix_limit
+                ? static_cast<double>(matrix_limit) / total : 1.0);
+        if (scale < 1.0)
+            for (std::size_t i = 0; i < 6; ++i)
+                plan_case_payload(cases[i], static_cast<uint64_t>(
+                    cases[i].effective_payload_bytes * scale * 0.98));
     }
     return cases;
 }
@@ -1496,6 +1710,8 @@ Preflight estimate(const RunOptions &options) {
                 ? 7
             : options.preset == Preset::OneBitVerification1080p
                 ? 6
+            : options.preset == Preset::OneBitStressValidation1080p
+                ? 9
             : std::min<uint64_t>(
                   options.maximum_cases,
                   checked_mul(
@@ -1531,6 +1747,9 @@ Preflight estimate(const RunOptions &options) {
             (options.preset == Preset::Boundary1080p ? 7 : 6) * 3;
         result.estimated_output_bytes *= 4;
         result.estimated_total_frames *= 4;
+    } else if (options.preset == Preset::OneBitStressValidation1080p) {
+        result.estimated_transcodes = 9;
+        result.estimated_total_frames *= 2;
     }
     result.safety_margin_bytes =
         std::max<uint64_t>(
@@ -2041,6 +2260,16 @@ void prepare_directories(const std::filesystem::path &root) {
              "youtube_shortlist", "imported", "restored",
              "reports", "youtube_upload", "tools", "returned_downloads"})
         std::filesystem::create_directories(root / directory);
+    for (const auto *group : {"session_a", "session_b"}) {
+        std::filesystem::create_directories(root / group / "payloads");
+        std::filesystem::create_directories(root / group / "videos");
+        std::filesystem::create_directories(root / group / "masters");
+        std::filesystem::create_directories(root / "returned" / group);
+    }
+    std::filesystem::create_directories(root / "repair_sweep" / "payload");
+    std::filesystem::create_directories(root / "repair_sweep" / "videos");
+    std::filesystem::create_directories(root / "repair_sweep" / "masters");
+    std::filesystem::create_directories(root / "returned" / "repair_sweep");
 }
 
 void attach_onebit_source(
@@ -2108,6 +2337,54 @@ void attach_onebit_source(
             manifest.historical_evidence.push_back(std::move(evidence));
         }
     }
+}
+
+void attach_stress_source(
+    ExperimentManifest &manifest,
+    const std::filesystem::path &source_manifest_path) {
+    if (source_manifest_path.empty())
+        throw std::invalid_argument(
+            "onebit-stress-1080p requires --source-manifest");
+    const auto absolute = std::filesystem::absolute(source_manifest_path);
+    const auto source = read_manifest(absolute);
+    if (source.preset != Preset::OneBitVerification1080p)
+        throw std::invalid_argument(
+            "stress source manifest must be a onebit-verification-1080p experiment");
+    manifest.source_experiment_id = source.experiment_id;
+    manifest.source_manifest_path = absolute.string();
+    manifest.source_manifest_sha256 =
+        youtube_test_lab::sha256_file(absolute);
+    const auto g05 = std::find_if(
+        source.cases.begin(), source.cases.end(),
+        [](const CapacityCase &value) { return value.case_id == "G05"; });
+    if (g05 == source.cases.end())
+        throw std::runtime_error("stress source manifest is missing G05");
+    for (const auto &result : g05->results) {
+        if (result.source_type != "real-youtube-roundtrip") continue;
+        HistoricalEvidence evidence;
+        evidence.source_experiment_id = source.experiment_id;
+        evidence.source_case_id = "G05";
+        evidence.config_id = g05->config_id;
+        evidence.payload_instance_id = g05->payload_instance_id;
+        evidence.source_payload_sha256 = g05->source_sha256;
+        evidence.session_label = result.analysis_session_label;
+        evidence.returned_file_sha256 = result.analyzed_file_sha256;
+        evidence.packet_recovery_percent =
+            result.telemetry.packet_recovery_percent;
+        evidence.recovery_margin_percent =
+            result.telemetry.recovery_margin_percent;
+        evidence.exact = result.decode_completed && result.sha256_match &&
+            result.returned_width == g05->config.resolution_width &&
+            result.returned_height == g05->config.resolution_height &&
+            result.telemetry.recovery_margin_packets >= 0;
+        evidence.observation_fingerprint = stable_hash_id(
+            source.experiment_id + "|G05|" +
+            result.analysis_session_label + "|" +
+            result.analyzed_file_sha256, 16);
+        manifest.historical_evidence.push_back(std::move(evidence));
+    }
+    manifest.source_payload_validation =
+        "Historical G05 control linked without regeneration";
 }
 
 void execute_case(
@@ -2261,6 +2538,7 @@ void execute_boundary_case(
     test_case.rejection_reason.clear();
     test_case.results.clear();
     test_case.mandatory_gates_passed = false;
+    test_case.upload_eligible = false;
     test_case.simulation_warning = false;
     test_case.local_gate_status.clear();
     if ((test_case.boundary_case_id == "B00" ||
@@ -2270,14 +2548,28 @@ void execute_boundary_case(
         throw std::runtime_error(
             "Boundary B00 no longer matches the production baseline");
 
-    const auto payload = root / "payloads" /
+    const bool stress =
+        manifest.preset == Preset::OneBitStressValidation1080p;
+    const auto group_root = stress
+        ? root / test_case.session_group : root;
+    const auto payload_directory = stress
+        ? (test_case.session_group == "repair_sweep"
+            ? group_root / "payload" : group_root / "payloads")
+        : root / "payloads";
+    const auto master_directory = stress
+        ? group_root / "masters" : root / "masters";
+    const auto candidate_directory = stress
+        ? group_root / "videos" : root / "candidates";
+    std::filesystem::create_directories(payload_directory);
+    std::filesystem::create_directories(master_directory);
+    std::filesystem::create_directories(candidate_directory);
+    const auto payload = payload_directory /
         ("payload_" + (test_case.payload_instance_id.empty()
             ? test_case.payload_family_id
             : test_case.payload_instance_id) + ".bin");
-    const auto master =
-        root / "masters" / (test_case.case_id + ".mkv");
-    const auto candidate =
-        root / "candidates" / candidate_filename(test_case);
+    const auto master = master_directory / (test_case.case_id + ".mkv");
+    const auto candidate = candidate_directory /
+        candidate_filename(test_case);
     const auto restored_master =
         root / "restored" / (test_case.case_id + "_master.bin");
     const auto restored_candidate =
@@ -2362,6 +2654,8 @@ void execute_boundary_case(
     master_result.config_id = test_case.config_id;
     master_result.boundary_case_id =
         test_case.boundary_case_id;
+    master_result.payload_instance_id =
+        test_case.payload_instance_id;
     test_case.results.push_back(master_result);
     if (!gate_passes(master_result, false)) {
         test_case.state = CaseState::Rejected;
@@ -2394,6 +2688,8 @@ void execute_boundary_case(
     candidate_result.config_id = test_case.config_id;
     candidate_result.boundary_case_id =
         test_case.boundary_case_id;
+    candidate_result.payload_instance_id =
+        test_case.payload_instance_id;
     test_case.results.push_back(candidate_result);
     if (!gate_passes(candidate_result, true)) {
         test_case.state = CaseState::Rejected;
@@ -2406,10 +2702,12 @@ void execute_boundary_case(
         return;
     }
 
-    for (const std::string &profile_name : {
-             "yt-sim-1080p-light",
-             "yt-sim-1080p-medium",
-             "yt-sim-1080p-heavy"}) {
+    const std::vector<std::string> local_profiles = stress
+        ? std::vector<std::string>{"yt-sim-1080p-medium"}
+        : std::vector<std::string>{
+            "yt-sim-1080p-light", "yt-sim-1080p-medium",
+            "yt-sim-1080p-heavy"};
+    for (const std::string &profile_name : local_profiles) {
         CaseResult simulation_result;
         if (profile_name == "yt-sim-1080p-medium") {
             simulation_result = candidate_result;
@@ -2443,6 +2741,8 @@ void execute_boundary_case(
         simulation_result.config_id = test_case.config_id;
         simulation_result.boundary_case_id =
             test_case.boundary_case_id;
+        simulation_result.payload_instance_id =
+            test_case.payload_instance_id;
         test_case.results.push_back(std::move(simulation_result));
     }
 
@@ -2462,6 +2762,19 @@ void execute_boundary_case(
     } else {
         test_case.state = CaseState::Passed;
     }
+    const bool candidate_exists =
+        std::filesystem::exists(candidate) &&
+        std::filesystem::file_size(candidate) > 0;
+    test_case.upload_eligible = stress &&
+        test_case.mandatory_gates_passed && candidate_exists &&
+        candidate_result.decode_completed &&
+        candidate_result.sha256_match &&
+        candidate_result.metadata_valid &&
+        candidate_result.telemetry.recovery_margin_packets > 0;
+    if (stress && !test_case.upload_eligible &&
+        test_case.shortlist_exclusion_reason.empty())
+        test_case.shortlist_exclusion_reason =
+            "One or more mandatory local stress gates failed";
 }
 
 std::vector<CapacityCase *> passing_sorted(
@@ -2702,6 +3015,122 @@ void generate_boundary_upload(
     std::filesystem::rename(next, destination);
 }
 
+void generate_stress_upload_artifacts(
+    const ExperimentManifest &manifest,
+    const std::filesystem::path &root) {
+    const auto inference = infer_stress_validation(manifest);
+    const auto eligible = [&](const CapacityCase &test_case) {
+        if (!test_case.upload_eligible || test_case.candidate_path.empty())
+            return false;
+        if (test_case.session_group != "repair_sweep") return true;
+        return std::find(inference.repair_upload_shortlist.begin(),
+                         inference.repair_upload_shortlist.end(),
+                         test_case.case_id) !=
+            inference.repair_upload_shortlist.end();
+    };
+    auto write_group = [&](const std::string &group,
+                           const std::filesystem::path &path) {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error(
+            "could not write stress group upload checklist");
+        out << "# " << (group == "session_a" ? "Session A" :
+                          group == "session_b" ? "Session B" :
+                          "3x3 repair sweep")
+            << " upload checklist\n\n"
+            << "Only locally eligible cases are listed. Upload as one "
+               "separate Unlisted YouTube batch and preserve each filename.\n\n"
+            << "| Order | Case | Video | Config | Payload bytes | Duration | "
+               "Estimated bytes | Source SHA-256 |\n"
+            << "|---:|---|---|---|---:|---:|---:|---|\n";
+        std::size_t order = 1;
+        for (const auto &c : manifest.cases) {
+            if (c.session_group != group || !eligible(c)) continue;
+            out << "|" << order++ << "|" << c.case_id << "|`"
+                << std::filesystem::absolute(
+                       resolve_path(root, c.candidate_path)).string()
+                << "`|" << c.config_id << "|"
+                << c.effective_payload_bytes << "|"
+                << c.capacity.expected_duration_seconds << " s|"
+                << c.estimated_output_size_bytes << "|"
+                << c.source_sha256 << "|\n";
+        }
+        if (order == 1)
+            out << "|-|-|No locally eligible case|-|-|-|-|-|\n";
+    };
+    write_group("session_a", root / "session_a" / "upload_checklist.md");
+    write_group("session_b", root / "session_b" / "upload_checklist.md");
+    write_group("repair_sweep",
+                root / "repair_sweep" / "upload_checklist.md");
+
+    std::ofstream md(root / "upload_checklist.md",
+                     std::ios::binary | std::ios::trunc);
+    std::ofstream csv(root / "upload_checklist.csv",
+                      std::ios::binary | std::ios::trunc);
+    if (!md || !csv)
+        throw std::runtime_error("could not write stress upload checklist");
+    md << "# YouTube 1-bit stress validation upload checklist\n\n"
+       << "> Local pass means shortlisted only. It is not production "
+          "promotion and not a real YouTube result.\n\n"
+       << "| Order | Session | Case | Video path | Config | Technical config | "
+          "Payload bytes | Duration | Estimated video bytes | Source SHA-256 |\n"
+       << "|---:|---|---|---|---|---|---:|---:|---:|---|\n";
+    csv << "order,session_group,case_id,video_path,config_id,block,bits,"
+           "signal,repair_percent,payload_bytes,duration_seconds,"
+           "estimated_video_bytes,source_sha256,payload_instance_id\n";
+    std::size_t order = 1;
+    for (const auto &c : manifest.cases) {
+        if (!eligible(c)) continue;
+        const auto video = std::filesystem::absolute(
+            resolve_path(root, c.candidate_path)).string();
+        md << "|" << order << "|" << c.session_group << "|"
+           << c.case_id << "|`" << video << "`|" << c.config_id
+           << "|" << c.config.block_width << "x"
+           << c.config.block_height << " / "
+           << c.config.bits_per_block << "-bit / signal "
+           << c.config.signal_multiplier() << " / repair "
+           << c.config.repair_percent() << "%|"
+           << c.effective_payload_bytes << "|"
+           << c.capacity.expected_duration_seconds << " s|"
+           << c.estimated_output_size_bytes << "|"
+           << c.source_sha256 << "|\n";
+        csv << order++ << "," << c.session_group << "," << c.case_id
+            << "," << q(video) << "," << c.config_id << ","
+            << c.config.block_width << "," << c.config.bits_per_block
+            << "," << c.config.signal_multiplier() << ","
+            << c.config.repair_percent() << ","
+            << c.effective_payload_bytes << ","
+            << c.capacity.expected_duration_seconds << ","
+            << c.estimated_output_size_bytes << ","
+            << c.source_sha256 << "," << c.payload_instance_id << "\n";
+    }
+    std::filesystem::copy_file(
+        "tools/download_returned_playlist.ps1",
+        root / "tools" / "download_returned_playlist.ps1",
+        std::filesystem::copy_options::overwrite_existing);
+    std::ofstream next(root / "README_NEXT_STEPS.md",
+                       std::ios::binary | std::ios::trunc);
+    if (!next)
+        throw std::runtime_error("could not write stress next steps");
+    next << "# Next steps\n\n"
+         << "1. Upload only eligible videos from `session_a/videos` as one "
+            "Unlisted batch. Preserve filenames and wait for 1080p processing.\n"
+         << "2. Download YouTube's re-encoded 1080p streams into "
+            "`returned/session_a`.\n"
+         << "3. Repeat independently for `session_b/videos`, placing returns "
+            "in `returned/session_b`.\n"
+         << "4. Upload only the repair cases listed in the repair checklist as "
+            "a third batch and put returns in `returned/repair_sweep`.\n"
+         << "5. Keep case IDs (`P4A-*`, `P4B-*`, `R3-*`) in every downloaded "
+            "filename. Manual downloads are supported. The helper in `tools` "
+            "also supports yt-dlp when installed.\n"
+         << "6. Analyze every returned video and regenerate reports with:\n\n"
+         << "```powershell\n.\\build\\Release\\media_storage.exe capacitylab stress-analyze --manifest \""
+         << std::filesystem::absolute(root / "manifest.json").string()
+         << "\"\n```\n\n"
+         << "Current production recommendation: "
+         << inference.production_recommendation << ".\n";
+}
+
 } // namespace
 
 ExperimentManifest run(
@@ -2750,12 +3179,21 @@ ExperimentManifest run(
         manifest.mandatory_stage3_profiles.clear();
         attach_onebit_source(manifest, options.source_manifest);
     }
+    if (options.preset == Preset::OneBitStressValidation1080p) {
+        manifest.maximum_cases = 9;
+        manifest.maximum_shortlist_videos = 9;
+        manifest.mandatory_stage1_profiles.clear();
+        manifest.mandatory_stage3_profiles.clear();
+        attach_stress_source(manifest, options.source_manifest);
+    }
     const auto root =
         options.output_root /
         (options.preset == Preset::Boundary1080p
              ? "youtube_boundary_lab"
              : options.preset == Preset::OneBitVerification1080p
-                 ? "youtube_1bit_lab" : "youtube_capacity_lab") /
+                 ? "youtube_1bit_lab"
+             : options.preset == Preset::OneBitStressValidation1080p
+                 ? "youtube_1bit_stress" : "youtube_capacity_lab") /
         manifest.experiment_id;
     prepare_directories(root);
     const auto manifest_path = root / "manifest.json";
@@ -2784,7 +3222,8 @@ ExperimentManifest run(
             }
             try {
                 if (manifest.preset == Preset::Boundary1080p ||
-                    manifest.preset == Preset::OneBitVerification1080p)
+                    manifest.preset == Preset::OneBitVerification1080p ||
+                    manifest.preset == Preset::OneBitStressValidation1080p)
                     execute_boundary_case(
                         manifest, test_case, root);
                 else
@@ -2823,7 +3262,8 @@ ExperimentManifest run(
     if (!run_range(0, initial_profile))
         return manifest;
     if (options.preset == Preset::Boundary1080p ||
-        options.preset == Preset::OneBitVerification1080p) {
+        options.preset == Preset::OneBitVerification1080p ||
+        options.preset == Preset::OneBitStressValidation1080p) {
         if (options.preset == Preset::OneBitVerification1080p) {
             const bool exact = std::all_of(
                 manifest.cases.begin(), manifest.cases.end(),
@@ -2836,7 +3276,10 @@ ExperimentManifest run(
                 : "Source payload validation failed";
         }
         write_manifest_atomic(manifest, manifest_path);
-        generate_boundary_upload(manifest, root);
+        if (options.preset == Preset::OneBitStressValidation1080p)
+            generate_stress_upload_artifacts(manifest, root);
+        else
+            generate_boundary_upload(manifest, root);
         write_reports(manifest, root / "reports");
         return read_manifest(manifest_path);
     }
@@ -2978,7 +3421,8 @@ void resume(const std::filesystem::path &manifest_path,
             }
             try {
                 if (manifest.preset == Preset::Boundary1080p ||
-                    manifest.preset == Preset::OneBitVerification1080p)
+                    manifest.preset == Preset::OneBitVerification1080p ||
+                    manifest.preset == Preset::OneBitStressValidation1080p)
                     execute_boundary_case(
                         manifest, test_case, root);
                 else
@@ -3003,9 +3447,13 @@ void resume(const std::filesystem::path &manifest_path,
     };
     if (!process_pending(0)) return;
     if (manifest.preset == Preset::Boundary1080p ||
-        manifest.preset == Preset::OneBitVerification1080p) {
+        manifest.preset == Preset::OneBitVerification1080p ||
+        manifest.preset == Preset::OneBitStressValidation1080p) {
         write_manifest_atomic(manifest, manifest_path);
-        generate_boundary_upload(manifest, root);
+        if (manifest.preset == Preset::OneBitStressValidation1080p)
+            generate_stress_upload_artifacts(manifest, root);
+        else
+            generate_boundary_upload(manifest, root);
         write_reports(manifest, root / "reports");
         return;
     }
@@ -3395,8 +3843,11 @@ std::string real_youtube_status(
     std::set<std::string> passing_sessions;
     for (const auto *result : observations)
         if (result->decode_completed &&
-            result->metadata_valid &&
             result->sha256_match &&
+            result->returned_width ==
+                test_case.config.resolution_width &&
+            result->returned_height ==
+                test_case.config.resolution_height &&
             result->telemetry.recovery_margin_packets >= 0)
             passing_sessions.insert(
                 result->analysis_session_label);
@@ -3722,6 +4173,64 @@ std::vector<CaseObservationResult> infer_onebit_case_observations(
             result.current_status = "pass";
         else if (result.failure_count != 0)
             result.current_status = "fail";
+    }
+    return out;
+}
+
+StressInference infer_stress_validation(
+    const ExperimentManifest &manifest) {
+    StressInference out;
+    out.cases = infer_onebit_case_observations(manifest);
+    for (const auto &e : manifest.historical_evidence) {
+        if (e.source_case_id != "G05") continue;
+        out.historical_g05_recovery_percent =
+            e.packet_recovery_percent;
+        out.historical_g05_margin_percent =
+            e.recovery_margin_percent;
+    }
+    for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+        const auto &test_case = manifest.cases[i];
+        const auto &observations = out.cases[i];
+        if (test_case.session_group == "session_a" ||
+            test_case.session_group == "session_b") {
+            ++out.four_x_case_count;
+            if (out.four_x_config_id.empty())
+                out.four_x_config_id = test_case.config_id;
+            if (observations.current_status == "pass" &&
+                observations.failure_count == 0)
+                ++out.four_x_exact_case_count;
+            if (observations.failure_count != 0)
+                ++out.four_x_failure_case_count;
+            continue;
+        }
+        if (test_case.session_group != "repair_sweep") continue;
+        StressRepairResult repair;
+        repair.case_id = test_case.case_id;
+        repair.config_id = test_case.config_id;
+        repair.repair_percent = test_case.config.repair_percent();
+        repair.covers_historical_erasure =
+            repair.repair_percent > out.historical_g05_erasure_percent;
+        repair.local_shortlisted = test_case.upload_eligible &&
+            repair.covers_historical_erasure;
+        repair.useful_kib_per_second =
+            test_case.capacity.useful_payload_bytes_per_second / 1024.0;
+        repair.real_status = observations.current_status;
+        out.repair_results.push_back(std::move(repair));
+    }
+    if (out.four_x_failure_case_count != 0) {
+        out.production_recommendation =
+            "4x candidate requires investigation";
+    } else if (out.four_x_case_count == 6 &&
+               out.four_x_exact_case_count == 6) {
+        out.production_recommendation =
+            "4x candidate passed six-case stress validation across payload size and upload session";
+    }
+    for (const auto &repair : out.repair_results) {
+        if (!repair.local_shortlisted ||
+            !repair.covers_historical_erasure)
+            continue;
+        out.repair_upload_shortlist.push_back(repair.case_id);
+        if (out.repair_upload_shortlist.size() == 2) break;
     }
     return out;
 }
@@ -4074,7 +4583,7 @@ void analyze_folder(
                     result.analyzed_file_sha256 + "|" +
                     result.analysis_session_label);
     for (const auto &entry :
-         std::filesystem::directory_iterator(folder)) {
+         std::filesystem::recursive_directory_iterator(folder)) {
         if (!entry.is_regular_file()) continue;
         const auto extension = entry.path().extension().string();
         if (extension != ".mp4" && extension != ".webm" &&
@@ -4113,7 +4622,14 @@ void analyze_folder(
             ? manifest.preset == Preset::Boundary1080p
                 ? "Boundary initial YouTube test"
                 : manifest.preset == Preset::OneBitVerification1080p
-                    ? "1-bit verification retest" : "Initial YouTube test"
+                    ? "1-bit verification retest"
+                : manifest.preset == Preset::OneBitStressValidation1080p
+                    ? matched->session_group == "session_a"
+                        ? "Stress Session A"
+                        : matched->session_group == "session_b"
+                            ? "Stress Session B"
+                            : "Stress Repair Sweep"
+                    : "Initial YouTube test"
             : session_label;
         const std::string fingerprint = manifest.experiment_id + "|" +
             matched->case_id + "|" + matched->config_id + "|" +
@@ -4154,8 +4670,8 @@ void analyze_folder(
                 expected.packet_stream.resize(
                     static_cast<std::size_t>(packet_bytes));
         }
-        const auto imported =
-            root / "imported" / entry.path().filename();
+        const auto imported = root / "imported" /
+            (matched->case_id + "_" + entry.path().filename().string());
         std::filesystem::copy_file(
             entry.path(), imported,
             std::filesystem::copy_options::overwrite_existing);
@@ -4179,6 +4695,7 @@ void analyze_folder(
             matched->payload_instance_id;
         result.analyzed_file_sha256 = file_hash;
         matched->results.push_back(std::move(result));
+        matched->returned_video_path = relative_path(root, imported);
         matched->local_evidence_status =
             local_evidence_status(*matched);
         matched->real_youtube_status =
@@ -4202,6 +4719,8 @@ std::string to_string(const Preset value) {
         case Preset::Boundary1080p: return "boundary-1080p";
         case Preset::OneBitVerification1080p:
             return "onebit-verification-1080p";
+        case Preset::OneBitStressValidation1080p:
+            return "onebit-stress-1080p";
         case Preset::Custom: return "custom";
     }
     return "unknown";
@@ -4233,6 +4752,8 @@ Preset preset_from_string(const std::string &value) {
         return Preset::Boundary1080p;
     if (value == "onebit-verification-1080p")
         return Preset::OneBitVerification1080p;
+    if (value == "onebit-stress-1080p")
+        return Preset::OneBitStressValidation1080p;
     if (value == "custom") return Preset::Custom;
     throw std::runtime_error(
         "unknown Capacity Lab preset: " + value);
@@ -4572,6 +5093,8 @@ void write_manifest_atomic(
                 << "      \"payload_instance_id\": "
                 << q(c.payload_instance_id) << ",\n"
                 << "      \"role\": " << q(c.role) << ",\n"
+                << "      \"session_group\": "
+                << q(c.session_group) << ",\n"
                 << "      \"payload_mode\": "
                 << q(c.payload_mode) << ",\n"
                 << "      \"source_case_id\": "
@@ -4606,6 +5129,8 @@ void write_manifest_atomic(
                 << c.master_size << ",\n"
                 << "      \"candidate_size\": "
                 << c.candidate_size << ",\n"
+                << "      \"estimated_output_size_bytes\": "
+                << c.estimated_output_size_bytes << ",\n"
                 << "      \"state\": "
                 << q(to_string(c.state)) << ",\n"
                 << "      \"mandatory_gates_passed\": "
@@ -4647,6 +5172,13 @@ void write_manifest_atomic(
                 << "      \"simulation_warning\": "
                 << (c.simulation_warning
                         ? "true" : "false") << ",\n"
+                << "      \"upload_eligible\": "
+                << (c.upload_eligible ? "true" : "false") << ",\n"
+                << "      \"expected_returned_path\": "
+                << q(c.expected_returned_path) << ",\n"
+                << "      \"returned_video_path\": "
+                << q(c.returned_video_path) << ",\n"
+                << "      \"notes\": " << q(c.notes) << ",\n"
                 << "      \"raw_bits_per_frame\": "
                 << c.capacity.geometry.raw_bits_per_frame << ",\n"
                 << "      \"raw_bytes_per_frame\": "
@@ -4724,7 +5256,8 @@ ExperimentManifest read_manifest(
             "manifest is not a YouTube Capacity Lab experiment");
     const int schema = static_cast<int>(
         json_number(json, "schema_version").value_or(0));
-    if (schema != 4 && schema != kManifestSchemaVersion)
+    if (schema != 4 && schema != 5 &&
+        schema != kManifestSchemaVersion)
         throw std::runtime_error(
             "unsupported Capacity Lab manifest schema");
     ExperimentManifest manifest;
@@ -4854,6 +5387,8 @@ ExperimentManifest read_manifest(
         c.payload_instance_id =
             json_string(object, "payload_instance_id").value_or("");
         c.role = json_string(object, "role").value_or("");
+        c.session_group =
+            json_string(object, "session_group").value_or("");
         c.payload_mode =
             json_string(object, "payload_mode").value_or("");
         c.source_case_id =
@@ -4890,6 +5425,9 @@ ExperimentManifest read_manifest(
             json_u64(object, "master_size").value_or(0);
         c.candidate_size =
             json_u64(object, "candidate_size").value_or(0);
+        c.estimated_output_size_bytes =
+            json_u64(object, "estimated_output_size_bytes")
+                .value_or(c.capacity.estimated_candidate_bytes);
         c.state = state_from_string(
             json_string(object, "state").value_or("Pending"));
         c.mandatory_gates_passed =
@@ -4933,6 +5471,13 @@ ExperimentManifest read_manifest(
             json_bool(object, "production_codec_path");
         c.simulation_warning =
             json_bool(object, "simulation_warning");
+        c.upload_eligible =
+            json_bool(object, "upload_eligible");
+        c.expected_returned_path =
+            json_string(object, "expected_returned_path").value_or("");
+        c.returned_video_path =
+            json_string(object, "returned_video_path").value_or("");
+        c.notes = json_string(object, "notes").value_or("");
         c.capacity.expected_source_packets =
             json_u64(object, "expected_source_packets")
                 .value_or(c.capacity.expected_source_packets);
@@ -5567,6 +6112,208 @@ void write_boundary_reports(
     }
 }
 
+void write_stress_reports(
+    const ExperimentManifest &manifest,
+    const std::filesystem::path &reports_directory) {
+    std::filesystem::create_directories(reports_directory);
+    const auto inference = infer_stress_validation(manifest);
+    const auto local_result = [](const CapacityCase &test_case)
+        -> const CaseResult * {
+        for (auto it = test_case.results.rbegin();
+             it != test_case.results.rend(); ++it)
+            if (it->source_type == "upload-candidate") return &*it;
+        return nullptr;
+    };
+    {
+        std::ofstream out(reports_directory / "stress_cases.csv",
+                          std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("could not write stress CSV");
+        out << "experiment_id,case_id,session_group,config_id,"
+               "payload_instance_id,source_payload_path,source_size,"
+               "source_sha256,block,bits,signal,repair_percent,"
+               "source_packets,repair_packets,total_packets,resolution,fps,"
+               "estimated_duration,estimated_output_size,actual_output_size,"
+               "local_lossless,h264_simulation,local_recovered_sha,"
+               "recovery_percent,recovery_margin,net_useful_kib_s,"
+               "upload_eligible,youtube_status,exact_state,returned_path,"
+               "production_recommendation,notes\n";
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+            const auto &c = manifest.cases[i];
+            const auto *local = local_result(c);
+            const auto master = std::find_if(
+                c.results.begin(), c.results.end(),
+                [](const CaseResult &r) {
+                    return r.source_type == "master-lossless";
+                });
+            out << manifest.experiment_id << "," << c.case_id << ","
+                << c.session_group << "," << c.config_id << ","
+                << c.payload_instance_id << "," << q(c.payload_path) << ","
+                << c.effective_payload_bytes << "," << c.source_sha256 << ","
+                << c.config.block_width << "," << c.config.bits_per_block
+                << "," << c.config.signal_multiplier() << ","
+                << c.config.repair_percent() << ","
+                << c.capacity.expected_source_packets << ","
+                << c.capacity.expected_repair_packets << ","
+                << c.capacity.expected_total_packets << ","
+                << c.config.resolution_width << "x"
+                << c.config.resolution_height << "," << c.config.fps << ","
+                << c.capacity.expected_duration_seconds << ","
+                << c.estimated_output_size_bytes << "," << c.candidate_size
+                << "," << (master != c.results.end() &&
+                    master->decode_completed && master->sha256_match
+                        ? "pass" : "fail")
+                << "," << (c.mandatory_gates_passed ? "pass" : "fail")
+                << "," << (local ? local->restored_sha256 : "") << ","
+                << (local ? local->telemetry.packet_recovery_percent : 0.0)
+                << "," << (local ? local->telemetry.recovery_margin_percent : 0.0)
+                << "," << c.capacity.useful_payload_bytes_per_second / 1024.0
+                << "," << (c.upload_eligible ? "true" : "false") << ","
+                << inference.cases[i].current_status << ","
+                << inference.cases[i].current_status << ","
+                << q(c.returned_video_path) << ","
+                << q(inference.production_recommendation) << ","
+                << q(c.rejection_reason.empty() ? c.notes : c.rejection_reason)
+                << "\n";
+        }
+    }
+    {
+        std::ofstream out(reports_directory / "stress_summary.json",
+                          std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("could not write stress JSON");
+        out << "{\n  \"experiment_id\": " << q(manifest.experiment_id)
+            << ",\n  \"preset\": \"onebit-stress-1080p\""
+            << ",\n  \"production_profile_changed\": false"
+            << ",\n  \"h264_estimate_warning\": "
+            << q("3x3 repair videos are materially larger than the generic estimate; use actual_output_size")
+            << ",\n  \"production_recommendation\": "
+            << q(inference.production_recommendation)
+            << ",\n  \"four_x_config_id\": " << q(inference.four_x_config_id)
+            << ",\n  \"four_x_case_count\": " << inference.four_x_case_count
+            << ",\n  \"four_x_exact_case_count\": "
+            << inference.four_x_exact_case_count
+            << ",\n  \"four_x_failure_case_count\": "
+            << inference.four_x_failure_case_count
+            << ",\n  \"historical_g05\": {\"repair_percent\":5,"
+               "\"erasure_percent\":" << inference.historical_g05_erasure_percent
+            << ",\"recovery_percent\":" << inference.historical_g05_recovery_percent
+            << ",\"margin_percent\":" << inference.historical_g05_margin_percent
+            << "},\n  \"repair_upload_shortlist\": [";
+        for (std::size_t i = 0;
+             i < inference.repair_upload_shortlist.size(); ++i) {
+            if (i) out << ",";
+            out << q(inference.repair_upload_shortlist[i]);
+        }
+        out << "],\n  \"cases\": [";
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+            const auto &c = manifest.cases[i];
+            const auto &r = inference.cases[i];
+            if (i) out << ",";
+            out << "\n    {\"case_id\":" << q(c.case_id)
+                << ",\"session_group\":" << q(c.session_group)
+                << ",\"config_id\":" << q(c.config_id)
+                << ",\"payload_instance_id\":" << q(c.payload_instance_id)
+                << ",\"source_sha256\":" << q(c.source_sha256)
+                << ",\"payload_bytes\":" << c.effective_payload_bytes
+                << ",\"estimated_duration_seconds\":"
+                << c.capacity.expected_duration_seconds
+                << ",\"estimated_output_size_bytes\":"
+                << c.estimated_output_size_bytes
+                << ",\"upload_eligible\":"
+                << (c.upload_eligible ? "true" : "false")
+                << ",\"observation_count\":" << r.current_observation_count
+                << ",\"duplicate_count\":" << r.duplicate_count
+                << ",\"exact_pass_count\":" << r.exact_pass_count
+                << ",\"failure_count\":" << r.failure_count
+                << ",\"final_result\":" << q(r.current_status) << "}";
+        }
+        if (!manifest.cases.empty()) out << "\n  ";
+        out << "]\n}\n";
+    }
+    {
+        std::ofstream out(reports_directory / "stress_report.md",
+                          std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("could not write stress Markdown");
+        out << "# YouTube 1-bit stress validation\n\n"
+            << "> Local gates only create a shortlist. They do not promote a "
+               "configuration and are not real YouTube evidence.\n\n"
+            << "> The generic candidate-size estimate is conservative for the "
+               "4x matrix limits but underestimates the near-intra 3x3 H.264 "
+               "repair videos. Use `actual_output_size` for upload planning.\n\n"
+            << "## A. Case-level result\n\n"
+            << "| Case | Session | Config | Payload instance | SHA prefix | "
+               "Payload | Duration | Estimated video | Repair | Local | "
+               "Real YouTube | Final |\n"
+            << "|---|---|---|---|---|---:|---:|---:|---:|---|---|---|\n";
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i) {
+            const auto &c = manifest.cases[i];
+            out << "|" << c.case_id << "|" << c.session_group << "|"
+                << c.config_id << "|" << c.payload_instance_id << "|"
+                << (c.source_sha256.empty() ? "-" : c.source_sha256.substr(0, 12))
+                << "|" << c.effective_payload_bytes << "|"
+                << c.capacity.expected_duration_seconds << " s|"
+                << c.estimated_output_size_bytes << "|"
+                << c.config.repair_percent() << "%|"
+                << (c.upload_eligible ? "Pass / shortlisted" :
+                    c.state == CaseState::Pending ? "Pending" : "Failed")
+                << "|" << inference.cases[i].current_status
+                << "|" << inference.cases[i].current_status << "|\n";
+        }
+        out << "\n## B. Config/geometry aggregation\n\n"
+            << "- 4x config: `" << inference.four_x_config_id << "`\n"
+            << "- Six-case exact count: " << inference.four_x_exact_case_count
+            << "/" << inference.four_x_case_count << "\n"
+            << "- Six-case failure count: "
+            << inference.four_x_failure_case_count << "\n"
+            << "- G05 historical control: repair 5%, erasure "
+            << inference.historical_g05_erasure_percent << "%, recovery "
+            << inference.historical_g05_recovery_percent << "%, margin "
+            << inference.historical_g05_margin_percent << "%\n\n"
+            << "### 3x3 repair comparison\n\n"
+            << "| Case | Repair | Source packets | Repair packets | Total | "
+               "Duration | Estimated bytes | Useful KiB/s | Local margin | "
+               "Covers G05 erasure | Local decision | Real status |\n"
+            << "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|\n";
+        for (const auto &repair : inference.repair_results) {
+            const auto found = std::find_if(
+                manifest.cases.begin(), manifest.cases.end(),
+                [&](const CapacityCase &c) { return c.case_id == repair.case_id; });
+            const auto *local = found == manifest.cases.end()
+                ? nullptr : local_result(*found);
+            out << "|" << repair.case_id << "|" << repair.repair_percent
+                << "%|" << found->capacity.expected_source_packets << "|"
+                << found->capacity.expected_repair_packets << "|"
+                << found->capacity.expected_total_packets << "|"
+                << found->capacity.expected_duration_seconds << " s|"
+                << found->estimated_output_size_bytes << "|"
+                << repair.useful_kib_per_second << "|"
+                << (local ? local->telemetry.recovery_margin_percent : 0.0)
+                << "%|" << (repair.covers_historical_erasure ? "Yes" : "No")
+                << "|" << (repair.local_shortlisted ? "Shortlisted" : "Excluded")
+                << "|" << repair.real_status << "|\n";
+        }
+        out << "\n- 20% repair is below the historical G05 erasure level and is "
+               "not sufficient on that evidence alone.\n"
+            << "- Among the two higher-repair candidates, 35% is the initial "
+               "capacity/resilience balance; 50% is the higher-resilience "
+               "companion. Neither is verified until a real YouTube result.\n"
+            << "- Real YouTube repair upload shortlist: ";
+        if (inference.repair_upload_shortlist.empty())
+            out << "None; no candidate is forced.\n";
+        else {
+            for (std::size_t i = 0;
+                 i < inference.repair_upload_shortlist.size(); ++i) {
+                if (i) out << ", ";
+                out << "`" << inference.repair_upload_shortlist[i] << "`";
+            }
+            out << "\n";
+        }
+        out << "\n## C. Production recommendation status\n\n"
+            << "**" << inference.production_recommendation << "**\n\n"
+            << "The production Resilient profile remains 8x8 / 1-bit / "
+               "signal 1.0 / repair 5% and is unchanged.\n";
+    }
+}
+
 } // namespace
 
 void write_reports(
@@ -5579,6 +6326,11 @@ void write_reports(
     if (source_manifest.preset == Preset::Boundary1080p) {
         write_boundary_reports(
             source_manifest, reports_directory);
+        return;
+    }
+    if (source_manifest.preset ==
+        Preset::OneBitStressValidation1080p) {
+        write_stress_reports(source_manifest, reports_directory);
         return;
     }
     auto manifest = source_manifest;

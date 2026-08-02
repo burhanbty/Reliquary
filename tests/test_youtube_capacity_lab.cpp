@@ -177,6 +177,45 @@ void observe_density(
             add_real_observation(test_case, pass);
 }
 
+ExperimentManifest stress_manifest(const bool local_pass = true) {
+    RunOptions options;
+    options.preset = Preset::OneBitStressValidation1080p;
+    options.maximum_cases = 9;
+    ExperimentManifest manifest;
+    manifest.experiment_id = "STRESS";
+    manifest.created_at = "2026-08-02T00:00:00Z";
+    manifest.preset = Preset::OneBitStressValidation1080p;
+    manifest.baseline = production_baseline_config();
+    manifest.maximum_cases = 9;
+    manifest.cases = build_initial_cases(options, "STRESS");
+    for (auto &test_case : manifest.cases) {
+        test_case.state = local_pass ? CaseState::Passed : CaseState::Rejected;
+        test_case.mandatory_gates_passed = local_pass;
+        test_case.upload_eligible = local_pass;
+        test_case.source_sha256 = test_case.case_id + "-sha256";
+        auto local = local_case(test_case.config, 1,
+                                "yt-sim-1080p-medium", local_pass,
+                                local_pass);
+        test_case.results = std::move(local.results);
+        test_case.results.back().source_type = "local-simulation";
+        test_case.results.back().simulation_profile =
+            "yt-sim-1080p-medium";
+        CaseResult candidate = test_case.results.back();
+        candidate.source_type = "upload-candidate";
+        candidate.restored_sha256 = test_case.source_sha256;
+        candidate.telemetry.recovery_margin_packets = local_pass ? 2 : -2;
+        test_case.results.insert(test_case.results.begin() + 1,
+                                 std::move(candidate));
+    }
+    HistoricalEvidence g05;
+    g05.source_case_id = "G05";
+    g05.packet_recovery_percent = 83.4037;
+    g05.recovery_margin_percent = -12.4113;
+    g05.exact = false;
+    manifest.historical_evidence.push_back(std::move(g05));
+    return manifest;
+}
+
 } // namespace
 
 TEST(CapacityConfig, CanonicalIdIsStable) {
@@ -1370,7 +1409,7 @@ TEST(OneBitManifest, RoundtripPreservesProvenanceAndPayloadInstances) {
     const auto path = root / "manifest.json";
     write_manifest_atomic(manifest, path);
     const auto loaded = read_manifest(path);
-    EXPECT_EQ(loaded.schema_version, 5);
+    EXPECT_EQ(loaded.schema_version, 6);
     EXPECT_EQ(loaded.source_experiment_id, "BOUNDARY");
     ASSERT_EQ(loaded.historical_evidence.size(), 1U);
     EXPECT_EQ(loaded.cases[3].config_id, loaded.cases[4].config_id);
@@ -1445,4 +1484,158 @@ TEST(OneBitReports, MarkdownJsonAndCsvShareCentralInference) {
     EXPECT_NE(cases.find("R03,538F2B009FAB,indp0001"),
               std::string::npos);
     std::filesystem::remove_all(root);
+}
+
+TEST(StressMatrix, PreservesSixIndependentCasesAcrossSessions) {
+    RunOptions options;
+    options.preset = Preset::OneBitStressValidation1080p;
+    options.maximum_cases = 9;
+    const auto cases = build_initial_cases(options, "STRESS-MATRIX");
+    ASSERT_EQ(cases.size(), 9U);
+    std::set<std::string> case_ids, payloads, seeds;
+    uint64_t estimated_total = 0;
+    for (std::size_t i = 0; i < 6; ++i) {
+        case_ids.insert(cases[i].case_id);
+        payloads.insert(cases[i].payload_instance_id);
+        seeds.insert(std::to_string(cases[i].payload_seed));
+        estimated_total += cases[i].estimated_output_size_bytes;
+        EXPECT_EQ(cases[i].config_id, "538F2B009FAB");
+        EXPECT_EQ(cases[i].session_group,
+                  i < 3 ? "session_a" : "session_b");
+    }
+    EXPECT_EQ(case_ids.size(), 6U);
+    EXPECT_EQ(payloads.size(), 6U);
+    EXPECT_EQ(seeds.size(), 6U);
+    EXPECT_LT(estimated_total, 6ULL * 1024 * 1024 * 1024);
+    for (std::size_t i = 0; i < 6; ++i)
+        EXPECT_LT(cases[i].estimated_output_size_bytes,
+                  1536ULL * 1024 * 1024);
+    EXPECT_GE(cases[0].capacity.expected_duration_seconds, 20.0);
+    EXPECT_LE(cases[0].capacity.expected_duration_seconds, 45.0);
+    EXPECT_GE(cases[1].capacity.expected_duration_seconds, 90.0);
+    EXPECT_LE(cases[1].capacity.expected_duration_seconds, 180.0);
+    EXPECT_GE(cases[2].capacity.expected_duration_seconds, 240.0);
+    EXPECT_LE(cases[2].capacity.expected_duration_seconds, 420.0);
+}
+
+TEST(StressMatrix, RepairSweepChangesOnlyRepairAndSharesPayload) {
+    auto manifest = stress_manifest();
+    const auto &r20 = manifest.cases[6];
+    const auto &r35 = manifest.cases[7];
+    const auto &r50 = manifest.cases[8];
+    EXPECT_EQ(r20.config.repair_basis_points, 2000);
+    EXPECT_EQ(r35.config.repair_basis_points, 3500);
+    EXPECT_EQ(r50.config.repair_basis_points, 5000);
+    EXPECT_NE(r20.config_id, r35.config_id);
+    EXPECT_NE(r35.config_id, r50.config_id);
+    EXPECT_EQ(r20.payload_instance_id, r35.payload_instance_id);
+    EXPECT_EQ(r35.payload_instance_id, r50.payload_instance_id);
+    EXPECT_EQ(r20.payload_seed, r35.payload_seed);
+    EXPECT_EQ(r35.payload_seed, r50.payload_seed);
+    EXPECT_EQ(r20.effective_payload_bytes, r35.effective_payload_bytes);
+    EXPECT_EQ(r35.effective_payload_bytes, r50.effective_payload_bytes);
+    auto a = r20.config;
+    auto b = r35.config;
+    auto c = r50.config;
+    a.repair_basis_points = b.repair_basis_points =
+        c.repair_basis_points = 0;
+    EXPECT_EQ(a.canonical_serialization(), b.canonical_serialization());
+    EXPECT_EQ(b.canonical_serialization(), c.canonical_serialization());
+}
+
+TEST(StressInference, LocalPassesRemainPendingWithoutReturnedVideos) {
+    const auto manifest = stress_manifest();
+    const auto result = infer_stress_validation(manifest);
+    EXPECT_EQ(result.production_recommendation,
+              "Pending real YouTube stress validation");
+    EXPECT_EQ(result.four_x_exact_case_count, 0U);
+    EXPECT_EQ(result.four_x_failure_case_count, 0U);
+    ASSERT_EQ(result.repair_upload_shortlist.size(), 2U);
+    EXPECT_EQ(result.repair_upload_shortlist[0], "R3-35");
+    EXPECT_EQ(result.repair_upload_shortlist[1], "R3-50");
+}
+
+TEST(StressInference, OneFourXFailureRequiresInvestigation) {
+    auto manifest = stress_manifest();
+    add_real_observation(manifest.cases[0], false,
+                         "Stress Session A");
+    const auto result = infer_stress_validation(manifest);
+    EXPECT_EQ(result.production_recommendation,
+              "4x candidate requires investigation");
+    EXPECT_EQ(result.four_x_failure_case_count, 1U);
+}
+
+TEST(StressInference, SixExactCasesPassAcrossPayloadAndSession) {
+    auto manifest = stress_manifest();
+    for (std::size_t i = 0; i < 6; ++i)
+        add_real_observation(manifest.cases[i], true,
+                             i < 3 ? "Stress Session A" :
+                                     "Stress Session B");
+    const auto result = infer_stress_validation(manifest);
+    EXPECT_EQ(result.four_x_exact_case_count, 6U);
+    EXPECT_EQ(result.production_recommendation,
+              "4x candidate passed six-case stress validation across payload size and upload session");
+}
+
+TEST(StressInference, DuplicateAndTimestampWarningDoNotCreateFailure) {
+    auto manifest = stress_manifest();
+    add_real_observation(manifest.cases[0], true, "Stress Session A");
+    manifest.cases[0].results.back().metadata_valid = false;
+    manifest.cases[0].results.back().error = "Non-monotonic timestamps";
+    manifest.cases[0].results.push_back(manifest.cases[0].results.back());
+    const auto result = infer_stress_validation(manifest);
+    EXPECT_EQ(result.cases[0].exact_pass_count, 1U);
+    EXPECT_EQ(result.cases[0].failure_count, 0U);
+    EXPECT_EQ(result.cases[0].duplicate_count, 1U);
+}
+
+TEST(StressManifest, RoundtripDoesNotCollapseSharedConfigCases) {
+    const auto root = unique_temp("stress-manifest");
+    std::filesystem::create_directories(root);
+    auto manifest = stress_manifest();
+    const auto path = root / "manifest.json";
+    write_manifest_atomic(manifest, path);
+    const auto loaded = read_manifest(path);
+    ASSERT_EQ(loaded.cases.size(), 9U);
+    std::set<std::string> four_ids, four_payloads, four_shas;
+    for (std::size_t i = 0; i < 6; ++i) {
+        four_ids.insert(loaded.cases[i].case_id);
+        four_payloads.insert(loaded.cases[i].payload_instance_id);
+        four_shas.insert(loaded.cases[i].source_sha256);
+    }
+    EXPECT_EQ(four_ids.size(), 6U);
+    EXPECT_EQ(four_payloads.size(), 6U);
+    EXPECT_EQ(four_shas.size(), 6U);
+    EXPECT_EQ(loaded.cases[0].session_group, "session_a");
+    EXPECT_EQ(loaded.cases[3].session_group, "session_b");
+    std::filesystem::remove_all(root);
+}
+
+TEST(StressReports, MarkdownJsonAndCsvUseCentralRecommendation) {
+    const auto root = unique_temp("stress-reports");
+    const auto manifest = stress_manifest();
+    write_reports(manifest, root);
+    const auto read_all = [](const std::filesystem::path &path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(input),
+                           std::istreambuf_iterator<char>());
+    };
+    const std::string expected = "Pending real YouTube stress validation";
+    EXPECT_NE(read_all(root / "stress_report.md").find(expected),
+              std::string::npos);
+    EXPECT_NE(read_all(root / "stress_summary.json").find(expected),
+              std::string::npos);
+    EXPECT_NE(read_all(root / "stress_cases.csv").find(expected),
+              std::string::npos);
+    std::filesystem::remove_all(root);
+}
+
+TEST(StressLocalGate, FailureIsNeverUploadEligible) {
+    auto manifest = stress_manifest(false);
+    for (const auto &test_case : manifest.cases)
+        EXPECT_FALSE(test_case.upload_eligible);
+    const auto result = infer_stress_validation(manifest);
+    EXPECT_TRUE(result.repair_upload_shortlist.empty());
+    EXPECT_EQ(result.production_recommendation,
+              "Pending real YouTube stress validation");
 }

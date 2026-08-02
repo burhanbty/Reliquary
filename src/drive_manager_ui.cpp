@@ -886,7 +886,8 @@ void DriveManagerUI::setupUI() {
     capacityPresetCombo = new QComboBox();
     capacityPresetCombo->addItems(
         {"Smoke", "Staged Sweep", "YouTube Boundary 1080p",
-         "YouTube 1-bit Verification", "Custom"});
+         "YouTube 1-bit Verification", "1-bit Stress Validation",
+         "Custom"});
     capacityOutputEdit = new QLineEdit();
     capacityOutputEdit->setPlaceholderText(
         "Experiment parent output directory");
@@ -897,9 +898,9 @@ void DriveManagerUI::setupUI() {
     auto *capacityManifestBrowse = new QPushButton("Manifest...");
     capacitySourceManifestEdit = new QLineEdit();
     capacitySourceManifestEdit->setPlaceholderText(
-        "Required source Boundary manifest.json");
+        "Required source Boundary or verified 1-bit manifest.json");
     auto *capacitySourceBrowse =
-        new QPushButton("Select Source Boundary Manifest");
+        new QPushButton("Select Source Evidence Manifest");
     capacityBlocksEdit = new QLineEdit("8,6,4");
     capacityBitsEdit = new QLineEdit("1,2");
     capacitySignalsEdit = new QLineEdit("0.75,1.0,1.25,1.5");
@@ -1006,9 +1007,9 @@ void DriveManagerUI::setupUI() {
     capacityProgress = new QProgressBar();
     capacityProgress->setRange(0, 100);
     capacityLayout->addWidget(capacityProgress);
-    capacityResults = new QTableWidget(0, 21);
+    capacityResults = new QTableWidget(0, 22);
     capacityResults->setHorizontalHeaderLabels({
-        "Case", "Config", "Payload instance", "Source SHA prefix",
+        "Case", "Config", "Session", "Payload instance", "Source SHA prefix",
         "Stage", "Block", "Bits", "Signal", "Repair",
         "Resolution", "Useful KiB/s", "Gain", "Candidate",
         "Recovery", "Margin", "BER/SER", "SHA", "Pareto",
@@ -1024,8 +1025,9 @@ void DriveManagerUI::setupUI() {
             this, [this](const int index) {
         const bool boundary = index == 2;
         const bool onebit = index == 3;
-        const bool fixedExperiment = boundary || onebit;
-        const bool custom = index == 4;
+        const bool stress = index == 4;
+        const bool fixedExperiment = boundary || onebit || stress;
+        const bool custom = index == 5;
         for (auto *edit : {capacityBlocksEdit, capacityBitsEdit,
                            capacitySignalsEdit, capacityRepairsEdit})
             edit->setEnabled(custom);
@@ -1033,16 +1035,19 @@ void DriveManagerUI::setupUI() {
         capacitySimulationCombo->setEnabled(!fixedExperiment);
         capacityMaximumCasesSpin->setEnabled(!fixedExperiment);
         capacityShortlistSpin->setEnabled(!fixedExperiment);
-        capacitySourceManifestEdit->setEnabled(onebit);
-        capacityIncludeSimulationFailuresCheck->setEnabled(fixedExperiment);
+        capacitySourceManifestEdit->setEnabled(onebit || stress);
+        capacityIncludeSimulationFailuresCheck->setEnabled(boundary || onebit);
         capacityShortlistButton->setEnabled(!fixedExperiment);
         capacityEstimateButton->setText(
+            stress ? "Estimate Stress Validation" :
             onebit ? "Estimate 1-bit Verification" :
             boundary ? "Estimate Boundary Sweep" : "Estimate");
         capacityStartButton->setText(
+            stress ? "Generate 9 Stress Videos" :
             onebit ? "Generate 6 Upload Videos" :
             boundary ? "Generate Boundary Videos" : "Start");
         capacityReportButton->setText(
+            stress ? "Refresh Stress Report" :
             onebit ? "Refresh 1-bit Report" :
             boundary ? "Refresh Boundary Report"
                      : "Refresh Reports");
@@ -1050,7 +1055,11 @@ void DriveManagerUI::setupUI() {
             boundary ? "Open Boundary Folder"
                      : "Open Experiment Folder");
         capacityEstimateLabel->setText(
-            onebit
+            stress
+                ? "Nine cases: six independent 4x payload/session stress "
+                  "videos plus a shared-payload 3x3 repair 20/35/50 sweep. "
+                  "The verified 1-bit manifest is required as G05 control."
+                : onebit
                 ? "Exactly 6 videos: R00, R01, G04, R02, R03, G05. "
                   "Locked to 1920x1080, 30 FPS, 1-bit, signal 1.00x, "
                   "repair 5%. Source Boundary manifest is required."
@@ -1084,7 +1093,7 @@ void DriveManagerUI::setupUI() {
     });
     connect(capacitySourceBrowse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(
-            this, "Select Source Boundary Manifest", {},
+            this, "Select Source Evidence Manifest", {},
             "JSON manifest (manifest.json)");
         if (!path.isEmpty()) capacitySourceManifestEdit->setText(path);
     });
@@ -1103,6 +1112,8 @@ void DriveManagerUI::setupUI() {
                     ? "boundary-1080p" :
                 capacityPresetCombo->currentIndex() == 3
                     ? "onebit-verification-1080p" :
+                capacityPresetCombo->currentIndex() == 4
+                    ? "onebit-stress-1080p" :
                 "custom";
             QStringList args{
                 "capacitylab", command, "--preset", preset,
@@ -1122,7 +1133,8 @@ void DriveManagerUI::setupUI() {
                      << "--repair-percent" << capacityRepairsEdit->text()
                      << "--resolution"
                      << capacityResolutionCombo->currentText();
-            if (preset == "onebit-verification-1080p")
+            if (preset == "onebit-verification-1080p" ||
+                preset == "onebit-stress-1080p")
                 args << "--source-manifest"
                      << capacitySourceManifestEdit->text();
             if (capacityEstimateOnlyCheck->isChecked())
@@ -1170,6 +1182,8 @@ void DriveManagerUI::setupUI() {
                 ? "Boundary initial YouTube test"
                 : capacityPresetCombo->currentIndex() == 3
                     ? "1-bit verification retest"
+                : capacityPresetCombo->currentIndex() == 4
+                    ? "1-bit stress validation"
                 : "Initial YouTube test"});
     });
     connect(capacityReportButton, &QPushButton::clicked, this, [this] {
@@ -1179,7 +1193,9 @@ void DriveManagerUI::setupUI() {
             capacityPresetCombo->currentIndex() == 2
                 ? "boundary-report"
                 : capacityPresetCombo->currentIndex() == 3
-                    ? "onebit-report" : "report",
+                    ? "onebit-report"
+                : capacityPresetCombo->currentIndex() == 4
+                    ? "stress-report" : "report",
             "--manifest",
             capacityManifestEdit->text(), "--format", "markdown"});
     });
@@ -2792,6 +2808,8 @@ void DriveManagerUI::refreshCapacityLabDashboard() {
                 ? "-"
                 : item.value("boundary_case_id").toString(),
             item.value("config_id").toString(),
+            item.value("session_group").toString().isEmpty()
+                ? "-" : item.value("session_group").toString(),
             item.value("payload_instance_id").toString().isEmpty()
                 ? "-" : item.value("payload_instance_id").toString(),
             item.value("source_sha256").toString().left(8).isEmpty()

@@ -307,6 +307,11 @@ static void print_usage(const char *program) {
         << " capacitylab boundary-status --manifest <manifest.json>\n"
         << " capacitylab onebit-report --manifest <manifest.json> --format markdown\n"
         << " capacitylab onebit-status --manifest <manifest.json>\n"
+        << " capacitylab stress-plan --output <folder> --source-manifest <onebit-manifest.json>\n"
+        << " capacitylab stress-stage --output <folder> --source-manifest <onebit-manifest.json>\n"
+        << " capacitylab stress-status --manifest <manifest.json>\n"
+        << " capacitylab stress-report --manifest <manifest.json> --format markdown\n"
+        << " capacitylab stress-analyze --manifest <manifest.json>\n"
         << " capacitylab verify-source-payloads --manifest <manifest.json>\n"
         << "\nTest Lab only supports Resilient mode. Local simulation is not "
            "a guaranteed copy of YouTube processing.\n";
@@ -847,8 +852,15 @@ static int do_capacitylab(const int argc, char *argv[]) {
     if (argc < 3)
         throw std::invalid_argument(
             "missing capacitylab subcommand");
-    const std::string subcommand = argv[2];
     RunOptions options;
+    std::string subcommand = argv[2];
+    if (subcommand == "stress-plan") {
+        subcommand = "estimate";
+        options.preset = Preset::OneBitStressValidation1080p;
+    } else if (subcommand == "stress-stage") {
+        subcommand = "run";
+        options.preset = Preset::OneBitStressValidation1080p;
+    }
     std::string manifest_path;
     std::string returned_folder;
     std::string session_label;
@@ -879,12 +891,15 @@ static int do_capacitylab(const int argc, char *argv[]) {
                 options.preset = Preset::Boundary1080p;
             else if (value == "onebit-verification-1080p")
                 options.preset = Preset::OneBitVerification1080p;
+            else if (value == "onebit-stress-1080p")
+                options.preset = Preset::OneBitStressValidation1080p;
             else if (value == "custom")
                 options.preset = Preset::Custom;
             else
                 throw std::invalid_argument(
                     "capacity preset must be smoke, staged, "
-                    "boundary-1080p, onebit-verification-1080p, or custom");
+                    "boundary-1080p, onebit-verification-1080p, "
+                    "onebit-stress-1080p, or custom");
         } else if (arg == "--output") {
             options.output_root = require_value("--output");
         } else if (arg == "--manifest" || arg == "--suite") {
@@ -1041,7 +1056,9 @@ static int do_capacitylab(const int argc, char *argv[]) {
             (options.preset == Preset::Boundary1080p
                  ? "youtube_boundary_lab"
                  : options.preset == Preset::OneBitVerification1080p
-                     ? "youtube_1bit_lab" : "youtube_capacity_lab") /
+                     ? "youtube_1bit_lab"
+                 : options.preset == Preset::OneBitStressValidation1080p
+                     ? "youtube_1bit_stress" : "youtube_capacity_lab") /
             result.experiment_id / "manifest.json";
         std::cout << "CAPACITY_MANIFEST "
                   << std::filesystem::absolute(path).string()
@@ -1200,9 +1217,41 @@ static int do_capacitylab(const int argc, char *argv[]) {
                   << "ONEBIT_NEXT " << status.recommended_next_experiment << "\n";
         return 0;
     }
+    if (subcommand == "stress-status") {
+        const auto manifest = read_manifest(manifest_path);
+        if (manifest.preset != Preset::OneBitStressValidation1080p)
+            throw std::invalid_argument(
+                "stress-status requires a onebit-stress-1080p manifest");
+        const auto status = infer_stress_validation(manifest);
+        std::cout << "STRESS_PRODUCTION "
+                  << status.production_recommendation << "\n"
+                  << "STRESS_4X_EXACT " << status.four_x_exact_case_count
+                  << "/" << status.four_x_case_count << "\n"
+                  << "STRESS_4X_FAILURES "
+                  << status.four_x_failure_case_count << "\n";
+        for (std::size_t i = 0; i < manifest.cases.size(); ++i)
+            std::cout << "STRESS_CASE " << manifest.cases[i].case_id
+                      << " local="
+                      << (manifest.cases[i].upload_eligible
+                              ? "pass" : "failed")
+                      << " real=" << status.cases[i].current_status << "\n";
+        for (const auto &candidate : status.repair_upload_shortlist)
+            std::cout << "STRESS_REPAIR_UPLOAD " << candidate << "\n";
+        return 0;
+    }
+    if (subcommand == "stress-analyze") {
+        const auto manifest = read_manifest(manifest_path);
+        if (manifest.preset != Preset::OneBitStressValidation1080p)
+            throw std::invalid_argument(
+                "stress-analyze requires a onebit-stress-1080p manifest");
+        const auto root = std::filesystem::absolute(manifest_path).parent_path();
+        analyze_folder(manifest_path, root / "returned");
+        return 0;
+    }
     if (subcommand == "report" ||
         subcommand == "boundary-report" ||
-        subcommand == "onebit-report") {
+        subcommand == "onebit-report" ||
+        subcommand == "stress-report") {
         if (report_format != "markdown" &&
             report_format != "json" &&
             report_format != "csv")
@@ -1217,6 +1266,10 @@ static int do_capacitylab(const int argc, char *argv[]) {
             manifest.preset != Preset::OneBitVerification1080p)
             throw std::invalid_argument(
                 "onebit-report requires a onebit-verification-1080p manifest");
+        if (subcommand == "stress-report" &&
+            manifest.preset != Preset::OneBitStressValidation1080p)
+            throw std::invalid_argument(
+                "stress-report requires a onebit-stress-1080p manifest");
         write_reports(
             manifest,
             std::filesystem::absolute(manifest_path)

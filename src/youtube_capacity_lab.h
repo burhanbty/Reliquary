@@ -13,7 +13,7 @@
 
 namespace youtube_capacity_lab {
 
-inline constexpr int kManifestSchemaVersion = 5;
+inline constexpr int kManifestSchemaVersion = 6;
 inline constexpr std::size_t kDefaultMaximumCases = 64;
 inline constexpr std::size_t kAbsoluteMaximumCases = 192;
 inline constexpr uint64_t kDefaultMaximumDiskBytes =
@@ -31,7 +31,8 @@ inline constexpr const char *kThresholdVersion =
     "nearest-level-v1";
 
 enum class Preset {
-    Smoke, Staged, Boundary1080p, OneBitVerification1080p, Custom
+    Smoke, Staged, Boundary1080p, OneBitVerification1080p,
+    OneBitStressValidation1080p, Custom
 };
 enum class CaseState {
     Pending,
@@ -187,6 +188,7 @@ struct CapacityCase {
     std::string payload_family_id;
     std::string payload_instance_id;
     std::string role;
+    std::string session_group;
     std::string payload_mode;
     std::string source_case_id;
     std::string source_config_id;
@@ -204,6 +206,7 @@ struct CapacityCase {
     std::string requested_simulation_profile = "yt-sim-1080p-medium";
     uint64_t master_size = 0;
     uint64_t candidate_size = 0;
+    uint64_t estimated_output_size_bytes = 0;
     CaseState state = CaseState::Pending;
     bool mandatory_gates_passed = false;
     bool dominated = false;
@@ -223,6 +226,10 @@ struct CapacityCase {
     std::string last_real_analysis_event;
     bool production_codec_path = false;
     bool simulation_warning = false;
+    bool upload_eligible = false;
+    std::string expected_returned_path;
+    std::string returned_video_path;
+    std::string notes;
     std::vector<CaseResult> results;
 };
 
@@ -417,6 +424,31 @@ struct OneBitInference {
     std::string recommended_next_experiment;
 };
 
+struct StressRepairResult {
+    std::string case_id;
+    std::string config_id;
+    double repair_percent = 0.0;
+    bool local_shortlisted = false;
+    bool covers_historical_erasure = false;
+    double useful_kib_per_second = 0.0;
+    std::string real_status = "pending";
+};
+
+struct StressInference {
+    std::vector<CaseObservationResult> cases;
+    std::string four_x_config_id;
+    std::size_t four_x_case_count = 0;
+    std::size_t four_x_exact_case_count = 0;
+    std::size_t four_x_failure_case_count = 0;
+    std::string production_recommendation =
+        "Pending real YouTube stress validation";
+    double historical_g05_erasure_percent = 20.686;
+    double historical_g05_recovery_percent = 83.4037;
+    double historical_g05_margin_percent = -12.4113;
+    std::vector<StressRepairResult> repair_results;
+    std::vector<std::string> repair_upload_shortlist;
+};
+
 struct RepairComparison {
     int block_size = 0;
     int bits_per_block = 0;
@@ -456,6 +488,7 @@ void inverse_dct(const std::vector<double> &coefficients, int block_size,
 [[nodiscard]] std::vector<ExperimentConfig> stage1_configs();
 [[nodiscard]] std::vector<ExperimentConfig> boundary_1080p_configs();
 [[nodiscard]] std::vector<ExperimentConfig> onebit_verification_configs();
+[[nodiscard]] std::vector<ExperimentConfig> onebit_stress_configs();
 [[nodiscard]] std::vector<CapacityCase> build_initial_cases(
     const RunOptions &options, const std::string &experiment_id);
 [[nodiscard]] Preflight estimate(const RunOptions &options);
@@ -486,6 +519,8 @@ void analyze_folder(const std::filesystem::path &manifest_path,
     const ExperimentManifest &manifest);
 [[nodiscard]] std::vector<CaseObservationResult>
 infer_onebit_case_observations(const ExperimentManifest &manifest);
+[[nodiscard]] StressInference infer_stress_validation(
+    const ExperimentManifest &manifest);
 void verify_source_payloads(const std::filesystem::path &manifest_path);
 [[nodiscard]] std::vector<RepairComparison> compare_boundary_repairs(
     const ExperimentManifest &manifest);
