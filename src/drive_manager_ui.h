@@ -42,6 +42,9 @@
 #include <QProcess>
 #include <QTableWidget>
 #include <QTabWidget>
+#include <QStackedWidget>
+#include <QRadioButton>
+#include <QButtonGroup>
 
 #include <memory>
 #include <optional>
@@ -50,6 +53,7 @@
 #include "encoding_reliability.h"
 #include "gui_preflight_model.h"
 #include "media_storage.h"
+#include "video_set_workflow.h"
 
 class WorkerThread : public QThread {
     Q_OBJECT
@@ -150,6 +154,10 @@ public:
     explicit DriveManagerUI(QWidget *parent = nullptr);
 
     ~DriveManagerUI() override;
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private
 slots:
@@ -266,6 +274,40 @@ private:
     void refreshTestLabDashboard();
 
     void refreshCapacityLabDashboard();
+
+    void setupVideoSetAssistant(QGroupBox *classicEncodeGroup,
+                                QGroupBox *classicRecoveryGroup);
+
+    void updateVideoSetAssistant();
+
+    void startVideoSetProcess(const QStringList &arguments,
+                              bool assistantOperation = true);
+
+    void handleVideoSetOutput(const QString &text);
+
+    void handleVideoSetFinished(int exitCode,
+                                QProcess::ExitStatus exitStatus);
+
+    void calculateVideoSetPlan();
+
+    void startVideoSetEncode(bool resume);
+
+    void startVideoSetScan();
+
+    void startVideoSetRecovery(bool resume);
+
+    void startVideoSetDownload();
+
+    [[nodiscard]] QString findYtDlpExecutable() const;
+
+    void refreshRecentVideoSets();
+
+    void rememberRecentVideoSet(const QString &manifestPath);
+
+    void openRecentVideoSet(const QString &manifestPath);
+
+    [[nodiscard]] QStringList videoSetEncodeArguments(
+        const QString &command) const;
 
     // UI Components
     QWidget *centralWidget;
@@ -387,19 +429,84 @@ private:
     QString testLabCancelFile;
     QString testLabOutputBuffer;
 
-    // Video Set (opt-in; delegates to the file-only CLI workflow)
+    // Video Set Assistant (guided UI over the existing file-only CLI workflow)
     QWidget *videoSetPage = nullptr;
+    QStackedWidget *videoSetAssistantStack = nullptr;
+    QLabel *videoSetStepIndicator = nullptr;
+    QLabel *videoSetPrimaryMessage = nullptr;
+    QLabel *videoSetSuggestedAction = nullptr;
+    QPushButton *videoSetWelcomeCreateButton = nullptr;
+    QPushButton *videoSetWelcomeRecoverButton = nullptr;
+    QListWidget *videoSetRecentList = nullptr;
+    QPushButton *videoSetRecentContinueButton = nullptr;
+    QPushButton *videoSetRecentOpenFolderButton = nullptr;
+    QPushButton *videoSetRecentRemoveButton = nullptr;
+    QLineEdit *videoSetAssistantInputEdit = nullptr;
+    QLineEdit *videoSetAssistantOutputEdit = nullptr;
+    QPushButton *videoSetAssistantInputBrowseButton = nullptr;
+    QPushButton *videoSetAssistantOutputBrowseButton = nullptr;
     QLineEdit *videoSetInputEdit = nullptr;
     QLineEdit *videoSetOutputEdit = nullptr;
+    QLabel *videoSetSourceInfoLabel = nullptr;
+    QLabel *videoSetSourceDropLabel = nullptr;
+    QPushButton *videoSetSourceContinueButton = nullptr;
+    QRadioButton *videoSetResilientRadio = nullptr;
+    QRadioButton *videoSetHighCapacityRadio = nullptr;
+    QButtonGroup *videoSetProfileCards = nullptr;
+    QToolButton *videoSetAdvancedSettingsButton = nullptr;
+    QWidget *videoSetAdvancedSettingsWidget = nullptr;
+    QPushButton *videoSetModeContinueButton = nullptr;
+    QSpinBox *videoSetAssistantTargetSpin = nullptr;
+    QSpinBox *videoSetAssistantMaximumSizeSpin = nullptr;
+    QDoubleSpinBox *videoSetAssistantReserveSpin = nullptr;
     QComboBox *videoSetProfileCombo = nullptr;
     QSpinBox *videoSetTargetSpin = nullptr;
     QSpinBox *videoSetMaximumSizeSpin = nullptr;
     QDoubleSpinBox *videoSetReserveSpin = nullptr;
+    QLabel *videoSetAdvancedProfileLabel = nullptr;
+    QLabel *videoSetPlanSummaryLabel = nullptr;
+    QLabel *videoSetPlanMetricsLabel = nullptr;
+    QToolButton *videoSetPartDetailsButton = nullptr;
+    QTableWidget *videoSetAssistantPlanTable = nullptr;
     QTableWidget *videoSetPlanTable = nullptr;
+    QPushButton *videoSetCreateVideosButton = nullptr;
     QProgressBar *videoSetProgress = nullptr;
+    QProgressBar *videoSetAssistantProgress = nullptr;
+    QLabel *videoSetProgressPhaseLabel = nullptr;
+    QLabel *videoSetProgressPartLabel = nullptr;
+    QPushButton *videoSetProgressContinueButton = nullptr;
+    QPushButton *videoSetProgressResumeButton = nullptr;
+    QPushButton *videoSetAssistantCancelButton = nullptr;
+    QToolButton *videoSetTechnicalLogButton = nullptr;
     QTextEdit *videoSetLog = nullptr;
+    QLabel *videoSetUploadInstructionsLabel = nullptr;
+    QPushButton *videoSetOpenVideosButton = nullptr;
+    QPushButton *videoSetOpenChecklistButton = nullptr;
+    QPushButton *videoSetUploadedButton = nullptr;
+    QLineEdit *videoSetPlaylistUrlEdit = nullptr;
+    QPushButton *videoSetDownloadButton = nullptr;
+    QPushButton *videoSetSelectYtDlpButton = nullptr;
+    QPushButton *videoSetManualReturnedButton = nullptr;
+    QLabel *videoSetDownloadStatusLabel = nullptr;
+    QProgressBar *videoSetDownloadProgress = nullptr;
     QLineEdit *videoSetRecoveryInputEdit = nullptr;
     QLineEdit *videoSetRecoveryOutputEdit = nullptr;
+    QLineEdit *videoSetAssistantRecoveryInputEdit = nullptr;
+    QLineEdit *videoSetAssistantRecoveryOutputEdit = nullptr;
+    QLabel *videoSetScanSummaryLabel = nullptr;
+    QLabel *videoSetScanCountsLabel = nullptr;
+    QListWidget *videoSetDetectedSetsList = nullptr;
+    QPushButton *videoSetAssistantScanButton = nullptr;
+    QPushButton *videoSetAssistantRecoverButton = nullptr;
+    QPushButton *videoSetOpenReturnedButton = nullptr;
+    QLabel *videoSetRecoveryProgressLabel = nullptr;
+    QProgressBar *videoSetRecoveryProgressBar = nullptr;
+    QLabel *videoSetSuccessLabel = nullptr;
+    QLabel *videoSetSuccessDetailsLabel = nullptr;
+    QPushButton *videoSetOpenRecoveredButton = nullptr;
+    QPushButton *videoSetCopyShaButton = nullptr;
+    QPushButton *videoSetReturnHomeButton = nullptr;
+    QGroupBox *videoSetClassicToolsGroup = nullptr;
     QPushButton *videoSetPlanButton = nullptr;
     QPushButton *videoSetEncodeButton = nullptr;
     QPushButton *videoSetResumeButton = nullptr;
@@ -408,6 +515,16 @@ private:
     QPushButton *videoSetRecoverResumeButton = nullptr;
     QPushButton *videoSetCancelButton = nullptr;
     QProcess *videoSetProcess = nullptr;
+    QProcess *videoSetDownloadProcess = nullptr;
+    QTimer *videoSetPlanDebounceTimer = nullptr;
+    video_set_workflow::Controller videoSetWorkflow;
+    QString videoSetProcessBuffer;
+    QString videoSetActiveCommand;
+    QString videoSetCurrentSetRoot;
+    QString videoSetCurrentManifest;
+    QString videoSetFinalSha;
+    bool videoSetAssistantOperation = false;
+    bool videoSetCancelRequested = false;
 
     // YouTube Capacity Lab (experimental; never changes production defaults)
     QComboBox *capacityPresetCombo = nullptr;

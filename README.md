@@ -997,6 +997,40 @@ four-part workflow under the observed YouTube encoding conditions. It is not
 an absolute storage guarantee; successful recovery must always be confirmed
 using the final full-file SHA-256 check.
 
+### Guided workflow
+
+The **Video Set Assistant** in the desktop GUI presents two simple starting
+choices: **Create a Video Set** and **Recover a Video Set**. Create guides the
+user through file selection, a simple reliability choice, automatic planning,
+local video creation and verification, manual Unlisted YouTube upload,
+playlist download, returned-part scanning, and exact recovery. Recover accepts
+a set folder, `set_manifest.json`, returned-video folder, or individual video
+and goes directly to the shared scan and recovery steps.
+
+Resilient remains the preselected **Most Reliable** mode. High Capacity is the
+explicit **Fewer and Shorter Videos** choice and shows its separate 6/6
+single-video and 4/4 Video Set validation evidence. Duration, actual-size cap,
+reserve, geometry, config ID, part ranges, and technical logs remain available
+under **Advanced settings**, **Show part details**, and **Advanced / Classic
+Video Set Tools**, but are hidden from the normal path.
+
+Planning, encode, scan, and recovery reuse the existing CLI/backend in child
+processes, so the GUI remains responsive and established resume/atomic-output
+behavior is preserved. After upload, the Assistant can invoke a selected or
+detected `yt-dlp` executable directly with a separate argument list; it does
+not build a shell command and does not depend on PowerShell ExecutionPolicy.
+It uses `bv*[height=1080]/bv*[height<=1080]`, downloads into the set's
+`returned/` folder, and automatically scans successful downloads. The
+generated PowerShell helper remains available for CLI/manual workflows.
+
+Missing or corrupt parts are shown with re-download guidance, identical
+duplicates are reported but remain usable, and conflicting duplicates block
+recovery. A recovered file is presented as successful only when the backend
+reports **Recovered exact** after the final full-file SHA-256 check. Up to five
+recent manifest paths are remembered for convenience; their actual state is
+always reloaded from the manifest and recovery files, not inferred from GUI
+settings.
+
 Encoding keeps one temporary logical payload at a time and hashes source
 ranges with a bounded streaming buffer. `--resume` accepts a prior part only
 when source/plan identity, recorded video size/SHA, and exact local

@@ -581,20 +581,43 @@ int do_inspect(const Options &options) {
     std::vector<std::filesystem::path> corrupt;
     const auto candidates = scan_candidates(videos, temporary, options.password, corrupt);
     std::error_code ignored; std::filesystem::remove_all(temporary, ignored);
-    std::map<std::string, std::map<uint32_t, std::size_t>> sets;
-    for (const auto &c : candidates) ++sets[id_hex(c.envelope.set_id)][c.envelope.part_index];
+    std::map<std::string, std::map<uint32_t, std::vector<Candidate>>> sets;
+    for (const auto &c : candidates)
+        sets[id_hex(c.envelope.set_id)][c.envelope.part_index].push_back(c);
+    bool conflict_found = false;
     for (const auto &[set_id, parts] : sets) {
         const auto first = std::find_if(candidates.begin(), candidates.end(),
             [&](const Candidate &c) { return id_hex(c.envelope.set_id) == set_id; });
         std::cout << "Set " << set_id << ": " << first->envelope.original_filename
                   << ", available " << parts.size() << '/' << first->envelope.part_count << " parts";
         std::size_t duplicate_count = 0;
-        for (const auto &[index, count] : parts) if (count > 1) duplicate_count += count - 1;
-        std::cout << ", duplicates " << duplicate_count << "\n";
+        std::size_t conflict_count = 0;
+        for (const auto &[index, group] : parts) {
+            if (group.size() < 2) continue;
+            const auto &expected = group.front().envelope;
+            const bool conflict = std::any_of(
+                group.begin() + 1, group.end(), [&](const Candidate &candidate) {
+                    const auto &actual = candidate.envelope;
+                    return actual.part_id != expected.part_id ||
+                           actual.chunk_sha256 != expected.chunk_sha256 ||
+                           actual.chunk_offset != expected.chunk_offset ||
+                           actual.chunk_size != expected.chunk_size ||
+                           actual.descriptor_hash != expected.descriptor_hash;
+                });
+            if (conflict) ++conflict_count;
+            else duplicate_count += group.size() - 1;
+        }
+        conflict_found = conflict_found || conflict_count != 0;
+        const auto missing_count =
+            first->envelope.part_count > parts.size()
+                ? first->envelope.part_count - parts.size() : 0;
+        std::cout << ", duplicates " << duplicate_count
+                  << ", conflicts " << conflict_count
+                  << ", missing " << missing_count << "\n";
     }
     if (!corrupt.empty()) std::cout << "Corrupt/unreadable videos: " << corrupt.size() << "\n";
     if (sets.empty()) return kExitCorrupt;
-    return corrupt.empty() ? 0 : kExitCorrupt;
+    return corrupt.empty() && !conflict_found ? 0 : kExitCorrupt;
 }
 
 int do_recover(const Options &options) {

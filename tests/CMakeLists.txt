@@ -31,6 +31,7 @@ add_executable(media_storage_tests
         test_youtube_test_lab.cpp
         test_youtube_capacity_lab.cpp
         test_video_set.cpp
+        test_video_set_workflow.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE
@@ -115,4 +116,21 @@ if (TARGET media_storage_gui)
     )
     set_tests_properties(
             GUI.CloseDuringEstimate PROPERTIES TIMEOUT 15)
+    add_test(
+            NAME GUI.VideoSetAssistantE2E
+            COMMAND ${CMAKE_COMMAND}
+                    "-DGUI=$<TARGET_FILE:media_storage_gui>"
+                    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/gui_video_set_assistant"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_video_set_assistant.cmake"
+    )
+    set_tests_properties(
+            GUI.VideoSetAssistantE2E PROPERTIES TIMEOUT 130)
+    if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
+        set_tests_properties(
+                GUI.LaunchSmoke
+                GUI.CloseDuringEstimate
+                GUI.VideoSetAssistantE2E
+                PROPERTIES ENVIRONMENT
+                "QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
+    endif ()
 endif ()
