@@ -9,7 +9,10 @@ execute_process(
     ERROR_VARIABLE HELP_ERROR)
 if (NOT HELP_RESULT EQUAL 0 OR NOT HELP_OUTPUT MATCHES "set-plan" OR
     NOT HELP_OUTPUT MATCHES "Resilient remains the default" OR
-    NOT HELP_OUTPUT MATCHES "streaming is unsupported")
+    NOT HELP_OUTPUT MATCHES "streaming is unsupported" OR
+    NOT HELP_OUTPUT MATCHES "real YouTube four-part roundtrip" OR
+    NOT HELP_OUTPUT MATCHES "exact full-file SHA-256 recovery" OR
+    NOT HELP_OUTPUT MATCHES "Always verify successful recovery")
     message(FATAL_ERROR "Video Set help failed: ${HELP_RESULT}\n${HELP_OUTPUT}\n${HELP_ERROR}")
 endif ()
 

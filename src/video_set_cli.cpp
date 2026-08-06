@@ -84,6 +84,8 @@ void print_help(const char *program) {
         << "\nRecovery options:\n"
         << "  --manifest <json> --videos-dir <folder> --output-dir <folder>\n"
         << "  --output-name <safe-name> --resume --restart-recovery --overwrite\n"
+        << "\n" << kRealYoutubeValidation.cli_statement << "\n"
+        << "Always verify successful recovery using the final full-file SHA-256 result.\n"
         << "\nResilient remains the default. High Capacity is explicit opt-in. The size defaults\n"
         << "are conservative VidStoreX project settings, not a YouTube guarantee. Upload and\n"
         << "download remain manual; filenames and playlist order are not identities.\n";

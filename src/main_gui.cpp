@@ -78,8 +78,18 @@ int main(int argc, char *argv[]) {
             "repairPercentSpinBox");
         auto *help = window.findChild<QLabel *>(
             "reliabilityHelpLabel");
-        if (!profiles || !repair || !help) {
+        auto *videoSetValidation = window.findChild<QLabel *>(
+            "videoSetValidationLabel");
+        if (!profiles || !repair || !help || !videoSetValidation) {
             qCritical() << "profile controls were not found";
+            return 2;
+        }
+        if (!videoSetValidation->text().contains("Real YouTube") ||
+            !videoSetValidation->text().contains("4/4 parts") ||
+            !videoSetValidation->text().contains("full-file SHA exact") ||
+            !videoSetValidation->text().contains(
+                "successful only after the final full-file SHA-256 matches")) {
+            qCritical() << "Video Set validation notice invariant failed";
             return 2;
         }
         int highCapacityIndex = -1;

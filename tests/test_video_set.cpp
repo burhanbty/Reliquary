@@ -255,4 +255,34 @@ TEST_F(VideoSetTest, HighCapacityConfigIdAndResilientDefaultRemainStable) {
     EXPECT_DOUBLE_EQ(resilient.repair_percentage, 5.0);
 }
 
+TEST_F(VideoSetTest, RealYoutubeValidationMetadataIsExactAndDistinctFromProfileProof) {
+    const auto &validation = video_set::kRealYoutubeValidation;
+    EXPECT_EQ(validation.validation_type, "real YouTube roundtrip");
+    EXPECT_EQ(validation.validation_parts, 4u);
+    EXPECT_EQ(validation.exact_parts, 4u);
+    EXPECT_TRUE(validation.full_file_sha_exact);
+    EXPECT_EQ(validation.source_size_bytes, 33554432u);
+    EXPECT_EQ(validation.profile, "high-capacity");
+    EXPECT_EQ(validation.config_id, "538F2B009FAB");
+    EXPECT_EQ(validation.upload_width, 1920u);
+    EXPECT_EQ(validation.upload_height, 1080u);
+    EXPECT_EQ(validation.validation_scope, "tested four-part workflow");
+    EXPECT_NE(validation.gui_statement.find("Real YouTube"),
+              std::string_view::npos);
+    EXPECT_NE(validation.gui_statement.find("4/4 parts"),
+              std::string_view::npos);
+    EXPECT_NE(validation.gui_statement.find("full-file SHA exact"),
+              std::string_view::npos);
+
+    const auto &profile = reliability_profile_definition(
+        ReliabilityProfile::HighCapacity);
+    EXPECT_EQ(profile.validation_cases, 6);
+    EXPECT_EQ(profile.exact_passes, 6);
+    EXPECT_EQ(profile.upload_sessions, 2);
+    EXPECT_EQ(reliability_profile_config_id(
+                  ReliabilityProfile::HighCapacity),
+              validation.config_id);
+    EXPECT_EQ(static_cast<int>(ReliabilityProfile::Local), 0);
+}
+
 } // namespace

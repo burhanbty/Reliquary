@@ -641,8 +641,9 @@ verify the recovered SHA-256 and decode result. Actual encoded file size
 depends on content and codec behavior and is not guaranteed to be one quarter
 of a Resilient file.
 
-Splitting very large inputs across multiple videos is not implemented by
-these profiles and remains outside the current feature scope.
+Reliability profiles themselves do not split inputs. The opt-in Video Set
+layer described below provides multi-video splitting without changing these
+profile definitions or their single-video validation evidence.
 
 ## Build Requirements
 
@@ -972,6 +973,29 @@ actual container size; if it exceeds the hard cap, all ranges, hashes, IDs,
 and the descriptor are replanned with a smaller chunk (at most three retries).
 Set publication is an atomic same-filesystem directory rename only after every
 part locally roundtrips exactly.
+
+### Real YouTube validation
+
+VidStoreX Video Sets were validated through a real YouTube roundtrip using
+the verified High Capacity profile.
+
+- Source payload: 32 MiB (33,554,432 bytes)
+- Parts: 4
+- Profile: High Capacity
+- Geometry: 4x4, one bit per symbol, signal strength 1.0
+- Repair: 5%
+- Config ID: `538F2B009FAB`
+- Upload format: 1920x1080
+- All four videos were uploaded to YouTube and downloaded again from
+  YouTube's re-encoded 1080p streams.
+- Recovery completed successfully from all four returned parts.
+- Original and recovered SHA-256 values matched exactly:
+  `C3EEFBBCB32EE6D0A93DCB13098385985783400C2B64C6E6923523A1FE1F8277`.
+
+**Real YouTube: 4/4 parts, full-file SHA exact.** This validates the tested
+four-part workflow under the observed YouTube encoding conditions. It is not
+an absolute storage guarantee; successful recovery must always be confirmed
+using the final full-file SHA-256 check.
 
 Encoding keeps one temporary logical payload at a time and hashes source
 ranges with a bounded streaming buffer. `--resume` accepts a prior part only

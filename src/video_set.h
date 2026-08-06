@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace video_set {
@@ -23,6 +24,39 @@ inline constexpr std::size_t kMaximumFilenameBytes = 255;
 inline constexpr uint64_t kDefaultTargetDurationSeconds = 600;
 inline constexpr uint64_t kDefaultMaximumVideoSizeBytes = 1500ull * 1024ull * 1024ull;
 inline constexpr double kDefaultReservePercent = 10.0;
+
+struct ValidationDefinition {
+    std::string_view validation_type;
+    uint32_t validation_parts;
+    uint32_t exact_parts;
+    bool full_file_sha_exact;
+    uint64_t source_size_bytes;
+    std::string_view profile;
+    std::string_view config_id;
+    uint16_t upload_width;
+    uint16_t upload_height;
+    std::string_view validation_scope;
+    std::string_view validation_statement;
+    std::string_view gui_statement;
+    std::string_view cli_statement;
+    std::string_view recovery_requirement;
+};
+
+inline constexpr ValidationDefinition kRealYoutubeValidation{
+    "real YouTube roundtrip",
+    4,
+    4,
+    true,
+    33554432,
+    "high-capacity",
+    "538F2B009FAB",
+    1920,
+    1080,
+    "tested four-part workflow",
+    "Passed a real YouTube four-part roundtrip with exact full-file SHA-256 recovery.",
+    "Validation: Real YouTube, 4/4 parts, full-file SHA exact.",
+    "Video Set validation: real YouTube four-part roundtrip, exact full-file SHA-256 recovery.",
+    "Recovery is considered successful only after the final full-file SHA-256 matches."};
 
 using Id128 = std::array<std::byte, 16>;
 

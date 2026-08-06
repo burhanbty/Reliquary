@@ -18,6 +18,7 @@
 #include "encoding_reliability.h"
 #include "media_storage.h"
 #include "video_encoder.h"
+#include "video_set.h"
 #include "youtube_test_lab.h"
 
 #include <QCoreApplication>
@@ -763,6 +764,17 @@ void DriveManagerUI::setupUI() {
         "order are never used as identities. Upload/download stays manual.");
     videoSetNotice->setWordWrap(true);
     videoSetLayout->addWidget(videoSetNotice);
+
+    const auto &videoSetValidation = video_set::kRealYoutubeValidation;
+    auto *videoSetValidationLabel = new QLabel(
+        QString::fromUtf8(videoSetValidation.gui_statement.data(),
+                          static_cast<int>(videoSetValidation.gui_statement.size())) +
+        "<br>" +
+        QString::fromUtf8(videoSetValidation.recovery_requirement.data(),
+                          static_cast<int>(videoSetValidation.recovery_requirement.size())));
+    videoSetValidationLabel->setObjectName("videoSetValidationLabel");
+    videoSetValidationLabel->setWordWrap(true);
+    videoSetLayout->addWidget(videoSetValidationLabel);
 
     auto *videoSetEncodeGroup = new QGroupBox("Encode a Video Set");
     auto *videoSetEncodeLayout = new QGridLayout(videoSetEncodeGroup);
