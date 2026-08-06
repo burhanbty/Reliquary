@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 inline constexpr double DEFAULT_REPAIR_RATIO = 0.05;
@@ -19,9 +20,27 @@ struct EncodingReliabilityOptions {
 };
 
 enum class ReliabilityProfile {
-    Local,
-    Balanced,
-    Durable,
+    Local = 0,
+    Balanced = 1,
+    Durable = 2,
+    HighCapacity = 3,
+};
+
+struct ReliabilityProfileDefinition {
+    ReliabilityProfile profile = ReliabilityProfile::Local;
+    std::string_view cli_name = "resilient";
+    std::string_view display_name = "Resilient";
+    int block_size = 8;
+    int bits_per_symbol = 1;
+    double signal_strength = 1.0;
+    double repair_percentage = DEFAULT_REPAIR_PERCENTAGE;
+    int width = 1920;
+    int height = 1080;
+    bool real_youtube_validated = false;
+    int validation_cases = 0;
+    int exact_passes = 0;
+    int failures = 0;
+    int upload_sessions = 0;
 };
 
 struct EncodingReliabilityEstimate {
@@ -48,6 +67,16 @@ struct EncodingReliabilityEstimate {
     uint64_t source_packet_count, double repair_ratio);
 
 [[nodiscard]] EncodingReliabilityOptions reliability_options_for_profile(
+    ReliabilityProfile profile);
+
+[[nodiscard]] const ReliabilityProfileDefinition &
+reliability_profile_definition(ReliabilityProfile profile);
+
+/** Preserve old numeric IDs and safely map unknown persisted IDs. */
+[[nodiscard]] ReliabilityProfile reliability_profile_from_id(
+    int profile_id) noexcept;
+
+[[nodiscard]] std::string reliability_profile_config_id(
     ReliabilityProfile profile);
 
 [[nodiscard]] ReliabilityProfile parse_reliability_profile(

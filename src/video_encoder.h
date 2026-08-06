@@ -30,6 +30,7 @@ extern "C" {
 }
 
 #include "configuration.h"
+#include "encoding_mode.h"
 #include "encoder.h"
 
 class PerformanceProfiler;
@@ -47,13 +48,19 @@ struct ResilientVideoConfig {
     int fps = FRAME_FPS;
     std::string codec = VIDEO_CODEC;
     std::string container = VIDEO_CONTAINER;
+    int block_size = 8;
+    int bits_per_symbol = BITS_PER_BLOCK;
+    double signal_strength = COEFFICIENT_STRENGTH;
     // Test Lab masters opt in; normal Resilient callers keep their
     // established container behavior.
     bool explicit_frame_duration = false;
 
     [[nodiscard]] bool valid() const noexcept {
-        return width >= 8 && height >= 8 &&
-               width % 8 == 0 && height % 8 == 0 &&
+        return (block_size == 4 || block_size == 8) &&
+               bits_per_symbol == 1 &&
+               signal_strength > 0.0 &&
+               width >= block_size && height >= block_size &&
+               width % block_size == 0 && height % block_size == 0 &&
                fps > 0 && !codec.empty() && !container.empty();
     }
 };
@@ -61,6 +68,12 @@ struct ResilientVideoConfig {
 FrameLayout compute_frame_layout();
 
 FrameLayout compute_frame_layout(int width, int height);
+
+FrameLayout compute_frame_layout(int width, int height, int block_size,
+                                 int bits_per_symbol = BITS_PER_BLOCK);
+
+[[nodiscard]] ResilientVideoConfig resilient_video_config_for_mode(
+    EncodingMode mode);
 
 std::size_t max_packet_bytes_per_frame();
 

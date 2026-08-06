@@ -438,10 +438,21 @@ void DriveManagerUI::setupUI() {
 
     fileOpsLayout->addWidget(new QLabel("Reliability:"), 6, 0);
     reliabilityProfileCombo = new QComboBox();
-    reliabilityProfileCombo->addItem("Local / Fast (5%)", 5.0);
-    reliabilityProfileCombo->addItem("Balanced (20%)", 20.0);
-    reliabilityProfileCombo->addItem("Durable (50%)", 50.0);
-    reliabilityProfileCombo->addItem("Custom", -1.0);
+    reliabilityProfileCombo->setObjectName("reliabilityProfileCombo");
+    reliabilityProfileCombo->addItem(
+        "High Capacity (5%)",
+        static_cast<int>(ReliabilityProfile::HighCapacity));
+    reliabilityProfileCombo->addItem(
+        "Balanced (20%)",
+        static_cast<int>(ReliabilityProfile::Balanced));
+    reliabilityProfileCombo->addItem(
+        "Resilient (5%)",
+        static_cast<int>(ReliabilityProfile::Local));
+    reliabilityProfileCombo->addItem(
+        "Durable (50%)",
+        static_cast<int>(ReliabilityProfile::Durable));
+    reliabilityProfileCombo->addItem("Custom", -1);
+    reliabilityProfileCombo->setCurrentIndex(2);
     fileOpsLayout->addWidget(reliabilityProfileCombo, 6, 1);
 
     repairPercentSpinBox = new QDoubleSpinBox();
@@ -454,8 +465,25 @@ void DriveManagerUI::setupUI() {
     repairPercentSpinBox->setEnabled(false);
     fileOpsLayout->addWidget(repairPercentSpinBox, 6, 2);
 
+    {
+        const QSettings settings;
+        const int saved_id = settings.value(
+            "encoding/reliabilityProfileId",
+            static_cast<int>(ReliabilityProfile::Local)).toInt();
+        const auto saved_profile =
+            reliability_profile_from_id(saved_id);
+        const int saved_index = reliabilityProfileCombo->findData(
+            static_cast<int>(saved_profile));
+        reliabilityProfileCombo->setCurrentIndex(
+            saved_index >= 0 ? saved_index : 2);
+        repairPercentSpinBox->setValue(
+            reliability_profile_definition(saved_profile)
+                .repair_percentage);
+    }
+
     reliabilityHelpLabel = new QLabel(
         "Higher repair improves damage tolerance, but increases frames, time, and output size.");
+    reliabilityHelpLabel->setObjectName("reliabilityHelpLabel");
     reliabilityHelpLabel->setWordWrap(true);
     reliabilityHelpLabel->setStyleSheet("color: palette(mid); font-size: 9pt;");
     fileOpsLayout->addWidget(reliabilityHelpLabel, 7, 0, 1, 3);
@@ -1715,15 +1743,33 @@ void DriveManagerUI::onResolutionChanged(const int index) const {
 }
 
 void DriveManagerUI::onReliabilityProfileChanged(const int index) {
-    const double percentage =
-        reliabilityProfileCombo->itemData(index).toDouble();
+    const int profile_id =
+        reliabilityProfileCombo->itemData(index).toInt();
     const bool fastLocal =
         encodingModeCombo->currentData().toInt() ==
         MS_ENCODING_MODE_FAST_LOCAL;
-    const bool custom = percentage < 0.0 && !fastLocal;
+    const bool custom = profile_id < 0 && !fastLocal;
     repairPercentSpinBox->setEnabled(custom);
     if (!custom) {
-        repairPercentSpinBox->setValue(percentage);
+        repairPercentSpinBox->setValue(
+            reliability_profile_definition(
+                reliability_profile_from_id(profile_id))
+                .repair_percentage);
+    }
+    if (!fastLocal && profile_id ==
+            static_cast<int>(ReliabilityProfile::HighCapacity)) {
+        reliabilityHelpLabel->setText(
+            "4x4 one-bit geometry with 5% repair. Provides approximately "
+            "4x the useful capacity of the Resilient geometry and passed "
+            "a six-case real YouTube stress validation. Geometry: 4x4; "
+            "modulation: 1-bit; signal: 1.0; validation: 6/6 exact; "
+            "intended use: shorter videos / higher capacity. Resilient "
+            "remains the safest default.");
+    } else if (!fastLocal) {
+        reliabilityHelpLabel->setText(
+            "Higher repair improves damage tolerance, but increases "
+            "frames, time, and output size. Resilient remains the safest "
+            "default profile.");
     }
     onPreflightInputChanged();
 }
@@ -1734,14 +1780,12 @@ void DriveManagerUI::onEncodingModeChanged(const int) {
         MS_ENCODING_MODE_FAST_LOCAL;
     reliabilityProfileCombo->setEnabled(!fastLocal);
     repairPercentSpinBox->setEnabled(
-        !fastLocal &&
-        reliabilityProfileCombo->currentData().toDouble() < 0.0);
-    reliabilityHelpLabel->setText(
-        fastLocal
-            ? "Not applicable in Fast Local Mode. No repair/FEC packets "
-              "are generated."
-            : "Higher repair improves damage tolerance, but increases "
-              "frames, time, and output size.");
+        !fastLocal && isCustomReliabilityProfile());
+    if (fastLocal) {
+        reliabilityHelpLabel->setText(
+            "Not applicable in Fast Local Mode. No repair/FEC packets "
+            "are generated.");
+    }
     encodingModeHelpLabel->setText(
         fastLocal
             ? "Fast Local is optimized for lossless local storage and "
@@ -1750,7 +1794,12 @@ void DriveManagerUI::onEncodingModeChanged(const int) {
             : "Resilient / Platform produces larger output, but is more "
               "tolerant of re-encoding and supports reliability/FEC "
               "profiles.");
-    onPreflightInputChanged();
+    if (fastLocal) {
+        onPreflightInputChanged();
+    } else {
+        onReliabilityProfileChanged(
+            reliabilityProfileCombo->currentIndex());
+    }
 }
 
 void DriveManagerUI::onPreflightInputChanged() {
@@ -1764,7 +1813,7 @@ void DriveManagerUI::onCustomRepairChanged() {
     if (shuttingDown ||
         encodingModeCombo->currentData().toInt() ==
             MS_ENCODING_MODE_FAST_LOCAL ||
-        reliabilityProfileCombo->currentData().toDouble() >= 0.0) {
+        !isCustomReliabilityProfile()) {
         return;
     }
 
@@ -1834,15 +1883,14 @@ DriveManagerUI::currentPreflightFingerprint(
         encodingModeCombo->currentData().toInt() ==
                 MS_ENCODING_MODE_FAST_LOCAL
             ? -1
-            : reliabilityProfileCombo->currentIndex();
+            : reliabilityProfileCombo->currentData().toInt();
     fingerprint.repair_ratio =
         encodingModeCombo->currentData().toInt() ==
                 MS_ENCODING_MODE_FAST_LOCAL
             ? 0.0
             : selectedReliabilityOptions().repair_ratio;
     fingerprint.encrypted = encryptCheckBox->isChecked();
-    fingerprint.encoding_mode =
-        encodingModeCombo->currentData().toInt();
+    fingerprint.encoding_mode = selectedEncodingMode();
     return fingerprint;
 }
 
@@ -2207,6 +2255,9 @@ void DriveManagerUI::logPreflightEstimate() const {
           << QString("  Mode: %1")
                  .arg(e.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
                           ? "Fast Local"
+                          : e.encoding_mode ==
+                                MS_ENCODING_MODE_HIGH_CAPACITY
+                          ? "High Capacity"
                           : "Resilient / Platform")
           << QString("  Frames: %1")
                  .arg(format_count(e.estimated_frame_count))
@@ -2224,6 +2275,19 @@ void DriveManagerUI::logPreflightEstimate() const {
               << QString("  Packets: %1 source + %2 repair")
                      .arg(format_count(e.source_packet_count),
                           format_count(e.repair_packet_count));
+        if (e.encoding_mode == MS_ENCODING_MODE_HIGH_CAPACITY) {
+            lines << "  Geometry: 4x4"
+                  << "  Modulation: 1-bit"
+                  << "  Signal: 1.0"
+                  << QString("  Config ID: %1")
+                         .arg(QString::fromStdString(
+                             reliability_profile_config_id(
+                                 ReliabilityProfile::HighCapacity)))
+                  << "  Validation: Real YouTube tested, 6/6 exact"
+                  << "  Useful capacity: approximately 4x the "
+                     "same-resolution Resilient geometry"
+                  << "  Actual encoded file size may vary.";
+        }
     }
     if (e.output_size_estimate_available) {
         lines << QString("  Estimated output: %1")
@@ -2277,6 +2341,16 @@ void DriveManagerUI::startStreamEncode() {
     const bool encrypt = encryptCheckBox->isChecked();
     if (encrypt && passwordEdit->text().isEmpty()) {
         QMessageBox::warning(this, "Warning", "Password required when encrypting");
+        return;
+    }
+
+    if (selectedReliabilityProfile() ==
+            ReliabilityProfile::HighCapacity) {
+        QMessageBox::warning(
+            this, "High Capacity file profile",
+            "High Capacity is currently available for file encode. "
+            "Streaming keeps its existing geometry; select Resilient, "
+            "Balanced, Durable, or Custom for stream encode.");
         return;
     }
 
@@ -2894,8 +2968,31 @@ void DriveManagerUI::logMessage(const QString &message) const {
 
 EncodingReliabilityOptions
 DriveManagerUI::selectedReliabilityOptions() const {
-    const double percentage = repairPercentSpinBox->value();
-    return {repair_percentage_to_ratio(percentage)};
+    if (isCustomReliabilityProfile()) {
+        return {repair_percentage_to_ratio(
+            repairPercentSpinBox->value())};
+    }
+    return reliability_options_for_profile(
+        selectedReliabilityProfile());
+}
+
+ReliabilityProfile DriveManagerUI::selectedReliabilityProfile() const {
+    return reliability_profile_from_id(
+        reliabilityProfileCombo->currentData().toInt());
+}
+
+ms_encoding_mode_t DriveManagerUI::selectedEncodingMode() const {
+    if (encodingModeCombo->currentData().toInt() ==
+            MS_ENCODING_MODE_FAST_LOCAL)
+        return MS_ENCODING_MODE_FAST_LOCAL;
+    return selectedReliabilityProfile() ==
+            ReliabilityProfile::HighCapacity
+        ? MS_ENCODING_MODE_HIGH_CAPACITY
+        : MS_ENCODING_MODE_RESILIENT;
+}
+
+bool DriveManagerUI::isCustomReliabilityProfile() const {
+    return reliabilityProfileCombo->currentData().toInt() < 0;
 }
 
 void DriveManagerUI::logReliabilityEstimate(
@@ -2954,4 +3051,11 @@ void DriveManagerUI::saveSettings() const {
     QSettings settings;
     settings.setValue("geometry", saveGeometry());
     settings.setValue("windowState", saveState());
+    const int profile_id =
+        reliabilityProfileCombo->currentData().toInt();
+    settings.setValue(
+        "encoding/reliabilityProfileId",
+        profile_id >= 0
+            ? profile_id
+            : static_cast<int>(ReliabilityProfile::Local));
 }

@@ -6,6 +6,7 @@
 #include "encoding_reliability.h"
 
 #include "configuration.h"
+#include "youtube_capacity_lab.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -34,6 +35,22 @@ namespace {
         }
         return left * right;
     }
+
+    constexpr ReliabilityProfileDefinition resilient_profile{
+        ReliabilityProfile::Local, "resilient", "Resilient",
+        8, 1, 1.0, 5.0, FRAME_WIDTH, FRAME_HEIGHT,
+        false, 0, 0, 0, 0};
+    constexpr ReliabilityProfileDefinition balanced_profile{
+        ReliabilityProfile::Balanced, "balanced", "Balanced",
+        8, 1, 1.0, 20.0, FRAME_WIDTH, FRAME_HEIGHT,
+        false, 0, 0, 0, 0};
+    constexpr ReliabilityProfileDefinition durable_profile{
+        ReliabilityProfile::Durable, "durable", "Durable",
+        8, 1, 1.0, 50.0, FRAME_WIDTH, FRAME_HEIGHT,
+        false, 0, 0, 0, 0};
+    constexpr ReliabilityProfileDefinition high_capacity_profile{
+        ReliabilityProfile::HighCapacity, "high-capacity", "High Capacity",
+        4, 1, 1.0, 5.0, 1920, 1080, true, 6, 6, 0, 2};
 
     void accumulate_chunk_group(EncodingReliabilityEstimate &estimate,
                                 const uint64_t chunk_count,
@@ -127,24 +144,60 @@ uint64_t calculate_repair_packet_count(const uint64_t source_packet_count,
 
 EncodingReliabilityOptions reliability_options_for_profile(
     const ReliabilityProfile profile) {
+    return {repair_percentage_to_ratio(
+        reliability_profile_definition(profile).repair_percentage)};
+}
+
+const ReliabilityProfileDefinition &reliability_profile_definition(
+    const ReliabilityProfile profile) {
     switch (profile) {
-        case ReliabilityProfile::Local:
-            return {repair_percentage_to_ratio(5.0)};
-        case ReliabilityProfile::Balanced:
-            return {repair_percentage_to_ratio(20.0)};
-        case ReliabilityProfile::Durable:
-            return {repair_percentage_to_ratio(50.0)};
+        case ReliabilityProfile::Local: return resilient_profile;
+        case ReliabilityProfile::Balanced: return balanced_profile;
+        case ReliabilityProfile::Durable: return durable_profile;
+        case ReliabilityProfile::HighCapacity: return high_capacity_profile;
     }
     throw std::invalid_argument("unknown reliability profile");
+}
+
+ReliabilityProfile reliability_profile_from_id(const int profile_id) noexcept {
+    switch (profile_id) {
+        case 0: return ReliabilityProfile::Local;
+        case 1: return ReliabilityProfile::Balanced;
+        case 2: return ReliabilityProfile::Durable;
+        case 3: return ReliabilityProfile::HighCapacity;
+        default: return ReliabilityProfile::Local;
+    }
+}
+
+std::string reliability_profile_config_id(
+    const ReliabilityProfile profile) {
+    const auto &definition = reliability_profile_definition(profile);
+    youtube_capacity_lab::ExperimentConfig config;
+    config.block_width = definition.block_size;
+    config.block_height = definition.block_size;
+    config.bits_per_block = definition.bits_per_symbol;
+    config.signal_milli = static_cast<int>(
+        std::lround(definition.signal_strength * 1000.0));
+    config.repair_basis_points = static_cast<int>(
+        std::lround(definition.repair_percentage * 100.0));
+    config.resolution_width = definition.width;
+    config.resolution_height = definition.height;
+    return config.config_id();
 }
 
 ReliabilityProfile parse_reliability_profile(
     const std::string_view profile_name) {
     if (profile_name == "local") return ReliabilityProfile::Local;
+    if (profile_name == "resilient") return ReliabilityProfile::Local;
     if (profile_name == "balanced") return ReliabilityProfile::Balanced;
     if (profile_name == "durable") return ReliabilityProfile::Durable;
+    if (profile_name == "high-capacity" ||
+        profile_name == "high_capacity" ||
+        profile_name == "highcapacity")
+        return ReliabilityProfile::HighCapacity;
     throw std::invalid_argument(
-        "reliability profile must be local, balanced, or durable");
+        "reliability profile must be high-capacity, resilient, local, "
+        "balanced, or durable");
 }
 
 double parse_repair_percentage(const std::string_view text) {

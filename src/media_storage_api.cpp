@@ -112,15 +112,38 @@ namespace {
                 return EncodingMode::Resilient;
             case MS_ENCODING_MODE_FAST_LOCAL:
                 return EncodingMode::FastLocal;
+            case MS_ENCODING_MODE_HIGH_CAPACITY:
+                return EncodingMode::HighCapacity;
             default:
                 throw std::invalid_argument("invalid encoding mode");
         }
     }
 
     ms_encoding_mode_t to_public_mode(const EncodingMode mode) {
-        return mode == EncodingMode::FastLocal
-            ? MS_ENCODING_MODE_FAST_LOCAL
-            : MS_ENCODING_MODE_RESILIENT;
+        switch (mode) {
+            case EncodingMode::FastLocal:
+                return MS_ENCODING_MODE_FAST_LOCAL;
+            case EncodingMode::HighCapacity:
+                return MS_ENCODING_MODE_HIGH_CAPACITY;
+            default:
+                return MS_ENCODING_MODE_RESILIENT;
+        }
+    }
+
+    const char *public_mode_name(const ms_encoding_mode_t mode) {
+        switch (mode) {
+            case MS_ENCODING_MODE_FAST_LOCAL: return "fast-local";
+            case MS_ENCODING_MODE_HIGH_CAPACITY: return "high-capacity";
+            default: return "resilient";
+        }
+    }
+
+    const char *public_mode_display_name(const ms_encoding_mode_t mode) {
+        switch (mode) {
+            case MS_ENCODING_MODE_FAST_LOCAL: return "Fast Local";
+            case MS_ENCODING_MODE_HIGH_CAPACITY: return "High Capacity";
+            default: return "Resilient / Platform";
+        }
     }
 
     bool stage_applies(const ms_operation_t operation, const std::size_t index) {
@@ -673,8 +696,11 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
     try {
         SafeOutputFile safe_output(output_path);
         {
+            const auto video_config =
+                resilient_video_config_for_mode(mode);
             VideoEncoder video_encoder(
-                safe_output.partial_path().string(), &profiler);
+                safe_output.partial_path().string(), video_config,
+                &profiler);
 
             const int batch_size = std::max(1, omp_get_max_threads());
 
@@ -792,7 +818,7 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
                 static_cast<uint64_t>(total_frames),
                  reliability.repair_ratio);
     if (result) {
-        result->encoding_mode = MS_ENCODING_MODE_RESILIENT;
+        result->encoding_mode = to_public_mode(mode);
     }
     fill_estimate_validation(
         result, *preflight, output_size,
@@ -874,6 +900,7 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
     bool found_last_chunk = false;
     uint32_t last_chunk_index = 0;
     int64_t total_frames_read = 0;
+    bool high_capacity_decoded = false;
 
     try {
         VideoDecoder video_decoder(input_path, &profiler);
@@ -932,6 +959,7 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
         }
 
         total_frames_read = video_decoder.frames_read();
+        high_capacity_decoded = video_decoder.block_size() == 4;
     } catch (...) {
         return MS_ERR_DECODE_FAILED;
     }
@@ -978,7 +1006,9 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
                 source_packets, repair_packets,
                 static_cast<uint64_t>(total_frames_read));
     if (result) {
-        result->encoding_mode = MS_ENCODING_MODE_RESILIENT;
+        result->encoding_mode = high_capacity_decoded
+            ? MS_ENCODING_MODE_HIGH_CAPACITY
+            : MS_ENCODING_MODE_RESILIENT;
     }
 
     return MS_OK;
@@ -1334,8 +1364,7 @@ size_t ms_format_performance_report(const ms_result_t *result,
     out << "\n=== Performance report (" << operation_name(result->operation)
         << ") ===\n"
         << "Encoding mode: "
-        << (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
-                ? "Fast Local" : "Resilient / Platform")
+        << public_mode_display_name(result->encoding_mode)
         << "\n"
         << "Input / output: " << result->input_size << " B -> "
         << result->output_size << " B";
@@ -1455,8 +1484,7 @@ ms_status_t ms_write_benchmark_json(const ms_result_t *result,
         << "  \"schema_version\": 1,\n"
         << "  \"operation\": \"" << operation_name(result->operation) << "\",\n"
         << "  \"encoding_mode\": \""
-        << (result->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
-                ? "fast-local" : "resilient")
+        << public_mode_name(result->encoding_mode)
         << "\",\n"
         << "  \"input_size_bytes\": " << result->input_size << ",\n"
         << "  \"output_size_bytes\": " << result->output_size << ",\n"
@@ -1629,8 +1657,7 @@ ms_status_t ms_write_encoding_estimate_json(
         << "{\n"
         << "  \"schema_version\": 1,\n"
         << "  \"encoding_mode\": \""
-        << (estimate->encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
-                ? "fast-local" : "resilient")
+        << public_mode_name(estimate->encoding_mode)
         << "\",\n"
         << "  \"input_size_bytes\": "
         << estimate->input_size_bytes << ",\n"

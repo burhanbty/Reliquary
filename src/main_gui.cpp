@@ -15,6 +15,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <QApplication>
+#include <QComboBox>
+#include <QDebug>
+#include <QDoubleSpinBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QTimer>
 #include <QStyleFactory>
@@ -66,6 +70,61 @@ int main(int argc, char *argv[]) {
     // Create and show the main window
     DriveManagerUI window;
     window.show();
+
+    if (smokeTest) {
+        auto *profiles = window.findChild<QComboBox *>(
+            "reliabilityProfileCombo");
+        auto *repair = window.findChild<QDoubleSpinBox *>(
+            "repairPercentSpinBox");
+        auto *help = window.findChild<QLabel *>(
+            "reliabilityHelpLabel");
+        if (!profiles || !repair || !help) {
+            qCritical() << "profile controls were not found";
+            return 2;
+        }
+        int highCapacityIndex = -1;
+        int customIndex = -1;
+        int resilientIndex = -1;
+        int highCapacityCount = 0;
+        for (int index = 0; index < profiles->count(); ++index) {
+            if (profiles->itemData(index).toInt() ==
+                    static_cast<int>(ReliabilityProfile::HighCapacity)) {
+                highCapacityIndex = index;
+                ++highCapacityCount;
+            }
+            if (profiles->itemData(index).toInt() < 0)
+                customIndex = index;
+            if (profiles->itemData(index).toInt() ==
+                    static_cast<int>(ReliabilityProfile::Local))
+                resilientIndex = index;
+        }
+        if (highCapacityCount != 1 || highCapacityIndex < 0 ||
+            customIndex < 0 || resilientIndex < 0) {
+            qCritical() << "profile list invariant failed";
+            return 3;
+        }
+        profiles->setCurrentIndex(resilientIndex);
+        QApplication::processEvents();
+        if (
+            profiles->currentData().toInt() !=
+                static_cast<int>(ReliabilityProfile::Local)) {
+            qCritical() << "Resilient GUI selection invariant failed";
+            return 3;
+        }
+        profiles->setCurrentIndex(highCapacityIndex);
+        QApplication::processEvents();
+        if (repair->value() != 5.0 || repair->isEnabled() ||
+            !help->text().contains("6/6 exact")) {
+            qCritical() << "High Capacity GUI selection invariant failed";
+            return 4;
+        }
+        profiles->setCurrentIndex(customIndex);
+        QApplication::processEvents();
+        if (!repair->isEnabled()) {
+            qCritical() << "Custom repair editing was not preserved";
+            return 5;
+        }
+    }
 
     if (!preflightSmokeInput.isEmpty() &&
         !preflightSmokeOutput.isEmpty()) {

@@ -623,17 +623,26 @@ validation, as JSON.
 
 ## Reliability Profiles
 
-| Profile | Repair | Intended use | Trade-off |
-|---|---:|---|---|
-| Local / Fast | 5% | Clean local storage and controlled transfers | Fastest processing and smallest output, but less recovery capacity for damaged or lossy video |
-| Balanced | 20% | General-purpose experiments | More packets, larger output, and longer processing in exchange for higher packet-loss tolerance |
-| Durable | 50% | Higher-risk storage or transfer scenarios | Highest time and size cost among the presets, with the most repair data |
-| Custom | 0–500% | Controlled testing and workload-specific tuning | The operator is responsible for balancing overhead and recovery capacity |
+| Profile | Geometry | Bits | Repair | Purpose | Validation |
+|---|---:|---:|---:|---|---|
+| High Capacity | 4x4 | 1 | 5% | Higher useful capacity / shorter videos at the same resolution | Real YouTube roundtrip, 6/6 exact |
+| Balanced | 8x8 | 1 | 20% | General-purpose experiments | Repair-overhead preset |
+| Resilient | 8x8 | 1 | 5% | Safest default | Existing production baseline |
+| Durable | 8x8 | 1 | 50% | Higher-risk storage or transfer scenarios | Repair-overhead preset |
+| Custom | 8x8 | 1 | 0–500% | Controlled testing and workload-specific tuning | Operator-selected repair overhead |
 
-These profiles have not yet been comprehensively validated on YouTube or
-other lossy/recompressing platforms. They describe repair-packet overhead,
-not a guarantee that a video will survive any particular platform or level of
-damage.
+**Resilient remains the default and most conservative production profile.**
+High Capacity uses 1920x1080, 4x4 one-bit geometry, signal strength 1.0 and
+5% repair (config ID `538F2B009FAB`). It passed six exact real YouTube
+roundtrips across small, medium and large payloads in two separate upload
+sessions: 6 passes and 0 failures. This demonstrates the tested workflow; it
+is not an absolute data-survival guarantee. For important files, always
+verify the recovered SHA-256 and decode result. Actual encoded file size
+depends on content and codec behavior and is not guaranteed to be one quarter
+of a Resilient file.
+
+Splitting very large inputs across multiple videos is not implemented by
+these profiles and remains outside the current feature scope.
 
 ## Build Requirements
 
@@ -709,7 +718,10 @@ The encode section also exposes **Resilient / Platform** and **Fast Local**.
 Selecting Fast Local disables reliability and repair controls, shows the
 lossy-re-encoding warning, includes the mode in the asynchronous estimate
 fingerprint, and reports header/frame-capacity fields in preflight. Returning
-to Resilient re-enables the existing Local/Balanced/Durable/Custom controls.
+to Resilient re-enables the High Capacity/Balanced/Resilient/Durable/Custom
+controls. Resilient is selected by default. High Capacity shows its 4x4,
+one-bit, signal 1.0, 5% repair parameters and the six-case real YouTube
+validation note; changing repair manually continues to require Custom.
 
 A known insufficient-disk result disables Encode by default and exposes the
 explicit **Proceed despite insufficient disk space** option. The option
@@ -742,6 +754,7 @@ build\Release\media_storage.exe encode input.rar output.mkv
 build\Release\media_storage.exe encode input.rar output.mkv --mode fast-local
 build\Release\media_storage.exe encode input.rar output.mkv --mode fast-local --benchmark-json fast-report.json
 build\Release\media_storage.exe encode input.rar output.mkv --mode resilient --repair-percent 5
+build\Release\media_storage.exe encode input.rar output.mkv --reliability-profile high-capacity
 build\Release\media_storage.exe encode input.rar output.mkv --reliability-profile balanced
 build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 7.5
 build\Release\media_storage.exe decode output.mkv restored.rar
@@ -754,7 +767,8 @@ build\Release\media_storage.exe encode input.rar output.mkv --repair-percent 5 -
 ```
 
 The default for a zero-initialized API option or omitted CLI `--mode` is
-`resilient`. Fast Local rejects non-`.mkv` outputs. Supplying
+`resilient`; High Capacity is used only when explicitly selected. Fast Local
+rejects non-`.mkv` outputs. Supplying
 `--repair-percent` or `--reliability-profile` together with
 `--mode fast-local` is an error rather than a silently ignored option.
 Decode detects the format automatically and rejects `--mode`.
@@ -891,11 +905,14 @@ repository.
 ### YouTube 1-bit Verification
 
 The mixed Boundary result is non-monotonic because it combines two modulation
-families: the 4x4/1-bit profile produced initial exact evidence while lower
+families: the 4x4/1-bit profile produced exact evidence while lower
 density 2-bit profiles failed after real YouTube encoding. The 1-bit symbol
 mapping and the 2-bit four-level mapping are not interchangeable points on a
-single geometry axis. The 4x initial pass is therefore not a production
-guarantee; production remains the 8x8/1-bit/5% Resilient profile.
+single geometry axis. Subsequent six-case real YouTube stress validation
+passed 6/6 across payload size and upload session, so the exact 4x4/1-bit/
+signal-1.0/repair-5% configuration is now available as the opt-in High
+Capacity profile. Resilient remains the safer default, and neither profile is
+an absolute guarantee.
 
 `onebit-verification-1080p` creates exactly six 1920x1080, 30 FPS, 1-bit,
 1.00x-signal, 5%-repair videos in `R00, R01, G04, R02, R03, G05` order. It

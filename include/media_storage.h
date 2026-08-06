@@ -65,6 +65,11 @@ typedef enum {
 typedef enum {
     MS_ENCODING_MODE_RESILIENT = 0,
     MS_ENCODING_MODE_FAST_LOCAL = 1,
+    /**
+     * Explicit 1920x1080 4x4 one-bit profile. Appended to preserve the
+     * numeric meaning of all existing values and zero-initialized callers.
+     */
+    MS_ENCODING_MODE_HIGH_CAPACITY = 2,
 } ms_encoding_mode_t;
 
 typedef enum {

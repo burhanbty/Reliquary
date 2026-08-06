@@ -251,6 +251,12 @@ private:
 
     [[nodiscard]] EncodingReliabilityOptions selectedReliabilityOptions() const;
 
+    [[nodiscard]] ReliabilityProfile selectedReliabilityProfile() const;
+
+    [[nodiscard]] ms_encoding_mode_t selectedEncodingMode() const;
+
+    [[nodiscard]] bool isCustomReliabilityProfile() const;
+
     void logReliabilityEstimate(
         const EncodingReliabilityEstimate &estimate,
         const EncodingReliabilityOptions &options) const;

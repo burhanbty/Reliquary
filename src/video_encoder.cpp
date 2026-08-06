@@ -20,6 +20,8 @@
 #include "performance_profiler.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -29,15 +31,69 @@ FrameLayout compute_frame_layout() {
 }
 
 FrameLayout compute_frame_layout(const int width, const int height) {
+    return compute_frame_layout(width, height, 8, BITS_PER_BLOCK);
+}
+
+FrameLayout compute_frame_layout(const int width, const int height,
+                                 const int block_size,
+                                 const int bits_per_symbol) {
     FrameLayout layout{};
     layout.frame_width = width;
     layout.frame_height = height;
-    layout.blocks_per_row = width / 8;
-    layout.blocks_per_col = height / 8;
+    layout.blocks_per_row = width / block_size;
+    layout.blocks_per_col = height / block_size;
     layout.total_blocks = layout.blocks_per_row * layout.blocks_per_col;
-    layout.bits_per_frame = layout.total_blocks * BITS_PER_BLOCK;
+    layout.bits_per_frame = layout.total_blocks * bits_per_symbol;
     layout.bytes_per_frame = layout.bits_per_frame / 8;
     return layout;
+}
+
+ResilientVideoConfig resilient_video_config_for_mode(
+    const EncodingMode mode) {
+    ResilientVideoConfig config;
+    if (mode == EncodingMode::HighCapacity) {
+        config.width = 1920;
+        config.height = 1080;
+        config.block_size = 4;
+        config.bits_per_symbol = 1;
+        config.signal_strength = COEFFICIENT_STRENGTH;
+    }
+    return config;
+}
+
+namespace {
+    using DynamicPatterns = std::array<std::vector<uint8_t>, 2>;
+
+    const DynamicPatterns &four_by_four_patterns(
+        const double signal_strength) {
+        static const DynamicPatterns production = [] {
+            DynamicPatterns result;
+            constexpr int n = 4;
+            constexpr double pi = 3.14159265358979323846;
+            for (int symbol = 0; symbol < 2; ++symbol) {
+                auto &pixels = result[static_cast<std::size_t>(symbol)];
+                pixels.resize(n * n);
+                const double coefficient =
+                    symbol == 0 ? -COEFFICIENT_STRENGTH
+                                : COEFFICIENT_STRENGTH;
+                for (int y = 0; y < n; ++y) {
+                    for (int x = 0; x < n; ++x) {
+                        const double value = 128.0 +
+                            (2.0 / n) * std::sqrt(0.5) * coefficient *
+                            std::cos((2.0 * x + 1.0) * pi / (2.0 * n));
+                        pixels[static_cast<std::size_t>(y * n + x)] =
+                            static_cast<uint8_t>(
+                                std::clamp(value, 0.0, 255.0));
+                    }
+                }
+            }
+            return result;
+        }();
+        if (std::abs(signal_strength - COEFFICIENT_STRENGTH) > 0.0001)
+            throw std::invalid_argument(
+                "unsupported High Capacity signal strength");
+        return production;
+    }
 }
 
 std::size_t max_packet_bytes_per_frame() {
@@ -160,7 +216,9 @@ void VideoEncoder::init_encoder(const std::string &output_path) {
         throw std::runtime_error("Failed to allocate packet");
     }
 
-    layout_ = compute_frame_layout(config_.width, config_.height);
+    layout_ = compute_frame_layout(
+        config_.width, config_.height, config_.block_size,
+        config_.bits_per_symbol);
     frame_data_buffer.reserve(layout_.bytes_per_frame);
 
     {
@@ -192,7 +250,9 @@ int VideoEncoder::packets_per_frame(
     const ResilientVideoConfig &config) {
     if (!config.valid()) return 0;
     const auto layout =
-        compute_frame_layout(config.width, config.height);
+        compute_frame_layout(config.width, config.height,
+                             config.block_size,
+                             config.bits_per_symbol);
     constexpr std::size_t packet_size = HEADER_SIZE_V2 + SYMBOL_SIZE_BYTES;
     return static_cast<int>(layout.bytes_per_frame / packet_size);
 }
@@ -204,6 +264,9 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
 #else
     const auto &patterns = get_precomputed_blocks().patterns;
 #endif
+    const auto *dynamic_patterns = config_.block_size == 4
+        ? &four_by_four_patterns(config_.signal_strength)
+        : nullptr;
 
     av_frame_make_writable(frame);
 
@@ -211,7 +274,8 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
     const int total_blocks = layout_.blocks_per_row * layout_.blocks_per_col;
     const int active_blocks = static_cast<int>(
         std::min(static_cast<std::size_t>(total_blocks),
-                 (total_bits + BITS_PER_BLOCK - 1) / BITS_PER_BLOCK));
+                 (total_bits + config_.bits_per_symbol - 1) /
+                     config_.bits_per_symbol));
     const auto *src = reinterpret_cast<const uint8_t *>(data.data());
     const int blocks_per_row = layout_.blocks_per_row;
 
@@ -226,11 +290,14 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
     for (int block_idx = 0; block_idx < active_blocks; ++block_idx) {
         const int block_row = block_idx / blocks_per_row;
         const int block_col = block_idx % blocks_per_row;
-        const int base_x = block_col * 8;
-        const int base_y = block_row * 8;
+        const int base_x = block_col * config_.block_size;
+        const int base_y = block_row * config_.block_size;
 
-        const std::size_t bit_start = static_cast<std::size_t>(block_idx) * BITS_PER_BLOCK;
-        const std::size_t bit_end = std::min(bit_start + BITS_PER_BLOCK, total_bits);
+        const std::size_t bit_start =
+            static_cast<std::size_t>(block_idx) *
+            config_.bits_per_symbol;
+        const std::size_t bit_end = std::min(
+            bit_start + config_.bits_per_symbol, total_bits);
 
         int pattern = 0;
         for (std::size_t bit_index = bit_start; bit_index < bit_end; ++bit_index) {
@@ -241,12 +308,22 @@ void VideoEncoder::embed_data_in_frame(const std::vector<std::byte> &data) const
         }
 
         const int bits_extracted = static_cast<int>(bit_end - bit_start);
-        pattern <<= (BITS_PER_BLOCK - bits_extracted);
+        pattern <<= (config_.bits_per_symbol - bits_extracted);
 
-        const auto &block = patterns[pattern];
-        for (int y = 0; y < 8; ++y) {
-            std::memcpy(dst_base + (base_y + y) * dst_stride + base_x,
-                        block[y], 8);
+        for (int y = 0; y < config_.block_size; ++y) {
+            if (dynamic_patterns) {
+                const auto &block = (*dynamic_patterns)[pattern];
+                std::memcpy(
+                    dst_base + (base_y + y) * dst_stride + base_x,
+                    block.data() +
+                        static_cast<std::size_t>(y) * config_.block_size,
+                    static_cast<std::size_t>(config_.block_size));
+            } else {
+                const auto &block = patterns[pattern];
+                std::memcpy(
+                    dst_base + (base_y + y) * dst_stride + base_x,
+                    block[y], 8);
+            }
         }
     }
 }

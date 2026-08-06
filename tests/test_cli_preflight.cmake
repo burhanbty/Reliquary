@@ -34,6 +34,41 @@ function(require_failure RESULT CONTEXT)
     endif ()
 endfunction()
 
+# The verified High Capacity profile and aliases must select the exact
+# production geometry without creating output during estimate-only.
+foreach(HIGH_CAPACITY_NAME IN ITEMS high-capacity high_capacity highcapacity)
+    set(HIGH_CAPACITY_TARGET
+        "${TEST_ROOT}/${HIGH_CAPACITY_NAME}.mkv")
+    run_cli(RESULT STDOUT STDERR encode --input "${INPUT}" --output
+            "${HIGH_CAPACITY_TARGET}" --estimate-only --no-probe
+            --reliability-profile "${HIGH_CAPACITY_NAME}")
+    require_success("${RESULT}" "${STDERR}"
+                    "High Capacity alias ${HIGH_CAPACITY_NAME}")
+    foreach(REQUIRED_TEXT IN ITEMS "High Capacity" "4x4" "1.0"
+            "5.00%" "538F2B009FAB" "6/6 exact")
+        if (NOT STDOUT MATCHES "${REQUIRED_TEXT}")
+            message(FATAL_ERROR
+                    "High Capacity output omitted '${REQUIRED_TEXT}'")
+        endif ()
+    endforeach()
+    if (EXISTS "${HIGH_CAPACITY_TARGET}")
+        message(FATAL_ERROR
+                "High Capacity estimate-only created output")
+    endif ()
+endforeach()
+
+run_cli(RESULT STDOUT STDERR encode --input "${INPUT}" --output
+        "${TEST_ROOT}/bad-profile.mkv" --estimate-only --no-probe
+        --reliability-profile definitely-invalid)
+require_failure("${RESULT}" "invalid reliability profile")
+if (NOT STDERR MATCHES "high-capacity" OR
+    NOT STDERR MATCHES "resilient" OR
+    NOT STDERR MATCHES "balanced" OR
+    NOT STDERR MATCHES "durable")
+    message(FATAL_ERROR
+            "invalid profile error omitted the supported profile list")
+endif ()
+
 # Estimate-only must neither create a target nor alter an existing target.
 set(ESTIMATE_TARGET "${TEST_ROOT}/estimate_target.mkv")
 run_cli(RESULT STDOUT STDERR encode --input "${INPUT}" --output

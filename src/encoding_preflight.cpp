@@ -430,8 +430,10 @@ namespace {
             request.encrypted ? CHUNK_SIZE_PLAIN_MAX_ENCRYPTED : 0;
         FileChunkReader reader(request.input_path.string().c_str(), chunk_size);
 
-        const uint64_t packets_per_frame =
-            static_cast<uint64_t>(VideoEncoder::packets_per_frame());
+        const auto video_config =
+            resilient_video_config_for_mode(request.mode);
+        const uint64_t packets_per_frame = static_cast<uint64_t>(
+            VideoEncoder::packets_per_frame(video_config));
         const uint64_t full_source =
             calculate_source_packet_count(CHUNK_SIZE_BYTES);
         const uint64_t full_repair = calculate_repair_packet_count(
@@ -474,7 +476,7 @@ namespace {
 
         TemporaryProbeFile temporary(
             request.output_path.extension().string());
-        VideoEncoder video(temporary.path().string());
+        VideoEncoder video(temporary.path().string(), video_config);
         uint64_t selected_packets = 0;
 
         uint64_t remaining_packet_budget = probe_packet_budget;
@@ -804,11 +806,14 @@ EncodingPreflightEstimate estimate_encoding_preflight(
             deterministic.frame_count =
                 estimate.estimated_frame_count;
         } else {
+            const auto video_config =
+                resilient_video_config_for_mode(request.mode);
             deterministic = estimate_encoding_reliability(
                 estimate.input_size_bytes, request.encrypted,
                 request.reliability,
-                static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
-                FRAME_FPS);
+                static_cast<uint64_t>(
+                    VideoEncoder::packets_per_frame(video_config)),
+                static_cast<uint32_t>(video_config.fps));
             estimate.chunk_count = deterministic.chunk_count;
             estimate.source_packet_count =
                 deterministic.source_packet_count;
@@ -960,12 +965,15 @@ EncodingStartValidation validate_encoding_preflight_for_start(
                     estimate.estimated_frame_count &&
                 estimate.frame_payload_capacity ==
                     fast_local_plain_capacity(request.encrypted);
-        } else if (request.mode == EncodingMode::Resilient &&
-                   estimate.mode == EncodingMode::Resilient) {
+        } else if (request.mode != EncodingMode::FastLocal &&
+                   estimate.mode == request.mode) {
+            const auto video_config =
+                resilient_video_config_for_mode(request.mode);
             const auto deterministic = estimate_encoding_reliability(
                 current.size, request.encrypted, request.reliability,
-                static_cast<uint64_t>(VideoEncoder::packets_per_frame()),
-                FRAME_FPS);
+                static_cast<uint64_t>(
+                    VideoEncoder::packets_per_frame(video_config)),
+                static_cast<uint32_t>(video_config.fps));
             deterministic_matches =
                 deterministic.chunk_count == estimate.chunk_count &&
                 deterministic.source_packet_count ==

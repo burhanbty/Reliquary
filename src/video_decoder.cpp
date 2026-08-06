@@ -18,10 +18,12 @@
 #include "video_encoder.h"
 #include "configuration.h"
 #include "dct_common.h"
+#include "decoder.h"
 #include "performance_profiler.h"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <span>
 #include <stdexcept>
@@ -166,9 +168,12 @@ int64_t VideoDecoder::total_frames() const {
     return -1;
 }
 
-void VideoDecoder::extract_data_into(std::vector<std::byte> &dest) const {
-    const int blocks_per_row = layout_.blocks_per_row;
-    const int total_blocks = layout_.total_blocks;
+void VideoDecoder::extract_data_into(std::vector<std::byte> &dest,
+                                     const int block_size) const {
+    const auto layout = compute_frame_layout(
+        codec_ctx_->width, codec_ctx_->height, block_size, 1);
+    const int blocks_per_row = layout.blocks_per_row;
+    const int total_blocks = layout.total_blocks;
     constexpr int blocks_per_byte = 8 / BITS_PER_BLOCK;
 
     const int total_bytes = total_blocks / blocks_per_byte;
@@ -187,7 +192,7 @@ void VideoDecoder::extract_data_into(std::vector<std::byte> &dest) const {
     auto *out = reinterpret_cast<uint8_t *>(dest.data() + base);
     std::memset(out, 0, total_bytes);
 
-    if constexpr (BITS_PER_BLOCK == 1) {
+    if (block_size == 8) {
 #pragma omp parallel for schedule(static)
         for (int byte_idx = 0; byte_idx < total_bytes; ++byte_idx) {
             uint8_t current_byte = 0;
@@ -200,8 +205,8 @@ void VideoDecoder::extract_data_into(std::vector<std::byte> &dest) const {
                 const int block_idx = byte_idx * 8 + sub;
                 const int block_row = block_idx / blocks_per_row;
                 const int block_col = block_idx % blocks_per_row;
-                const int base_x = block_col * 8;
-                const int base_y = block_row * 8;
+                const int base_x = block_col * block_size;
+                const int base_y = block_row * block_size;
 
                 int col[8] = {0, 0, 0, 0, 0, 0, 0, 0};
                 for (int y = 0; y < 8; ++y) {
@@ -226,45 +231,66 @@ void VideoDecoder::extract_data_into(std::vector<std::byte> &dest) const {
             out[byte_idx] = current_byte;
         }
     } else {
-#if defined(__APPLE__) && defined(_OPENMP)
-        const auto &projections = get_decoder_projections();
-        const auto &vectors = projections.vectors;
-#else
-        const auto &vectors = get_decoder_projections().vectors;
-#endif
-
+        constexpr double pi = 3.14159265358979323846;
 #pragma omp parallel for schedule(static)
         for (int byte_idx = 0; byte_idx < total_bytes; ++byte_idx) {
             uint8_t current_byte = 0;
-
-            for (int sub = 0; sub < blocks_per_byte; ++sub) {
-                const int block_idx = byte_idx * blocks_per_byte + sub;
+            for (int sub = 0; sub < 8; ++sub) {
+                const int block_idx = byte_idx * 8 + sub;
                 const int block_row = block_idx / blocks_per_row;
                 const int block_col = block_idx % blocks_per_row;
-                const int base_x = block_col * 8;
-                const int base_y = block_row * 8;
-
-                alignas(32) float block_flat[64];
-                for (int y = 0; y < 8; ++y) {
-                    const uint8_t *row = src_base + (base_y + y) * src_stride + base_x;
-                    for (int x = 0; x < 8; ++x)
-                        block_flat[y * 8 + x] = static_cast<float>(row[x]);
+                const int base_x = block_col * block_size;
+                const int base_y = block_row * block_size;
+                double projection = 0.0;
+                for (int y = 0; y < block_size; ++y) {
+                    const uint8_t *row = src_base +
+                        (base_y + y) * src_stride + base_x;
+                    for (int x = 0; x < block_size; ++x) {
+                        projection += row[x] * std::cos(
+                            (2.0 * x + 1.0) * pi /
+                            (2.0 * block_size));
+                    }
                 }
-
-                for (int b = 0; b < BITS_PER_BLOCK; ++b) {
-                    const float sum = dot_product_64(block_flat, vectors[b]);
-                    current_byte = (current_byte << 1) | (sum > 0.0f ? 1 : 0);
-                }
+                current_byte = static_cast<uint8_t>(
+                    (current_byte << 1) |
+                    (projection > 0.0 ? 1 : 0));
             }
-
             out[byte_idx] = current_byte;
         }
     }
 }
 
+bool VideoDecoder::detect_geometry() {
+    for (const int candidate : {8, 4}) {
+        if (codec_ctx_->width % candidate != 0 ||
+            codec_ctx_->height % candidate != 0)
+            continue;
+        std::vector<std::byte> raw;
+        extract_data_into(raw, candidate);
+        for (std::size_t offset = 0; offset + HEADER_SIZE <= raw.size();
+             ++offset) {
+            uint32_t magic = 0;
+            std::memcpy(&magic, raw.data() + offset, sizeof(magic));
+            if (magic == MAGIC_ID &&
+                Decoder::validate_raw_packet_crc(
+                    std::span(raw).subspan(offset))) {
+                block_size_ = candidate;
+                layout_ = compute_frame_layout(
+                    codec_ctx_->width, codec_ctx_->height,
+                    block_size_, 1);
+                extract_buffer_.reserve(
+                    static_cast<std::size_t>(layout_.bytes_per_frame) * 2);
+                geometry_detected_ = true;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::vector<std::byte> VideoDecoder::extract_data_from_frame() const {
     std::vector<std::byte> data;
-    extract_data_into(data);
+    extract_data_into(data, block_size_);
     return data;
 }
 
@@ -417,7 +443,8 @@ bool VideoDecoder::decode_next_gray8_frame(
 
 std::vector<std::vector<std::byte> > VideoDecoder::accumulate_frame_and_extract_packets() {
     ScopedTimer timer(profiler_, PerformanceStage::PacketExtraction);
-    extract_data_into(extract_buffer_);
+    if (!geometry_detected_ && !detect_geometry()) return {};
+    extract_data_into(extract_buffer_, block_size_);
     std::vector<std::vector<std::byte> > packets;
     packets.reserve(extract_buffer_.size() / (HEADER_SIZE_V2 + SYMBOL_SIZE_BYTES));
     extract_packets_from_buffer(extract_buffer_, packets);

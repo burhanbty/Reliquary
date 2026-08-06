@@ -6,6 +6,8 @@
 #include "../include/media_storage.h"
 #include "configuration.h"
 #include "encoding_preflight.h"
+#include "encoding_reliability.h"
+#include "video_encoder.h"
 
 #include <atomic>
 #include <chrono>
@@ -756,4 +758,144 @@ TEST(EncodingPreflight, ReliabilityProfilesAndHighRepairRoundtrip) {
         ASSERT_EQ(ms_decode(&decode_options, nullptr), MS_OK);
         EXPECT_EQ(read(decoded), original);
     }
+}
+
+TEST(HighCapacityProfile, HasVerifiedTechnicalParametersAndConfigId) {
+    const auto &profile = reliability_profile_definition(
+        ReliabilityProfile::HighCapacity);
+    EXPECT_EQ(profile.block_size, 4);
+    EXPECT_EQ(profile.bits_per_symbol, 1);
+    EXPECT_DOUBLE_EQ(profile.signal_strength, 1.0);
+    EXPECT_DOUBLE_EQ(profile.repair_percentage, 5.0);
+    EXPECT_EQ(profile.width, 1920);
+    EXPECT_EQ(profile.height, 1080);
+    EXPECT_TRUE(profile.real_youtube_validated);
+    EXPECT_EQ(profile.validation_cases, 6);
+    EXPECT_EQ(profile.exact_passes, 6);
+    EXPECT_EQ(profile.failures, 0);
+    EXPECT_EQ(profile.upload_sessions, 2);
+    EXPECT_EQ(reliability_profile_config_id(
+                  ReliabilityProfile::HighCapacity),
+              "538F2B009FAB");
+}
+
+TEST(HighCapacityProfile, PreservesLegacyIdsAndResilientDefault) {
+    const auto &profile = reliability_profile_definition(
+        ReliabilityProfile::Local);
+    EXPECT_EQ(static_cast<int>(ReliabilityProfile::Local), 0);
+    EXPECT_EQ(static_cast<int>(ReliabilityProfile::Balanced), 1);
+    EXPECT_EQ(static_cast<int>(ReliabilityProfile::Durable), 2);
+    EXPECT_EQ(static_cast<int>(ReliabilityProfile::HighCapacity), 3);
+    EXPECT_EQ(MS_ENCODING_MODE_RESILIENT, 0);
+    EXPECT_EQ(MS_ENCODING_MODE_FAST_LOCAL, 1);
+    EXPECT_EQ(MS_ENCODING_MODE_HIGH_CAPACITY, 2);
+    EXPECT_EQ(profile.block_size, 8);
+    EXPECT_EQ(profile.bits_per_symbol, 1);
+    EXPECT_DOUBLE_EQ(profile.signal_strength, 1.0);
+    EXPECT_DOUBLE_EQ(profile.repair_percentage, 5.0);
+    EXPECT_DOUBLE_EQ(
+        resolve_reliability_options(std::nullopt, std::nullopt)
+            .repair_ratio,
+        0.05);
+}
+
+TEST(HighCapacityProfile, UnknownPersistedIdFallsBackToResilient) {
+    EXPECT_EQ(reliability_profile_from_id(-1),
+              ReliabilityProfile::Local);
+    EXPECT_EQ(reliability_profile_from_id(999),
+              ReliabilityProfile::Local);
+    EXPECT_EQ(reliability_profile_from_id(3),
+              ReliabilityProfile::HighCapacity);
+}
+
+TEST(HighCapacityProfile, CliAliasesParseAndUnknownIsRejected) {
+    EXPECT_EQ(parse_reliability_profile("high-capacity"),
+              ReliabilityProfile::HighCapacity);
+    EXPECT_EQ(parse_reliability_profile("high_capacity"),
+              ReliabilityProfile::HighCapacity);
+    EXPECT_EQ(parse_reliability_profile("highcapacity"),
+              ReliabilityProfile::HighCapacity);
+    EXPECT_EQ(parse_reliability_profile("resilient"),
+              ReliabilityProfile::Local);
+    EXPECT_THROW((void)parse_reliability_profile("unknown"),
+                 std::invalid_argument);
+}
+
+TEST(HighCapacityProfile, HasFourTimesSameResolutionCapacity) {
+    ResilientVideoConfig resilient;
+    resilient.width = 1920;
+    resilient.height = 1080;
+    auto high_capacity = resilient;
+    high_capacity.block_size = 4;
+    const int resilient_packets =
+        VideoEncoder::packets_per_frame(resilient);
+    const int high_capacity_packets =
+        VideoEncoder::packets_per_frame(high_capacity);
+    EXPECT_GT(high_capacity_packets, resilient_packets);
+    EXPECT_NEAR(
+        static_cast<double>(high_capacity_packets) / resilient_packets,
+        4.0, 0.05);
+
+    const auto reliability = reliability_options_for_profile(
+        ReliabilityProfile::HighCapacity);
+    const auto resilient_estimate = estimate_encoding_reliability(
+        1024 * 1024, false, reliability,
+        static_cast<uint64_t>(resilient_packets), 30);
+    const auto high_capacity_estimate = estimate_encoding_reliability(
+        1024 * 1024, false, reliability,
+        static_cast<uint64_t>(high_capacity_packets), 30);
+    EXPECT_LT(high_capacity_estimate.video_duration_seconds,
+              resilient_estimate.video_duration_seconds);
+
+    const auto empty = estimate_encoding_reliability(
+        0, false, reliability,
+        static_cast<uint64_t>(high_capacity_packets), 30);
+    EXPECT_EQ(empty.chunk_count, 1u);
+    EXPECT_GT(empty.frame_count, 0u);
+}
+
+TEST(EncodingPreflight, HighCapacityEncodeDecodeSmokeIsShaExact) {
+    const PreflightFiles files;
+    files.write_input(16384);
+    const auto encoded = files.directory / "high-capacity.mkv";
+    const auto decoded = files.directory / "high-capacity.bin";
+    const std::string input = files.input.string();
+    const std::string encoded_text = encoded.string();
+    const std::string decoded_text = decoded.string();
+
+    auto options = api_options(files);
+    options.input_path = input.c_str();
+    options.output_path = encoded_text.c_str();
+    options.encoding_mode = MS_ENCODING_MODE_HIGH_CAPACITY;
+    options.repair_ratio = 0.05;
+    options.repair_ratio_is_set = 1;
+
+    ms_encoding_estimate_t estimate{};
+    ASSERT_EQ(ms_estimate_encode(&options, 1, &estimate), MS_OK);
+    EXPECT_EQ(estimate.encoding_mode,
+              MS_ENCODING_MODE_HIGH_CAPACITY);
+    EXPECT_GT(estimate.estimated_frame_count, 0u);
+
+    ms_result_t encoded_result{};
+    ASSERT_EQ(ms_encode(&options, &encoded_result), MS_OK);
+    EXPECT_EQ(encoded_result.encoding_mode,
+              MS_ENCODING_MODE_HIGH_CAPACITY);
+    ASSERT_TRUE(std::filesystem::exists(encoded));
+    EXPECT_GT(std::filesystem::file_size(encoded), 0u);
+
+    ms_decode_options_t decode_options{};
+    decode_options.input_path = encoded_text.c_str();
+    decode_options.output_path = decoded_text.c_str();
+    ms_result_t decoded_result{};
+    ASSERT_EQ(ms_decode(&decode_options, &decoded_result), MS_OK);
+    EXPECT_EQ(decoded_result.encoding_mode,
+              MS_ENCODING_MODE_HIGH_CAPACITY);
+
+    const auto read = [](const std::filesystem::path &path) {
+        std::ifstream stream(path, std::ios::binary);
+        return std::vector<char>{
+            std::istreambuf_iterator<char>(stream),
+            std::istreambuf_iterator<char>()};
+    };
+    EXPECT_EQ(read(decoded), read(files.input));
 }

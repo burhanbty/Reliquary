@@ -31,6 +31,7 @@
 #include "encoding_reliability.h"
 #include "media_storage.h"
 #include "safe_output.h"
+#include "video_encoder.h"
 #include "youtube_capacity_lab.h"
 #include "youtube_test_lab.h"
 
@@ -74,7 +75,11 @@ static void print_encoding_estimate(
     std::cout << "\nPreflight estimate:\n"
               << "  Encoding mode: "
               << (estimate.encoding_mode == MS_ENCODING_MODE_FAST_LOCAL
-                      ? "Fast Local" : "Resilient / Platform")
+                      ? "Fast Local"
+                      : estimate.encoding_mode ==
+                            MS_ENCODING_MODE_HIGH_CAPACITY
+                      ? "High Capacity"
+                      : "Resilient / Platform")
               << "\n"
               << "  Input size: "
               << format_size(estimate.input_size_bytes)
@@ -102,6 +107,36 @@ static void print_encoding_estimate(
                   << estimate.repair_packet_count << "\n"
                   << "  Total packets: "
                   << estimate.total_packet_count << "\n";
+        if (estimate.encoding_mode ==
+                MS_ENCODING_MODE_HIGH_CAPACITY) {
+            ResilientVideoConfig same_resolution_resilient;
+            same_resolution_resilient.width = 1920;
+            same_resolution_resilient.height = 1080;
+            const uint64_t resilient_packets_per_frame =
+                static_cast<uint64_t>(VideoEncoder::packets_per_frame(
+                    same_resolution_resilient));
+            const uint64_t resilient_frames =
+                estimate.total_packet_count / resilient_packets_per_frame +
+                (estimate.total_packet_count % resilient_packets_per_frame
+                     != 0 ? 1 : 0);
+            std::cout
+                << "  Block geometry: 4x4\n"
+                << "  Bits per symbol: 1\n"
+                << "  Signal strength: 1.0\n"
+                << "  Config ID: "
+                << reliability_profile_config_id(
+                       ReliabilityProfile::HighCapacity)
+                << "\n"
+                << "  Validation: Real YouTube tested, 6/6 exact\n"
+                << "  Same-resolution Resilient estimate: "
+                << resilient_frames << " frames, "
+                << std::fixed << std::setprecision(2)
+                << static_cast<double>(resilient_frames) / FRAME_FPS
+                << " s\n"
+                << "  Useful payload capacity gain: approximately 4x\n"
+                << "  Expected video count: 1\n"
+                << "  Note: actual encoded file size may vary.\n";
+        }
     }
     std::cout << "  Estimated frames: "
               << estimate.estimated_frame_count << "\n"
@@ -247,13 +282,14 @@ static void print_usage(const char *program) {
             << "  " << program <<
             " encode --input <file> --output <video> [--encrypt --password <pwd>] [--hash <crc32|xxhash>]\n"
             << "    [--mode <resilient|fast-local>]\n"
-            << "    [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>]\n"
+            << "    [--reliability-profile <high-capacity|resilient|local|balanced|durable>] [--repair-percent <0..500>]\n"
             << "    [--estimate-only] [--estimate-json <estimate.json>] [--no-probe] [--allow-low-disk]\n"
             << "    [--benchmark-json <report.json>]\n"
             << "  " << program << " decode --input <video> --output <file> [--password <pwd>]"
             << " [--benchmark-json <report.json>]\n"
             << "  " << program <<
-            " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]\n"
+            " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <resilient|local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]\n"
+            "\n  high-capacity: 4x4, 1-bit, signal 1.0, repair 5%; real YouTube stress-tested\n"
             << "  " << program << " stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]\n";
     std::cerr
         << "  " << program
@@ -1647,6 +1683,21 @@ int main(const int argc, char *argv[]) {
                "in Fast Local mode\n";
         return 1;
     }
+    if (reliability_profile == ReliabilityProfile::HighCapacity) {
+        if (command != "encode") {
+            std::cerr
+                << "Error: high-capacity currently applies to file encode; "
+                   "stream encoding keeps its existing geometry\n";
+            return 1;
+        }
+        if (repair_percentage.has_value()) {
+            std::cerr
+                << "Error: high-capacity has a fixed 5% repair setting; "
+                   "do not combine it with --repair-percent\n";
+            return 1;
+        }
+        encoding_mode = MS_ENCODING_MODE_HIGH_CAPACITY;
+    }
     if (command != "encode" &&
         (estimate_only || !estimate_json.empty() || !enable_probe ||
          allow_low_disk)) {
@@ -1657,19 +1708,22 @@ int main(const int argc, char *argv[]) {
     const EncodingReliabilityOptions reliability =
         resolve_reliability_options(
             reliability_profile, repair_percentage);
-    std::string reliability_label = "Local / Fast";
+    std::string reliability_label = "Resilient";
     if (repair_percentage.has_value()) {
         reliability_label = "Custom";
     } else if (reliability_profile.has_value()) {
         switch (*reliability_profile) {
             case ReliabilityProfile::Local:
-                reliability_label = "Local / Fast";
+                reliability_label = "Resilient";
                 break;
             case ReliabilityProfile::Balanced:
                 reliability_label = "Balanced";
                 break;
             case ReliabilityProfile::Durable:
                 reliability_label = "Durable";
+                break;
+            case ReliabilityProfile::HighCapacity:
+                reliability_label = "High Capacity";
                 break;
         }
     }

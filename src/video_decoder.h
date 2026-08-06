@@ -59,6 +59,8 @@ public:
 
     [[nodiscard]] bool is_eof() const { return eof_; }
 
+    [[nodiscard]] int block_size() const noexcept { return block_size_; }
+
 private:
     AVFormatContext *format_ctx_ = nullptr;
     AVCodecContext *codec_ctx_ = nullptr;
@@ -72,6 +74,8 @@ private:
     bool eof_ = false;
     bool raw_drain_sent_ = false;
     bool is_gray8_ = false;
+    bool geometry_detected_ = false;
+    int block_size_ = 8;
     FrameLayout layout_{};
     std::vector<std::byte> extract_buffer_{};
     PerformanceProfiler *profiler_ = nullptr;
@@ -82,7 +86,10 @@ private:
 
     [[nodiscard]] std::vector<std::byte> extract_data_from_frame() const;
 
-    void extract_data_into(std::vector<std::byte> &dest) const;
+    void extract_data_into(std::vector<std::byte> &dest,
+                           int block_size) const;
+
+    [[nodiscard]] bool detect_geometry();
 
     [[nodiscard]] std::vector<std::vector<std::byte> > extract_packets_from_frame() const;
 
