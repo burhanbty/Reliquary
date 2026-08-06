@@ -30,6 +30,7 @@ add_executable(media_storage_tests
         test_fast_local.cpp
         test_youtube_test_lab.cpp
         test_youtube_capacity_lab.cpp
+        test_video_set.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE
@@ -85,6 +86,14 @@ add_test(
         "-DCLI=$<TARGET_FILE:media_storage>"
         "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_capacitylab_integration"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_capacitylab.cmake"
+)
+
+add_test(
+        NAME CLI.VideoSetIntegration
+        COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:media_storage>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_video_set_integration"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_video_set.cmake"
 )
 
 if (TARGET media_storage_gui)

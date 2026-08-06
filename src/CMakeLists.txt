@@ -36,6 +36,7 @@ list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/drive_manager_ui.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/main_gui.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/media_storage_api.cpp")
+list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/video_set_cli.cpp")
 
 target_sources(media_storage_core PRIVATE
         ${SRC_CPP} ${SRC_HDR}
@@ -53,6 +54,8 @@ target_sources(media_storage_lib PRIVATE
 
 target_sources(media_storage PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/video_set_cli.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/video_set_cli.h"
 )
 
 if (BUILD_GUI)

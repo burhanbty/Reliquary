@@ -34,6 +34,8 @@
 #include "video_encoder.h"
 #include "youtube_capacity_lab.h"
 #include "youtube_test_lab.h"
+#include "video_set.h"
+#include "video_set_cli.h"
 
 static std::string format_size(const uint64_t bytes) {
     const char *units[] = {"B", "KB", "MB", "GB"};
@@ -291,6 +293,13 @@ static void print_usage(const char *program) {
             " stream-encode --input <file> --url <rtmp://...> [--bitrate <kbps>] [--width <w> --height <h>] [--encrypt --password <pwd>] [--reliability-profile <resilient|local|balanced|durable>] [--repair-percent <0..500>] [--benchmark-json <report.json>]\n"
             "\n  high-capacity: 4x4, 1-bit, signal 1.0, repair 5%; real YouTube stress-tested\n"
             << "  " << program << " stream-decode --url <stream_url> --output <file> [--password <pwd>] [--benchmark-json <report.json>]\n";
+    std::cerr
+        << "  " << program << " set-plan <input-file> <output-root> [Video Set options]\n"
+        << "  " << program << " set-encode <input-file> <output-root> [Video Set options]\n"
+        << "  " << program << " set-status --manifest <set_manifest.json>\n"
+        << "  " << program << " set-inspect <video-or-folder>\n"
+        << "  " << program << " set-recover <manifest-or-video-folder> <output-folder> [Video Set options]\n"
+        << "  " << program << " set-help\n";
     std::cerr
         << "  " << program
         << " testlab generate --preset <quick|full> --output <folder>\n"
@@ -1442,6 +1451,18 @@ static int do_decode(const std::string &input_path, const std::string &output_pa
         return 1;
     }
 
+    const auto decoded_kind =
+        video_set::parse_envelope_file(output_path).kind;
+    if (decoded_kind != video_set::ParseKind::NotVideoSet) {
+        std::error_code ignored;
+        std::filesystem::remove(output_path, ignored);
+        std::cerr
+            << "\nThis video contains a Video Set part. The decoded logical "
+               "payload was not kept. Use set-inspect or set-recover so "
+               "embedded part metadata and SHA-256 are validated.\n";
+        return decoded_kind == video_set::ParseKind::Valid ? 3 : 4;
+    }
+
     std::cout << "\n\nDecode complete: " << format_size(result.input_size) << " -> "
             << format_size(result.output_size) << "\n";
     std::cout << "Chunks: " << result.total_chunks
@@ -1534,6 +1555,9 @@ int main(const int argc, char *argv[]) {
 
     const std::string command = argv[1];
 
+    if (video_set_cli::is_command(argv[1]))
+        return video_set_cli::run(argc, argv);
+
     if (command == "testlab") {
         try {
             return do_testlab(argc, argv);
@@ -1578,6 +1602,7 @@ int main(const int argc, char *argv[]) {
     std::optional<double> repair_percentage;
     ms_encoding_mode_t encoding_mode = MS_ENCODING_MODE_RESILIENT;
     bool mode_was_set = false;
+    bool video_set_mode_requested = false;
 
     for (int i = 2; i < argc; ++i) {
         if (const std::string arg = argv[i]; (arg == "--input" || arg == "-i") && i + 1 < argc) {
@@ -1617,6 +1642,8 @@ int main(const int argc, char *argv[]) {
             enable_probe = false;
         } else if (arg == "--allow-low-disk") {
             allow_low_disk = true;
+        } else if (arg == "--video-set" || arg == "--set-mode") {
+            video_set_mode_requested = true;
         } else if (arg == "--mode" && i + 1 < argc) {
             const std::string value = argv[++i];
             mode_was_set = true;
@@ -1662,6 +1689,19 @@ int main(const int argc, char *argv[]) {
             print_usage(argv[0]);
             return 1;
         }
+    }
+
+    if (video_set_mode_requested) {
+        if (command == "stream-encode" || command == "stream-decode") {
+            std::cerr
+                << "Error: Video Set mode is unsupported for streams; "
+                   "use the file-only set-plan/set-encode/set-recover workflow\n";
+        } else {
+            std::cerr
+                << "Error: use the dedicated set-plan or set-encode command "
+                   "for Video Set file operations\n";
+        }
+        return 2;
     }
 
     if ((command == "decode" || command == "stream-decode") &&

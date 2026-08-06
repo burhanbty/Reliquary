@@ -47,6 +47,8 @@
 #include <QSignalBlocker>
 #include <QSet>
 #include <QUrl>
+#include <QRegularExpression>
+#include <QTextCursor>
 
 #include <chrono>
 #include <cmath>
@@ -371,6 +373,11 @@ DriveManagerUI::~DriveManagerUI() {
         if (!testLabProcess->waitForFinished(10000))
             testLabProcess->kill();
     }
+    if (videoSetProcess &&
+        videoSetProcess->state() != QProcess::NotRunning) {
+        videoSetProcess->kill();
+        videoSetProcess->waitForFinished(5000);
+    }
     saveSettings();
 }
 
@@ -488,14 +495,19 @@ void DriveManagerUI::setupUI() {
     reliabilityHelpLabel->setStyleSheet("color: palette(mid); font-size: 9pt;");
     fileOpsLayout->addWidget(reliabilityHelpLabel, 7, 0, 1, 3);
 
+    videoSetCheckBox = new QCheckBox(
+        "Split as Video Set (file encode only; opens Video Set tab)");
+    videoSetCheckBox->setObjectName("videoSetCheckBox");
+    fileOpsLayout->addWidget(videoSetCheckBox, 8, 0, 1, 3);
+
     encodeButton = new QPushButton("Encode to Video");
     encodeButton->setObjectName("encodeButton");
     encodeButton->setIcon(QIcon::fromTheme("media-record"));
-    fileOpsLayout->addWidget(encodeButton, 8, 0, 1, 3);
+    fileOpsLayout->addWidget(encodeButton, 9, 0, 1, 3);
 
     decodeButton = new QPushButton("Decode from Video");
     decodeButton->setIcon(QIcon::fromTheme("media-playback-start"));
-    fileOpsLayout->addWidget(decodeButton, 9, 0, 1, 3);
+    fileOpsLayout->addWidget(decodeButton, 10, 0, 1, 3);
 
     leftLayout->addWidget(fileOperationsGroup);
 
@@ -741,6 +753,206 @@ void DriveManagerUI::setupUI() {
     // Main application tabs
     mainTabs = new QTabWidget(centralWidget);
     mainTabs->addTab(mainSplitter, "Storage");
+
+    videoSetPage = new QWidget();
+    auto *videoSetLayout = new QVBoxLayout(videoSetPage);
+    auto *videoSetNotice = new QLabel(
+        "<b>Video Set / Large Files</b><br>Splits one file into independently "
+        "verified videos using the existing encoder. Resilient remains the "
+        "default; High Capacity is explicit opt-in. Filenames and playlist "
+        "order are never used as identities. Upload/download stays manual.");
+    videoSetNotice->setWordWrap(true);
+    videoSetLayout->addWidget(videoSetNotice);
+
+    auto *videoSetEncodeGroup = new QGroupBox("Encode a Video Set");
+    auto *videoSetEncodeLayout = new QGridLayout(videoSetEncodeGroup);
+    videoSetInputEdit = new QLineEdit();
+    videoSetInputEdit->setPlaceholderText("Source file");
+    auto *videoSetInputBrowse = new QPushButton("File...");
+    videoSetOutputEdit = new QLineEdit();
+    videoSetOutputEdit->setPlaceholderText("Output root");
+    auto *videoSetOutputBrowse = new QPushButton("Folder...");
+    videoSetProfileCombo = new QComboBox();
+    videoSetProfileCombo->addItem("Resilient (default)", "resilient");
+    videoSetProfileCombo->addItem("High Capacity (opt-in, 6/6 exact)", "high-capacity");
+    videoSetProfileCombo->addItem("Balanced", "balanced");
+    videoSetProfileCombo->addItem("Durable", "durable");
+    videoSetTargetSpin = new QSpinBox();
+    videoSetTargetSpin->setRange(1, 86400);
+    videoSetTargetSpin->setValue(600);
+    videoSetTargetSpin->setSuffix(" s");
+    videoSetMaximumSizeSpin = new QSpinBox();
+    videoSetMaximumSizeSpin->setRange(0, 1024 * 1024);
+    videoSetMaximumSizeSpin->setValue(1500);
+    videoSetMaximumSizeSpin->setSuffix(" MiB (0 disables)");
+    videoSetReserveSpin = new QDoubleSpinBox();
+    videoSetReserveSpin->setRange(0.0, 99.0);
+    videoSetReserveSpin->setValue(10.0);
+    videoSetReserveSpin->setSuffix("%");
+    videoSetPlanButton = new QPushButton("Plan");
+    videoSetEncodeButton = new QPushButton("Encode Set");
+    videoSetResumeButton = new QPushButton("Resume Encode");
+    videoSetCancelButton = new QPushButton("Cancel");
+    videoSetCancelButton->setEnabled(false);
+    videoSetEncodeLayout->addWidget(new QLabel("Source:"), 0, 0);
+    videoSetEncodeLayout->addWidget(videoSetInputEdit, 0, 1);
+    videoSetEncodeLayout->addWidget(videoSetInputBrowse, 0, 2);
+    videoSetEncodeLayout->addWidget(new QLabel("Output root:"), 1, 0);
+    videoSetEncodeLayout->addWidget(videoSetOutputEdit, 1, 1);
+    videoSetEncodeLayout->addWidget(videoSetOutputBrowse, 1, 2);
+    videoSetEncodeLayout->addWidget(new QLabel("Profile:"), 2, 0);
+    videoSetEncodeLayout->addWidget(videoSetProfileCombo, 2, 1, 1, 2);
+    videoSetEncodeLayout->addWidget(new QLabel("Target duration:"), 3, 0);
+    videoSetEncodeLayout->addWidget(videoSetTargetSpin, 3, 1);
+    videoSetEncodeLayout->addWidget(new QLabel("Maximum actual size:"), 4, 0);
+    videoSetEncodeLayout->addWidget(videoSetMaximumSizeSpin, 4, 1);
+    videoSetEncodeLayout->addWidget(new QLabel("Safety reserve:"), 5, 0);
+    videoSetEncodeLayout->addWidget(videoSetReserveSpin, 5, 1);
+    auto *videoSetButtons = new QHBoxLayout();
+    videoSetButtons->addWidget(videoSetPlanButton);
+    videoSetButtons->addWidget(videoSetEncodeButton);
+    videoSetButtons->addWidget(videoSetResumeButton);
+    videoSetButtons->addWidget(videoSetCancelButton);
+    videoSetEncodeLayout->addLayout(videoSetButtons, 6, 0, 1, 3);
+    videoSetLayout->addWidget(videoSetEncodeGroup);
+
+    videoSetPlanTable = new QTableWidget(0, 6);
+    videoSetPlanTable->setHorizontalHeaderLabels(
+        {"Part", "Offset", "Chunk bytes", "Frames", "Duration", "State"});
+    videoSetPlanTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    videoSetLayout->addWidget(videoSetPlanTable);
+    videoSetProgress = new QProgressBar();
+    videoSetProgress->setRange(0, 100);
+    videoSetProgress->setValue(0);
+    videoSetProgress->setFormat("Video Set idle");
+    videoSetLayout->addWidget(videoSetProgress);
+
+    auto *videoSetRecoveryGroup = new QGroupBox("Inspect / Recover returned videos");
+    auto *videoSetRecoveryLayout = new QGridLayout(videoSetRecoveryGroup);
+    videoSetRecoveryInputEdit = new QLineEdit();
+    videoSetRecoveryInputEdit->setPlaceholderText("Manifest, video, or mixed returned folder");
+    auto *videoSetRecoveryBrowse = new QPushButton("Choose...");
+    videoSetRecoveryOutputEdit = new QLineEdit();
+    videoSetRecoveryOutputEdit->setPlaceholderText("Recovered output folder");
+    auto *videoSetRecoveryOutputBrowse = new QPushButton("Folder...");
+    videoSetScanButton = new QPushButton("Detect Sets / Scan");
+    videoSetRecoverButton = new QPushButton("Recover");
+    videoSetRecoverResumeButton = new QPushButton("Resume Recovery");
+    videoSetRecoveryLayout->addWidget(new QLabel("Input:"), 0, 0);
+    videoSetRecoveryLayout->addWidget(videoSetRecoveryInputEdit, 0, 1);
+    videoSetRecoveryLayout->addWidget(videoSetRecoveryBrowse, 0, 2);
+    videoSetRecoveryLayout->addWidget(new QLabel("Output:"), 1, 0);
+    videoSetRecoveryLayout->addWidget(videoSetRecoveryOutputEdit, 1, 1);
+    videoSetRecoveryLayout->addWidget(videoSetRecoveryOutputBrowse, 1, 2);
+    videoSetRecoveryLayout->addWidget(videoSetScanButton, 2, 0);
+    videoSetRecoveryLayout->addWidget(videoSetRecoverButton, 2, 1);
+    videoSetRecoveryLayout->addWidget(videoSetRecoverResumeButton, 2, 2);
+    videoSetLayout->addWidget(videoSetRecoveryGroup);
+    videoSetLog = new QTextEdit();
+    videoSetLog->setReadOnly(true);
+    videoSetLayout->addWidget(videoSetLog);
+    mainTabs->addTab(videoSetPage, "Video Sets");
+
+    videoSetProcess = new QProcess(this);
+    videoSetProcess->setProcessChannelMode(QProcess::MergedChannels);
+    connect(videoSetProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        const QString text = QString::fromUtf8(videoSetProcess->readAllStandardOutput());
+        videoSetLog->moveCursor(QTextCursor::End);
+        videoSetLog->insertPlainText(text);
+        const QRegularExpression expression(
+            R"(P(\d+): offset=(\d+) bytes=(\d+) frames=(\d+) duration=([0-9.]+)s)");
+        auto matches = expression.globalMatch(text);
+        while (matches.hasNext()) {
+            const auto match = matches.next();
+            const int row = videoSetPlanTable->rowCount();
+            videoSetPlanTable->insertRow(row);
+            for (int column = 0; column < 5; ++column)
+                videoSetPlanTable->setItem(
+                    row, column, new QTableWidgetItem(match.captured(column + 1)));
+            videoSetPlanTable->setItem(row, 5, new QTableWidgetItem("Planned"));
+        }
+    });
+    connect(videoSetProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](const int code, QProcess::ExitStatus) {
+                videoSetCancelButton->setEnabled(false);
+                videoSetPlanButton->setEnabled(true);
+                videoSetEncodeButton->setEnabled(true);
+                videoSetResumeButton->setEnabled(true);
+                videoSetScanButton->setEnabled(true);
+                videoSetRecoverButton->setEnabled(true);
+                videoSetRecoverResumeButton->setEnabled(true);
+                videoSetProgress->setRange(0, 100);
+                videoSetProgress->setValue(code == 0 ? 100 : 0);
+                videoSetProgress->setFormat(
+                    code == 0 ? "Video Set operation complete" :
+                                "Video Set operation stopped");
+                videoSetLog->append(code == 0 ? "Completed." :
+                    QString("Stopped with exit code %1.").arg(code));
+            });
+    const auto launchVideoSet = [this](QStringList arguments) {
+        if (videoSetProcess->state() != QProcess::NotRunning) return;
+        videoSetLog->clear();
+        videoSetPlanTable->setRowCount(0);
+        videoSetProgress->setRange(0, 0);
+        videoSetProgress->setFormat("Planning / hashing / encode-decode verification...");
+        videoSetCancelButton->setEnabled(true);
+        videoSetPlanButton->setEnabled(false);
+        videoSetEncodeButton->setEnabled(false);
+        videoSetResumeButton->setEnabled(false);
+        videoSetScanButton->setEnabled(false);
+        videoSetRecoverButton->setEnabled(false);
+        videoSetRecoverResumeButton->setEnabled(false);
+#ifdef Q_OS_WIN
+        const QString executable = QCoreApplication::applicationDirPath() + "/media_storage.exe";
+#else
+        const QString executable = QCoreApplication::applicationDirPath() + "/media_storage";
+#endif
+        videoSetProcess->start(executable, arguments);
+    };
+    const auto encodeArguments = [this](const QString &command) {
+        return QStringList{command, videoSetInputEdit->text(), videoSetOutputEdit->text(),
+            "--reliability-profile", videoSetProfileCombo->currentData().toString(),
+            "--target-duration-seconds", QString::number(videoSetTargetSpin->value()),
+            "--max-video-size-mib", QString::number(videoSetMaximumSizeSpin->value()),
+            "--reserve-percent", QString::number(videoSetReserveSpin->value())};
+    };
+    connect(videoSetPlanButton, &QPushButton::clicked, this,
+        [launchVideoSet, encodeArguments]() { launchVideoSet(encodeArguments("set-plan")); });
+    connect(videoSetEncodeButton, &QPushButton::clicked, this,
+        [launchVideoSet, encodeArguments]() { launchVideoSet(encodeArguments("set-encode")); });
+    connect(videoSetResumeButton, &QPushButton::clicked, this,
+        [launchVideoSet, encodeArguments]() {
+            auto args = encodeArguments("set-encode"); args << "--resume"; launchVideoSet(args);
+        });
+    connect(videoSetScanButton, &QPushButton::clicked, this, [this, launchVideoSet]() {
+        launchVideoSet({"set-inspect", videoSetRecoveryInputEdit->text()});
+    });
+    connect(videoSetRecoverButton, &QPushButton::clicked, this, [this, launchVideoSet]() {
+        launchVideoSet({"set-recover", videoSetRecoveryInputEdit->text(),
+                        videoSetRecoveryOutputEdit->text()});
+    });
+    connect(videoSetRecoverResumeButton, &QPushButton::clicked, this, [this, launchVideoSet]() {
+        launchVideoSet({"set-recover", videoSetRecoveryInputEdit->text(),
+                        videoSetRecoveryOutputEdit->text(), "--resume"});
+    });
+    connect(videoSetCancelButton, &QPushButton::clicked, videoSetProcess, &QProcess::kill);
+    connect(videoSetInputBrowse, &QPushButton::clicked, this, [this]() {
+        const auto file = QFileDialog::getOpenFileName(this, "Select Video Set source");
+        if (!file.isEmpty()) videoSetInputEdit->setText(file);
+    });
+    connect(videoSetOutputBrowse, &QPushButton::clicked, this, [this]() {
+        const auto folder = QFileDialog::getExistingDirectory(this, "Select Video Set output root");
+        if (!folder.isEmpty()) videoSetOutputEdit->setText(folder);
+    });
+    connect(videoSetRecoveryBrowse, &QPushButton::clicked, this, [this]() {
+        const auto folder = QFileDialog::getExistingDirectory(this, "Select returned video folder");
+        if (!folder.isEmpty()) videoSetRecoveryInputEdit->setText(folder);
+    });
+    connect(videoSetRecoveryOutputBrowse, &QPushButton::clicked, this, [this]() {
+        const auto folder = QFileDialog::getExistingDirectory(this, "Select recovery output folder");
+        if (!folder.isEmpty()) videoSetRecoveryOutputEdit->setText(folder);
+    });
 
     auto *testLabPage = new QWidget();
     auto *testLabLayout = new QVBoxLayout(testLabPage);
@@ -1547,6 +1759,16 @@ void DriveManagerUI::selectOutputDirectory() {
 }
 
 void DriveManagerUI::startEncode() {
+    if (videoSetCheckBox && videoSetCheckBox->isChecked()) {
+        videoSetInputEdit->setText(inputFileEdit->text());
+        const QFileInfo outputInfo(outputFileEdit->text());
+        videoSetOutputEdit->setText(outputInfo.absolutePath());
+        mainTabs->setCurrentWidget(videoSetPage);
+        videoSetLog->setPlainText(
+            "Video Set mode is opt-in. Review the split policy, click Plan, "
+            "then Encode Set. Streaming remains unsupported.");
+        return;
+    }
     if (isOperationRunning) {
         QMessageBox::warning(this, "Warning", "An operation is already in progress");
         return;

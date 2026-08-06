@@ -935,3 +935,78 @@ media_storage capacitylab run --preset onebit-verification-1080p `
   --source-manifest C:\path\to\boundary\manifest.json `
   --output C:\path\to\onebit-staged
 ```
+
+## Video Sets / Large Files
+
+Video Set is the opt-in, file-only archive layer for sources that should be
+carried by more than one video. It does not replace the single-video format.
+The source is split into byte ranges; each logical part is an explicit
+little-endian `VideoSetPartEnvelopeV1` followed by that range, and the result
+is passed to the existing encoder unchanged. Consequently every video keeps
+its own packetization, repair data, file ID, encryption nonces (when a
+password is supplied), and local decode/SHA verification. There is no shared
+cross-video parity in version 1.
+
+The embedded `VSXSET01` envelope records the version and header length, flags,
+random 128-bit set ID, deterministic part ID, index/count, source size and
+full SHA-256, chunk offset/size/SHA-256, stable profile/config IDs, geometry,
+signal, repair percentage, sanitized display filename, descriptor hash, and
+header checksum. Recovery reads this metadata after the normal decoder, so
+renamed videos, underscore/space changes, shuffled downloads, and playlist
+order do not affect identity. A bounded parser rejects truncation, invalid
+ranges, unsafe names, unsupported versions, and corrupt checksums.
+
+`set_manifest.json` is an atomic, extensible convenience index containing the
+same core identity plus the split policy, estimates, actual video metrics,
+per-part verification/upload/recovery state, and aggregate state. It contains
+no source absolute path, password, or key. The sidecar speeds up normal use,
+but `set-inspect` and `set-recover` can reconstruct a set from embedded
+envelopes alone. Missing, corrupt, or conflicting parts never produce a final
+file. Identical exact duplicates are reported and one is selected safely.
+
+Defaults are a 600-second target, a configurable 1500 MiB actual-video cap,
+and 10% reserve. These are conservative VidStoreX project defaults, not
+official YouTube limits or a delivery guarantee. Planning uses the production
+packet/frame-capacity and repair calculations. The first full part measures
+actual container size; if it exceeds the hard cap, all ranges, hashes, IDs,
+and the descriptor are replanned with a smaller chunk (at most three retries).
+Set publication is an atomic same-filesystem directory rename only after every
+part locally roundtrips exactly.
+
+Encoding keeps one temporary logical payload at a time and hashes source
+ranges with a bounded streaming buffer. `--resume` accepts a prior part only
+when source/plan identity, recorded video size/SHA, and exact local
+verification state still agree. Recovery writes a set-scoped `.vsx.partial`
+file and `recovery_state.json`; resumed ranges are rehashed before being
+skipped. The final name is sanitized and the partial file is renamed only
+after its complete SHA-256 equals the embedded original SHA-256. Source and
+video files are never moved, deleted, or automatically uploaded.
+
+Typical CLI flow:
+
+```powershell
+build\Release\media_storage.exe set-plan "D:\archive\large-file.rar" "D:\VidStoreX Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500
+build\Release\media_storage.exe set-encode "D:\archive\large-file.rar" "D:\VidStoreX Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500 --resume
+build\Release\media_storage.exe set-status --manifest "D:\VidStoreX Sets\large-file_AB12CD34\set_manifest.json"
+build\Release\media_storage.exe set-inspect "D:\VidStoreX Sets\large-file_AB12CD34\returned"
+build\Release\media_storage.exe set-recover "D:\VidStoreX Sets\large-file_AB12CD34\returned" "D:\Recovered" --resume
+```
+
+The set directory includes `upload_checklist.md`, `upload_checklist.csv`,
+`README_NEXT_STEPS.md`, reports in `reports/`, and
+`tools/download_returned_playlist.ps1`. Upload videos manually as Unlisted,
+wait for 1080p processing, then download YouTube's re-encoded video-only
+streams. The helper uses `yt-dlp` without logging in or uploading; downloads
+made another way work equally well.
+
+The GUI exposes the same opt-in workflow in the **Video Sets** tab: source,
+output root, Resilient/High Capacity selection, duration, size cap, reserve,
+plan table, encode/resume/cancel, scan, and recovery controls. With “Split as
+Video Set” off, the established GUI encode/decode path is unchanged.
+
+Resilient remains the conservative default (8x8, one bit, signal 1.0, 5%
+repair). High Capacity remains explicit opt-in (4x4, one bit, signal 1.0, 5%
+repair, config `538F2B009FAB`) and was exact in 6/6 real YouTube stress cases,
+but no profile is an absolute data guarantee. Version 1 intentionally omits
+cross-video parity, multi-source/folder archives, automatic YouTube account
+or upload integration, compression redesign, and multi-video stream encode.

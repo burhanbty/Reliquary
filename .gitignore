@@ -84,6 +84,8 @@ test_*
 !tests/test_cli_testlab.cmake
 !tests/test_youtube_capacity_lab.cpp
 !tests/test_cli_capacitylab.cmake
+!tests/test_video_set.cpp
+!tests/test_cli_video_set.cmake
 decoded_*
 
 # Local Capacity Lab benchmark artifacts
@@ -92,3 +94,8 @@ capacity-staged/
 boundary-staged/
 onebit-staged/
 stress-staged/
+
+# Local Video Set staging, recovery, and smoke artifacts
+*.vsx-staging/
+video-set-smoke/
+vsx-set-smoke/

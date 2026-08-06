@@ -285,6 +285,7 @@ private:
     QLabel *reliabilityHelpLabel;
     QComboBox *encodingModeCombo;
     QLabel *encodingModeHelpLabel;
+    QCheckBox *videoSetCheckBox = nullptr;
     QPushButton *encodeButton;
     QPushButton *decodeButton;
 
@@ -385,6 +386,28 @@ private:
     QProcess *testLabProcess = nullptr;
     QString testLabCancelFile;
     QString testLabOutputBuffer;
+
+    // Video Set (opt-in; delegates to the file-only CLI workflow)
+    QWidget *videoSetPage = nullptr;
+    QLineEdit *videoSetInputEdit = nullptr;
+    QLineEdit *videoSetOutputEdit = nullptr;
+    QComboBox *videoSetProfileCombo = nullptr;
+    QSpinBox *videoSetTargetSpin = nullptr;
+    QSpinBox *videoSetMaximumSizeSpin = nullptr;
+    QDoubleSpinBox *videoSetReserveSpin = nullptr;
+    QTableWidget *videoSetPlanTable = nullptr;
+    QProgressBar *videoSetProgress = nullptr;
+    QTextEdit *videoSetLog = nullptr;
+    QLineEdit *videoSetRecoveryInputEdit = nullptr;
+    QLineEdit *videoSetRecoveryOutputEdit = nullptr;
+    QPushButton *videoSetPlanButton = nullptr;
+    QPushButton *videoSetEncodeButton = nullptr;
+    QPushButton *videoSetResumeButton = nullptr;
+    QPushButton *videoSetScanButton = nullptr;
+    QPushButton *videoSetRecoverButton = nullptr;
+    QPushButton *videoSetRecoverResumeButton = nullptr;
+    QPushButton *videoSetCancelButton = nullptr;
+    QProcess *videoSetProcess = nullptr;
 
     // YouTube Capacity Lab (experimental; never changes production defaults)
     QComboBox *capacityPresetCombo = nullptr;
