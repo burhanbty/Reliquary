@@ -46,6 +46,120 @@ struct Options {
     bool restart_recovery = false;
     bool overwrite = false;
     bool plan_only = false;
+    bool jsonl_progress = false;
+    uint64_t operation_id = 0;
+};
+
+std::string json_escape(const std::string_view value) {
+    std::ostringstream out;
+    for (const unsigned char character : value) {
+        switch (character) {
+            case '"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\b': out << "\\b"; break;
+            case '\f': out << "\\f"; break;
+            case '\n': out << "\\n"; break;
+            case '\r': out << "\\r"; break;
+            case '\t': out << "\\t"; break;
+            default:
+                if (character < 0x20) {
+                    out << "\\u" << std::hex << std::setw(4)
+                        << std::setfill('0') << static_cast<int>(character)
+                        << std::dec;
+                } else {
+                    out << static_cast<char>(character);
+                }
+        }
+    }
+    return out.str();
+}
+
+struct ProgressUpdate {
+    std::string type = "progress";
+    std::string phase;
+    std::string message;
+    std::string secondary_message;
+    std::string current_item;
+    std::optional<uint64_t> current;
+    std::optional<uint64_t> total;
+    std::optional<uint64_t> completed;
+    std::optional<uint64_t> progress_current;
+    std::optional<uint64_t> progress_total;
+    bool determinate = false;
+    std::optional<uint64_t> candidates;
+    std::optional<uint64_t> checked;
+    std::optional<uint64_t> verified;
+    std::optional<uint64_t> expected_parts;
+    std::optional<uint64_t> returned_parts;
+    std::optional<uint64_t> missing;
+    std::optional<uint64_t> corrupt;
+    std::optional<uint64_t> duplicates;
+    std::optional<uint64_t> conflicts;
+    std::string status;
+    std::string sha256;
+    std::string output_path;
+    std::string suggested_action;
+    bool can_retry = false;
+    std::optional<int> exit_code;
+};
+
+class ProgressReporter {
+public:
+    ProgressReporter(const Options &options, std::string operation)
+        : enabled_(options.jsonl_progress), id_(options.operation_id),
+          operation_(std::move(operation)) {}
+
+    void emit(const ProgressUpdate &update) const {
+        if (!enabled_) return;
+        std::ostringstream out;
+        out << "{\"type\":\"" << json_escape(update.type)
+            << "\",\"operation_id\":" << id_
+            << ",\"operation\":\"" << json_escape(operation_) << '"';
+        const auto string_field = [&](const char *name,
+                                      const std::string &value) {
+            if (!value.empty()) out << ",\"" << name << "\":\""
+                                    << json_escape(value) << '"';
+        };
+        const auto number_field = [&](const char *name,
+                                      const std::optional<uint64_t> value) {
+            if (value) out << ",\"" << name << "\":" << *value;
+        };
+        string_field("phase", update.phase);
+        string_field("message", update.message);
+        string_field("secondary_message", update.secondary_message);
+        string_field("current_item", update.current_item);
+        number_field("current", update.current);
+        number_field("total", update.total);
+        number_field("completed", update.completed);
+        number_field("progress_current", update.progress_current);
+        number_field("progress_total", update.progress_total);
+        if (update.progress_current || update.progress_total)
+            out << ",\"determinate\":"
+                << (update.determinate ? "true" : "false");
+        number_field("candidates", update.candidates);
+        number_field("checked", update.checked);
+        number_field("verified", update.verified);
+        number_field("expected_parts", update.expected_parts);
+        number_field("returned_parts", update.returned_parts);
+        number_field("missing", update.missing);
+        number_field("corrupt", update.corrupt);
+        number_field("duplicates", update.duplicates);
+        number_field("conflicts", update.conflicts);
+        string_field("status", update.status);
+        string_field("sha256", update.sha256);
+        string_field("output_path", update.output_path);
+        string_field("suggested_action", update.suggested_action);
+        if (update.can_retry) out << ",\"can_retry\":true";
+        if (update.exit_code)
+            out << ",\"exit_code\":" << *update.exit_code;
+        out << '}';
+        std::cerr << out.str() << '\n' << std::flush;
+    }
+
+private:
+    bool enabled_ = false;
+    uint64_t id_ = 0;
+    std::string operation_;
 };
 
 struct Candidate {
@@ -136,6 +250,15 @@ Options parse_options(const int argc, char *argv[], const std::string &command) 
         else if (arg == "--overwrite") options.overwrite = true;
         else if (arg == "--plan-only") options.plan_only = true;
         else if (arg == "--report-format") (void) require("--report-format");
+        else if (arg == "--progress-format") {
+            if (require("--progress-format") != "jsonl")
+                throw std::invalid_argument(
+                    "--progress-format currently accepts only jsonl");
+            options.jsonl_progress = true;
+        }
+        else if (arg == "--operation-id")
+            options.operation_id = parse_u64(
+                require("--operation-id"), "operation id");
         else if (arg == "--help" || arg == "-h") { print_help(argv[0]); throw std::runtime_error("__help__"); }
         else if (!arg.empty() && arg[0] == '-') throw std::invalid_argument("unknown Video Set option: " + arg);
         else positional.push_back(arg);
@@ -155,6 +278,9 @@ Options parse_options(const int argc, char *argv[], const std::string &command) 
     }
     if (options.container != "mkv")
         throw std::invalid_argument("Video Set currently supports only the mkv output container");
+    if (options.jsonl_progress && options.operation_id == 0)
+        throw std::invalid_argument(
+            "--progress-format jsonl requires a non-zero --operation-id");
     return options;
 }
 
@@ -357,13 +483,46 @@ std::filesystem::path unique_scan_directory(const std::filesystem::path &parent)
 std::vector<Candidate> scan_candidates(const std::vector<std::filesystem::path> &videos,
                                        const std::filesystem::path &temporary,
                                        const std::string &password,
-                                       std::vector<std::filesystem::path> &corrupt_videos) {
+                                       std::vector<std::filesystem::path> &corrupt_videos,
+                                       const ProgressReporter *progress = nullptr) {
     std::vector<Candidate> candidates;
     std::size_t ordinal = 0;
     for (const auto &video : videos) {
+        if (progress) progress->emit({
+            .phase = "decoding_video",
+            .message = "Checking embedded Video Set information",
+            .secondary_message = "The original file is not being rebuilt yet.",
+            .current_item = video.filename().string(),
+            .current = ordinal + 1,
+            .total = videos.size(),
+            .completed = ordinal,
+            .progress_current = ordinal,
+            .progress_total = videos.size(),
+            .determinate = true,
+            .candidates = videos.size(),
+            .checked = ordinal,
+            .verified = candidates.size(),
+            .corrupt = corrupt_videos.size()
+        });
         const auto payload = temporary / ("scan-" + std::to_string(ordinal++) + ".payload");
         if (!decode_video(video, payload, password)) {
-            corrupt_videos.push_back(video); continue;
+            corrupt_videos.push_back(video);
+            if (progress) progress->emit({
+                .phase = "reading_metadata",
+                .message = "Checking embedded Video Set information",
+                .current_item = video.filename().string(),
+                .current = ordinal,
+                .total = videos.size(),
+                .completed = ordinal,
+                .progress_current = ordinal,
+                .progress_total = videos.size(),
+                .determinate = true,
+                .candidates = videos.size(),
+                .checked = ordinal,
+                .verified = candidates.size(),
+                .corrupt = corrupt_videos.size()
+            });
+            continue;
         }
         PartEnvelopeV1 envelope;
         std::string error;
@@ -375,6 +534,21 @@ std::vector<Candidate> scan_candidates(const std::vector<std::filesystem::path> 
         }
         candidates.push_back({video, envelope});
         std::error_code ignored; std::filesystem::remove(payload, ignored);
+        if (progress) progress->emit({
+            .phase = "reading_metadata",
+            .message = "Checking embedded Video Set information",
+            .current_item = video.filename().string(),
+            .current = ordinal,
+            .total = videos.size(),
+            .completed = ordinal,
+            .progress_current = ordinal,
+            .progress_total = videos.size(),
+            .determinate = true,
+            .candidates = videos.size(),
+            .checked = ordinal,
+            .verified = candidates.size(),
+            .corrupt = corrupt_videos.size()
+        });
     }
     return candidates;
 }
@@ -419,17 +593,29 @@ SetPlan plan_from_envelopes(const std::vector<Candidate> &candidates,
 }
 
 int do_plan(const Options &options) {
+    const ProgressReporter progress(options, "plan");
+    progress.emit({.phase = "hashing_source",
+                   .message = "Reading and hashing the source file"});
     auto plan = plan_file(options.input, plan_options(options));
     populate_chunk_hashes(options.input, plan);
+    progress.emit({.type = "result", .phase = "completed",
+                   .message = "Video Set plan is ready",
+                   .total = plan.parts.size(),
+                   .status = "plan_ready"});
     print_plan(plan);
     return 0;
 }
 
 int do_encode(const Options &options) {
+    const ProgressReporter progress(options, "encode");
     const std::filesystem::path source = options.input;
     const std::filesystem::path output_root = options.output;
     std::filesystem::create_directories(output_root);
+    progress.emit({.phase = "hashing_source",
+                   .message = "Reading and hashing the source file"});
     const auto source_before = sha256_file(source);
+    progress.emit({.phase = "calculating_plan",
+                   .message = "Calculating the Video Set plan"});
     auto plan = plan_file(source, plan_options(options));
     populate_chunk_hashes(source, plan);
     if (plan.original_file_sha256 != source_before) throw std::runtime_error("source changed while hashing");
@@ -456,6 +642,15 @@ int do_encode(const Options &options) {
 
     for (std::size_t index = 0; index < plan.parts.size(); ++index) {
         auto &part = plan.parts[index];
+        progress.emit({.phase = "encoding_part",
+                       .message = "Encoding Video Set part",
+                       .current_item = part.expected_video_filename,
+                       .current = index + 1,
+                       .total = plan.parts.size(),
+                       .completed = index,
+                       .progress_current = index,
+                       .progress_total = plan.parts.size(),
+                       .determinate = true});
         const auto video = staging / "videos" /
             std::filesystem::u8path(part.expected_video_filename);
         if (options.resume && part.local_decode_state == "Exact" &&
@@ -518,6 +713,15 @@ int do_encode(const Options &options) {
             throw std::runtime_error("actual video exceeds hard size cap; set remains in staging");
         }
         ms_result_t decoded_result{};
+        progress.emit({.phase = "verifying_part",
+                       .message = "Verifying the encoded part locally",
+                       .current_item = part.expected_video_filename,
+                       .current = index + 1,
+                       .total = plan.parts.size(),
+                       .completed = index,
+                       .progress_current = index,
+                       .progress_total = plan.parts.size(),
+                       .determinate = true});
         if (!decode_video(video, decoded, options.password, &decoded_result)) {
             part.local_decode_state = "Failed";
             write_manifest_atomic(staging / "set_manifest.json", plan);
@@ -538,6 +742,15 @@ int do_encode(const Options &options) {
         std::error_code ignored;
         std::filesystem::remove(payload, ignored); std::filesystem::remove(decoded, ignored);
         write_manifest_atomic(staging / "set_manifest.json", plan);
+        progress.emit({.phase = "verifying_part",
+                       .message = "Part verified exactly",
+                       .current_item = part.expected_video_filename,
+                       .current = index + 1,
+                       .total = plan.parts.size(),
+                       .completed = index + 1,
+                       .progress_current = index + 1,
+                       .progress_total = plan.parts.size(),
+                       .determinate = true});
         std::cout << "Part " << index + 1 << '/' << plan.parts.size() << " locally verified exact\n";
     }
     if (sha256_file(source) != source_before) throw std::runtime_error("source file changed during encode");
@@ -546,9 +759,20 @@ int do_encode(const Options &options) {
     write_manual_workflow_files(staging, plan, options.upload_batch_size);
     write_manifest_atomic(staging / "set_manifest.json", plan);
     const auto final = final_path_for(output_root, plan);
+    progress.emit({.phase = "finalizing",
+                   .message = "Publishing the verified Video Set"});
     atomic_publish_with_optional_replace(
         staging, final, output_root, options.overwrite);
     std::cout << "Video Set locally verified and atomically published: " << final.string() << "\n";
+    progress.emit({.type = "result", .phase = "completed",
+                   .message = "Video Set locally verified",
+                   .total = plan.parts.size(),
+                   .completed = plan.parts.size(),
+                   .progress_current = plan.parts.size(),
+                   .progress_total = plan.parts.size(),
+                   .determinate = true,
+                   .status = "locally_verified",
+                   .output_path = final.string()});
     return 0;
 }
 
@@ -575,16 +799,39 @@ int do_status(const Options &options) {
 }
 
 int do_inspect(const Options &options) {
+    const ProgressReporter progress(options, "scan");
+    progress.emit({.phase = "discovering_files",
+                   .message = "Discovering downloaded videos",
+                   .secondary_message =
+                       "The original file is not being rebuilt yet."});
     const auto videos = collect_videos(options.input);
     if (videos.empty()) throw std::runtime_error("no supported video files found");
+    progress.emit({.phase = "reading_metadata",
+                   .message = "Checking embedded Video Set information",
+                   .secondary_message =
+                       "The original file is not being rebuilt yet.",
+                   .total = videos.size(),
+                   .progress_current = 0,
+                   .progress_total = videos.size(),
+                   .determinate = true,
+                   .candidates = videos.size(),
+                   .checked = 0,
+                   .verified = 0,
+                   .corrupt = 0});
     const auto temporary = unique_scan_directory(std::filesystem::temp_directory_path());
     std::vector<std::filesystem::path> corrupt;
-    const auto candidates = scan_candidates(videos, temporary, options.password, corrupt);
+    const auto candidates = scan_candidates(
+        videos, temporary, options.password, corrupt, &progress);
     std::error_code ignored; std::filesystem::remove_all(temporary, ignored);
     std::map<std::string, std::map<uint32_t, std::vector<Candidate>>> sets;
     for (const auto &c : candidates)
         sets[id_hex(c.envelope.set_id)][c.envelope.part_index].push_back(c);
     bool conflict_found = false;
+    uint64_t expected_total = 0;
+    uint64_t returned_total = 0;
+    uint64_t duplicate_total = 0;
+    uint64_t conflict_total = 0;
+    uint64_t missing_total = 0;
     for (const auto &[set_id, parts] : sets) {
         const auto first = std::find_if(candidates.begin(), candidates.end(),
             [&](const Candidate &c) { return id_hex(c.envelope.set_id) == set_id; });
@@ -611,16 +858,44 @@ int do_inspect(const Options &options) {
         const auto missing_count =
             first->envelope.part_count > parts.size()
                 ? first->envelope.part_count - parts.size() : 0;
+        expected_total += first->envelope.part_count;
+        returned_total += parts.size();
+        duplicate_total += duplicate_count;
+        conflict_total += conflict_count;
+        missing_total += missing_count;
         std::cout << ", duplicates " << duplicate_count
                   << ", conflicts " << conflict_count
                   << ", missing " << missing_count << "\n";
     }
     if (!corrupt.empty()) std::cout << "Corrupt/unreadable videos: " << corrupt.size() << "\n";
+    progress.emit({.phase = "completed",
+                   .message = "Downloaded video scan complete",
+                   .progress_current = videos.size(),
+                   .progress_total = videos.size(),
+                   .determinate = true,
+                   .candidates = videos.size(),
+                   .checked = videos.size(),
+                   .verified = candidates.size(),
+                   .expected_parts = expected_total,
+                   .returned_parts = returned_total,
+                   .missing = missing_total,
+                   .corrupt = corrupt.size(),
+                   .duplicates = duplicate_total,
+                   .conflicts = conflict_total,
+                   .status = sets.empty() ? "no_video_set" :
+                       (corrupt.empty() && !conflict_found &&
+                        missing_total == 0 ? "scan_complete" :
+                                             "scan_needs_attention")});
     if (sets.empty()) return kExitCorrupt;
     return corrupt.empty() && !conflict_found ? 0 : kExitCorrupt;
 }
 
 int do_recover(const Options &options) {
+    const ProgressReporter progress(options, "recover");
+    progress.emit({.phase = "preparing",
+                   .message = "Preparing recovery",
+                   .secondary_message =
+                       "Verified parts will be decoded and written to the original file."});
     std::filesystem::path input = options.input;
     std::filesystem::path output = options.output;
     std::filesystem::create_directories(output);
@@ -639,11 +914,14 @@ int do_recover(const Options &options) {
         manifest_path = options.manifest; manifest_plan = read_manifest(manifest_path);
         if (!options.videos_dir.empty()) video_source = options.videos_dir;
     }
+    progress.emit({.phase = "discovering_files",
+                   .message = "Finding verified Video Set parts"});
     const auto videos = collect_videos(video_source);
     if (videos.empty()) throw std::runtime_error("no supported video files found for recovery");
     const auto temporary = unique_scan_directory(output);
     std::vector<std::filesystem::path> unreadable;
-    const auto candidates = scan_candidates(videos, temporary, options.password, unreadable);
+    const auto candidates = scan_candidates(
+        videos, temporary, options.password, unreadable, &progress);
     std::map<std::string, std::vector<Candidate>> groups;
     for (const auto &c : candidates) groups[id_hex(c.envelope.set_id)].push_back(c);
     if (manifest_plan) {
@@ -728,6 +1006,10 @@ int do_recover(const Options &options) {
         if (std::filesystem::exists(final) && !options.overwrite)
             throw std::runtime_error("recovery output exists; use --overwrite");
         std::set<uint32_t> completed = options.resume ? read_completed_state(state, plan, partial) : std::set<uint32_t>{};
+        uint64_t recovered_bytes = 0;
+        for (const auto index : completed)
+            if (index < plan.parts.size())
+                recovered_bytes += plan.parts[index].chunk_size;
         if (!std::filesystem::exists(partial)) {
             std::ofstream create(partial, std::ios::binary | std::ios::trunc);
             if (plan.original_file_size > 0) {
@@ -738,6 +1020,15 @@ int do_recover(const Options &options) {
         if (!assembled) throw std::runtime_error("could not open recovery partial output");
         for (uint32_t index = 0; index < plan.parts.size(); ++index) {
             if (completed.contains(index)) { std::cout << "Resume: part " << index + 1 << " already verified\n"; continue; }
+            progress.emit({.phase = "decoding_video",
+                           .message = "Decoding a verified Video Set part",
+                           .current_item = chosen.at(index).video.filename().string(),
+                           .current = index + 1,
+                           .total = plan.parts.size(),
+                           .completed = completed.size(),
+                           .progress_current = recovered_bytes,
+                           .progress_total = plan.original_file_size,
+                           .determinate = plan.original_file_size != 0});
             const auto payload = temporary / ("recover-" + set_id.substr(0, 8) + '-' + std::to_string(index) + ".payload");
             if (!decode_video(chosen.at(index).video, payload, options.password)) {
                 corrupt_indices.push_back(index); break;
@@ -747,6 +1038,15 @@ int do_recover(const Options &options) {
                 !envelope_matches(actual, plan, plan.parts[index])) {
                 corrupt_indices.push_back(index); break;
             }
+            progress.emit({.phase = "verifying_part",
+                           .message = "Part metadata and hash verified",
+                           .current_item = chosen.at(index).video.filename().string(),
+                           .current = index + 1,
+                           .total = plan.parts.size(),
+                           .completed = completed.size(),
+                           .progress_current = recovered_bytes,
+                           .progress_total = plan.original_file_size,
+                           .determinate = plan.original_file_size != 0});
             std::ifstream chunk(payload, std::ios::binary);
             chunk.seekg(actual.header_length);
             assembled.seekp(static_cast<std::streamoff>(actual.chunk_offset));
@@ -758,6 +1058,16 @@ int do_recover(const Options &options) {
                 if (chunk.gcount() != count) { corrupt_indices.push_back(index); break; }
                 assembled.write(buffer.data(), count);
                 remaining -= static_cast<uint64_t>(count);
+                recovered_bytes += static_cast<uint64_t>(count);
+                progress.emit({.phase = "writing_chunk",
+                               .message = "Writing verified bytes to the original file",
+                               .current_item = chosen.at(index).video.filename().string(),
+                               .current = index + 1,
+                               .total = plan.parts.size(),
+                               .completed = completed.size(),
+                               .progress_current = recovered_bytes,
+                               .progress_total = plan.original_file_size,
+                               .determinate = plan.original_file_size != 0});
             }
             assembled.flush();
             if (!corrupt_indices.empty()) break;
@@ -775,12 +1085,18 @@ int do_recover(const Options &options) {
             write_reports(report_root, plan, {}, duplicates, {}, corrupt_indices);
             overall = (std::max)(overall, kExitCorrupt); continue;
         }
+        progress.emit({.phase = "checking_full_file",
+                       .message = "Checking the final full-file SHA-256",
+                       .secondary_message =
+                           "Recovery is complete only if this hash matches."});
         if (sha256_file(partial) != plan.original_file_sha256) {
             plan.aggregate_state = "Failed global SHA validation";
             write_recovery_state(state, plan, partial, completed, plan.aggregate_state);
             write_reports(report_root, plan);
             overall = (std::max)(overall, kExitHash); continue;
         }
+        progress.emit({.phase = "finalizing",
+                       .message = "Publishing the verified original file"});
         atomic_publish_with_optional_replace(
             partial, final, output, options.overwrite);
         plan.aggregate_state = "Recovered exact";
@@ -789,6 +1105,17 @@ int do_recover(const Options &options) {
         write_reports(report_root, plan, {}, duplicates);
         std::cout << "Set " << set_id << ": Recovered exact\nFinal: " << final.string()
                   << "\nSHA-256: " << plan.original_file_sha256.hexValue() << "\n";
+        progress.emit({.type = "result", .phase = "completed",
+                       .message = "Original file recovered exactly",
+                       .current = plan.parts.size(),
+                       .total = plan.parts.size(),
+                       .completed = plan.parts.size(),
+                       .progress_current = plan.original_file_size,
+                       .progress_total = plan.original_file_size,
+                       .determinate = plan.original_file_size != 0,
+                       .status = "recovered_exact",
+                       .sha256 = plan.original_file_sha256.hexValue(),
+                       .output_path = final.string()});
     }
     std::error_code ignored; std::filesystem::remove_all(temporary, ignored);
     return overall;
@@ -806,8 +1133,14 @@ bool is_command(const char *command) {
 int run(const int argc, char *argv[]) {
     const std::string command = argv[1];
     if (command == "set-help") { print_help(argv[0]); return 0; }
+    std::optional<Options> parsed_options;
+    const std::string operation = command == "set-plan" ? "plan" :
+        command == "set-encode" ? "encode" :
+        command == "set-inspect" ? "scan" :
+        command == "set-recover" ? "recover" : "none";
     try {
-        const auto options = parse_options(argc, argv, command);
+        parsed_options = parse_options(argc, argv, command);
+        const auto &options = *parsed_options;
         if (command == "set-plan") return do_plan(options);
         if (command == "set-encode") return do_encode(options);
         if (command == "set-status") return do_status(options);
@@ -815,9 +1148,23 @@ int run(const int argc, char *argv[]) {
         return do_recover(options);
     } catch (const std::runtime_error &error) {
         if (std::string(error.what()) == "__help__") return 0;
+        if (parsed_options && operation != "none")
+            ProgressReporter(*parsed_options, operation).emit({
+                .type = "error", .phase = "failed",
+                .message = error.what(),
+                .suggested_action =
+                    "Review the input, available disk space, and technical log, then retry.",
+                .can_retry = true, .exit_code = 1});
         std::cerr << "Video Set error: " << error.what() << "\n";
         return 1;
     } catch (const std::exception &error) {
+        if (parsed_options && operation != "none")
+            ProgressReporter(*parsed_options, operation).emit({
+                .type = "error", .phase = "failed",
+                .message = error.what(),
+                .suggested_action =
+                    "Correct the command arguments and retry.",
+                .can_retry = true, .exit_code = kExitUsage});
         std::cerr << "Video Set argument error: " << error.what() << "\n";
         print_help(argv[0]);
         return kExitUsage;

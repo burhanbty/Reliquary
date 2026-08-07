@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
+#include <cmath>
+#include <cstdlib>
 #include <regex>
 #include <stdexcept>
 
@@ -47,7 +50,303 @@ int step_for(const ViewState &view) {
     return 0;
 }
 
+std::size_t json_value_start(const std::string_view json,
+                             const std::string_view key) {
+    const std::string needle = "\"" + std::string(key) + "\"";
+    const auto key_position = json.find(needle);
+    if (key_position == std::string_view::npos)
+        return std::string_view::npos;
+    const auto colon = json.find(':', key_position + needle.size());
+    if (colon == std::string_view::npos)
+        throw std::invalid_argument("missing JSON colon");
+    const auto value = json.find_first_not_of(" \t\r\n", colon + 1);
+    if (value == std::string_view::npos)
+        throw std::invalid_argument("missing JSON value");
+    return value;
+}
+
+std::optional<std::string> json_string(const std::string_view json,
+                                       const std::string_view key) {
+    auto position = json_value_start(json, key);
+    if (position == std::string_view::npos) return std::nullopt;
+    if (json[position++] != '"')
+        throw std::invalid_argument("JSON value is not a string");
+    std::string result;
+    while (position < json.size()) {
+        const char value = json[position++];
+        if (value == '"') return result;
+        if (value != '\\') {
+            if (static_cast<unsigned char>(value) < 0x20)
+                throw std::invalid_argument("control character in JSON string");
+            result.push_back(value);
+            continue;
+        }
+        if (position >= json.size())
+            throw std::invalid_argument("unterminated JSON escape");
+        switch (const char escaped = json[position++]) {
+            case '"': result.push_back('"'); break;
+            case '\\': result.push_back('\\'); break;
+            case '/': result.push_back('/'); break;
+            case 'b': result.push_back('\b'); break;
+            case 'f': result.push_back('\f'); break;
+            case 'n': result.push_back('\n'); break;
+            case 'r': result.push_back('\r'); break;
+            case 't': result.push_back('\t'); break;
+            default:
+                throw std::invalid_argument(
+                    std::string("unsupported JSON escape: ") + escaped);
+        }
+    }
+    throw std::invalid_argument("unterminated JSON string");
+}
+
+std::optional<uint64_t> json_u64(const std::string_view json,
+                                 const std::string_view key) {
+    const auto position = json_value_start(json, key);
+    if (position == std::string_view::npos) return std::nullopt;
+    auto end = position;
+    while (end < json.size() &&
+           std::isdigit(static_cast<unsigned char>(json[end]))) ++end;
+    if (end == position) throw std::invalid_argument("invalid JSON integer");
+    uint64_t result = 0;
+    const auto parsed = std::from_chars(
+        json.data() + position, json.data() + end, result);
+    if (parsed.ec != std::errc{} || parsed.ptr != json.data() + end)
+        throw std::invalid_argument("JSON integer overflow");
+    return result;
+}
+
+std::optional<int> json_int(const std::string_view json,
+                            const std::string_view key) {
+    const auto position = json_value_start(json, key);
+    if (position == std::string_view::npos) return std::nullopt;
+    auto end = position;
+    if (end < json.size() && json[end] == '-') ++end;
+    while (end < json.size() &&
+           std::isdigit(static_cast<unsigned char>(json[end]))) ++end;
+    if (end == position) throw std::invalid_argument("invalid JSON integer");
+    int result = 0;
+    const auto parsed = std::from_chars(
+        json.data() + position, json.data() + end, result);
+    if (parsed.ec != std::errc{} || parsed.ptr != json.data() + end)
+        throw std::invalid_argument("JSON integer overflow");
+    return result;
+}
+
+std::optional<double> json_double(const std::string_view json,
+                                  const std::string_view key) {
+    const auto position = json_value_start(json, key);
+    if (position == std::string_view::npos) return std::nullopt;
+    const std::string tail(json.substr(position));
+    char *end = nullptr;
+    const double result = std::strtod(tail.c_str(), &end);
+    if (end == tail.c_str() || !std::isfinite(result))
+        throw std::invalid_argument("invalid JSON number");
+    return result;
+}
+
+std::optional<bool> json_bool(const std::string_view json,
+                              const std::string_view key) {
+    const auto position = json_value_start(json, key);
+    if (position == std::string_view::npos) return std::nullopt;
+    if (json.substr(position, 4) == "true") return true;
+    if (json.substr(position, 5) == "false") return false;
+    throw std::invalid_argument("invalid JSON boolean");
+}
+
+template <typename Target>
+void assign_if_present(Target &target, const std::optional<Target> &value) {
+    if (value.has_value()) target = *value;
+}
+
 } // namespace
+
+uint64_t OperationProgressModel::begin(
+    const OperationType type,
+    const OperationPhase phase,
+    const int64_t now_ms,
+    std::string primary_message,
+    std::string secondary_message) {
+    progress_ = {};
+    progress_.operation_id = ++next_operation_id_;
+    progress_.operation_type = type;
+    progress_.phase = phase;
+    progress_.state = OperationState::Running;
+    progress_.primary_message = std::move(primary_message);
+    progress_.secondary_message = std::move(secondary_message);
+    progress_.can_cancel = true;
+    progress_.is_busy = true;
+    progress_.started_at_ms = now_ms;
+    progress_.last_progress_at_ms = now_ms;
+    eta_from_event_ = false;
+    refresh_derived(now_ms);
+    return progress_.operation_id;
+}
+
+bool OperationProgressModel::apply(const OperationEvent &event,
+                                   const int64_t now_ms) {
+    if (event.operation_id == 0 ||
+        event.operation_id != progress_.operation_id)
+        return false;
+    if (progress_.state != OperationState::Running &&
+        progress_.state != OperationState::Cancelling)
+        return false;
+
+    if (event.operation_type != OperationType::None)
+        progress_.operation_type = event.operation_type;
+    progress_.phase = event.phase;
+    progress_.state = event.state;
+    if (!event.primary_message.empty())
+        progress_.primary_message = event.primary_message;
+    if (!event.secondary_message.empty())
+        progress_.secondary_message = event.secondary_message;
+    if (!event.current_item_name.empty())
+        progress_.current_item_name = event.current_item_name;
+    assign_if_present(progress_.current_index, event.current_index);
+    assign_if_present(progress_.total_items, event.total_items);
+    assign_if_present(progress_.completed_items, event.completed_items);
+    assign_if_present(progress_.progress_current, event.progress_current);
+    assign_if_present(progress_.progress_total, event.progress_total);
+    progress_.progress_is_determinate = event.progress_is_determinate &&
+        event.progress_total.value_or(progress_.progress_total) != 0;
+    if (event.estimated_remaining_seconds.has_value()) {
+        progress_.estimated_remaining_seconds =
+            event.estimated_remaining_seconds;
+        eta_from_event_ = true;
+    } else {
+        eta_from_event_ = false;
+    }
+    progress_.can_retry = event.can_retry;
+    if (!event.technical_detail.empty())
+        progress_.technical_detail = event.technical_detail;
+    progress_.backend_exit_code = event.backend_exit_code;
+    if (!event.suggested_action.empty())
+        progress_.suggested_action = event.suggested_action;
+    if (!event.status.empty()) progress_.status = event.status;
+    if (!event.sha256.empty()) progress_.sha256 = event.sha256;
+    if (!event.output_path.empty())
+        progress_.output_path = event.output_path;
+    if (event.has_scan_summary) {
+        progress_.scan = event.scan;
+        progress_.has_scan_summary = true;
+    }
+    progress_.last_progress_at_ms = now_ms;
+    refresh_derived(now_ms);
+    return true;
+}
+
+bool OperationProgressModel::tick(const int64_t now_ms) {
+    if (progress_.state == OperationState::Idle) return false;
+    refresh_derived(now_ms);
+    return true;
+}
+
+bool OperationProgressModel::request_cancel(const int64_t now_ms) {
+    if (progress_.state == OperationState::Cancelling) return true;
+    if (progress_.state != OperationState::Running) return false;
+    progress_.state = OperationState::Cancelling;
+    progress_.primary_message = "Cancelling...";
+    progress_.secondary_message =
+        "Waiting for the current safe boundary. Completed work will be kept.";
+    progress_.can_cancel = false;
+    progress_.is_busy = true;
+    refresh_derived(now_ms);
+    return true;
+}
+
+bool OperationProgressModel::complete(const uint64_t operation_id,
+                                      const int64_t now_ms,
+                                      std::string message) {
+    if (operation_id != progress_.operation_id || operation_id == 0)
+        return false;
+    progress_.state = OperationState::Completed;
+    progress_.phase = OperationPhase::Completed;
+    if (!message.empty()) progress_.primary_message = std::move(message);
+    progress_.can_cancel = false;
+    progress_.can_continue = true;
+    progress_.is_busy = false;
+    progress_.taking_longer_than_usual = false;
+    refresh_derived(now_ms);
+    return true;
+}
+
+bool OperationProgressModel::cancel(const uint64_t operation_id,
+                                    const int64_t now_ms,
+                                    std::string message) {
+    if (operation_id != progress_.operation_id || operation_id == 0)
+        return false;
+    progress_.state = OperationState::Cancelled;
+    progress_.phase = OperationPhase::Cancelled;
+    progress_.primary_message = message.empty()
+        ? "Operation cancelled. You can continue later."
+        : std::move(message);
+    progress_.can_cancel = false;
+    progress_.can_retry = true;
+    progress_.is_busy = false;
+    progress_.taking_longer_than_usual = false;
+    refresh_derived(now_ms);
+    return true;
+}
+
+bool OperationProgressModel::fail(const uint64_t operation_id,
+                                  const int64_t now_ms,
+                                  const int exit_code,
+                                  std::string message,
+                                  std::string suggested_action) {
+    if (operation_id != progress_.operation_id || operation_id == 0)
+        return false;
+    progress_.state = OperationState::Failed;
+    progress_.phase = OperationPhase::Failed;
+    progress_.primary_message = std::move(message);
+    progress_.suggested_action = std::move(suggested_action);
+    progress_.backend_exit_code = exit_code;
+    progress_.can_cancel = false;
+    progress_.can_retry = true;
+    progress_.is_busy = false;
+    progress_.taking_longer_than_usual = false;
+    refresh_derived(now_ms);
+    return true;
+}
+
+void OperationProgressModel::reset() {
+    progress_ = {};
+    eta_from_event_ = false;
+}
+
+void OperationProgressModel::refresh_derived(const int64_t now_ms) {
+    if (progress_.started_at_ms > 0 && now_ms >= progress_.started_at_ms)
+        progress_.elapsed_seconds =
+            static_cast<double>(now_ms - progress_.started_at_ms) / 1000.0;
+    progress_.is_busy = progress_.state == OperationState::Running ||
+        progress_.state == OperationState::Cancelling;
+    progress_.can_cancel = progress_.state == OperationState::Running;
+    progress_.taking_longer_than_usual = progress_.is_busy &&
+        progress_.last_progress_at_ms > 0 &&
+        now_ms - progress_.last_progress_at_ms >= 30000;
+
+    if (progress_.progress_is_determinate &&
+        progress_.progress_total != 0) {
+        progress_.progress_current = (std::min)(
+            progress_.progress_current, progress_.progress_total);
+        progress_.progress_percent = (std::clamp)(
+            static_cast<double>(progress_.progress_current) * 100.0 /
+                static_cast<double>(progress_.progress_total),
+            0.0, 100.0);
+        if (!eta_from_event_ && progress_.progress_current != 0 &&
+            progress_.progress_current < progress_.progress_total &&
+            progress_.elapsed_seconds > 0.0) {
+            progress_.estimated_remaining_seconds =
+                progress_.elapsed_seconds /
+                static_cast<double>(progress_.progress_current) *
+                static_cast<double>(progress_.progress_total -
+                                    progress_.progress_current);
+        }
+    } else {
+        progress_.progress_percent.reset();
+        if (!eta_from_event_)
+            progress_.estimated_remaining_seconds.reset();
+    }
+}
 
 Controller::Controller() { refresh_message(); }
 
@@ -167,6 +466,7 @@ void Controller::cancel_download() {
 }
 
 void Controller::begin_scan() {
+    view_.scan = {};
     view_.state = State::ScanningReturnedVideos;
     refresh_message();
 }
@@ -310,7 +610,8 @@ void Controller::refresh_message() {
             view_.suggested_action = "Remove the conflicting copy and scan again.";
             break;
         case State::CorruptPartsDetected:
-            view_.primary_message = "One or more parts could not be verified.";
+            view_.primary_message =
+                "One or more parts are corrupt or could not be verified.";
             view_.suggested_action = "Download the affected videos again, then rescan.";
             break;
         case State::ReadyToRecover:
@@ -361,6 +662,164 @@ std::string_view state_name(const State state) noexcept {
         case State::Failed: return "Failed";
     }
     return "Failed";
+}
+
+std::string_view operation_type_name(const OperationType type) noexcept {
+    switch (type) {
+        case OperationType::None: return "none";
+        case OperationType::Plan: return "plan";
+        case OperationType::Encode: return "encode";
+        case OperationType::Download: return "download";
+        case OperationType::Scan: return "scan";
+        case OperationType::Recover: return "recover";
+        case OperationType::FinalHash: return "final_hash";
+        case OperationType::Finalize: return "finalize";
+    }
+    return "none";
+}
+
+std::string_view operation_phase_name(const OperationPhase phase) noexcept {
+    switch (phase) {
+        case OperationPhase::Idle: return "idle";
+        case OperationPhase::Preparing: return "preparing";
+        case OperationPhase::DiscoveringFiles: return "discovering_files";
+        case OperationPhase::ReadingMetadata: return "reading_metadata";
+        case OperationPhase::HashingSource: return "hashing_source";
+        case OperationPhase::CalculatingPlan: return "calculating_plan";
+        case OperationPhase::EncodingPart: return "encoding_part";
+        case OperationPhase::DecodingVideo: return "decoding_video";
+        case OperationPhase::VerifyingPart: return "verifying_part";
+        case OperationPhase::WritingChunk: return "writing_chunk";
+        case OperationPhase::CheckingFullFile: return "checking_full_file";
+        case OperationPhase::Finalizing: return "finalizing";
+        case OperationPhase::Completed: return "completed";
+        case OperationPhase::Cancelled: return "cancelled";
+        case OperationPhase::Failed: return "failed";
+        case OperationPhase::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+OperationType parse_operation_type(const std::string_view value) noexcept {
+    if (value == "plan") return OperationType::Plan;
+    if (value == "encode") return OperationType::Encode;
+    if (value == "download") return OperationType::Download;
+    if (value == "scan") return OperationType::Scan;
+    if (value == "recover") return OperationType::Recover;
+    if (value == "final_hash") return OperationType::FinalHash;
+    if (value == "finalize") return OperationType::Finalize;
+    return OperationType::None;
+}
+
+OperationPhase parse_operation_phase(const std::string_view value) noexcept {
+    if (value == "idle") return OperationPhase::Idle;
+    if (value == "preparing") return OperationPhase::Preparing;
+    if (value == "discovering_files") return OperationPhase::DiscoveringFiles;
+    if (value == "reading_metadata") return OperationPhase::ReadingMetadata;
+    if (value == "hashing_source") return OperationPhase::HashingSource;
+    if (value == "calculating_plan") return OperationPhase::CalculatingPlan;
+    if (value == "encoding_part") return OperationPhase::EncodingPart;
+    if (value == "decoding_video") return OperationPhase::DecodingVideo;
+    if (value == "verifying_part") return OperationPhase::VerifyingPart;
+    if (value == "writing_chunk") return OperationPhase::WritingChunk;
+    if (value == "checking_full_file") return OperationPhase::CheckingFullFile;
+    if (value == "finalizing") return OperationPhase::Finalizing;
+    if (value == "completed") return OperationPhase::Completed;
+    if (value == "cancelled") return OperationPhase::Cancelled;
+    if (value == "failed") return OperationPhase::Failed;
+    return OperationPhase::Unknown;
+}
+
+std::optional<OperationEvent> parse_progress_jsonl(
+    const std::string_view line) noexcept {
+    try {
+        const auto first = line.find_first_not_of(" \t\r\n");
+        const auto last = line.find_last_not_of(" \t\r\n");
+        if (first == std::string_view::npos || line[first] != '{' ||
+            last == std::string_view::npos || line[last] != '}')
+            return std::nullopt;
+        const auto type = json_string(line, "type");
+        const auto operation_id = json_u64(line, "operation_id");
+        const auto operation = json_string(line, "operation");
+        if (!type || !operation_id || !operation || *operation_id == 0)
+            return std::nullopt;
+        if (*type != "progress" && *type != "result" && *type != "error")
+            return std::nullopt;
+
+        OperationEvent event;
+        event.operation_id = *operation_id;
+        event.operation_type = parse_operation_type(*operation);
+        if (event.operation_type == OperationType::None)
+            return std::nullopt;
+        event.state = *type == "result" ? OperationState::Completed :
+            (*type == "error" ? OperationState::Failed :
+                                OperationState::Running);
+        if (const auto phase = json_string(line, "phase"))
+            event.phase = parse_operation_phase(*phase);
+        else if (event.state == OperationState::Completed)
+            event.phase = OperationPhase::Completed;
+        else if (event.state == OperationState::Failed)
+            event.phase = OperationPhase::Failed;
+
+        assign_if_present(event.primary_message, json_string(line, "message"));
+        assign_if_present(event.secondary_message,
+                          json_string(line, "secondary_message"));
+        assign_if_present(event.current_item_name,
+                          json_string(line, "current_item"));
+        event.current_index = json_u64(line, "current");
+        event.total_items = json_u64(line, "total");
+        event.completed_items = json_u64(line, "completed");
+        event.progress_current = json_u64(line, "progress_current");
+        event.progress_total = json_u64(line, "progress_total");
+        event.estimated_remaining_seconds =
+            json_double(line, "estimated_remaining_seconds");
+        event.progress_is_determinate =
+            json_bool(line, "determinate").value_or(false);
+        event.can_retry = json_bool(line, "can_retry").value_or(false);
+        assign_if_present(event.technical_detail,
+                          json_string(line, "technical_detail"));
+        event.backend_exit_code = json_int(line, "exit_code").value_or(0);
+        assign_if_present(event.suggested_action,
+                          json_string(line, "suggested_action"));
+        assign_if_present(event.status, json_string(line, "status"));
+        assign_if_present(event.sha256, json_string(line, "sha256"));
+        assign_if_present(event.output_path,
+                          json_string(line, "output_path"));
+
+        const auto candidates = json_u64(line, "candidates");
+        const auto checked = json_u64(line, "checked");
+        const auto verified = json_u64(line, "verified");
+        const auto expected = json_u64(line, "expected_parts");
+        const auto returned = json_u64(line, "returned_parts");
+        const auto missing = json_u64(line, "missing");
+        const auto corrupt = json_u64(line, "corrupt");
+        const auto duplicates = json_u64(line, "duplicates");
+        const auto conflicts = json_u64(line, "conflicts");
+        event.has_scan_summary = candidates || checked || verified ||
+            expected || returned || missing || corrupt || duplicates ||
+            conflicts;
+        if (event.has_scan_summary) {
+            event.scan.expected_parts = static_cast<uint32_t>(
+                expected.value_or(event.total_items.value_or(0)));
+            event.scan.returned_parts = static_cast<uint32_t>(
+                returned.value_or(verified.value_or(0)));
+            event.scan.exact_parts = static_cast<uint32_t>(
+                verified.value_or(event.scan.returned_parts));
+            event.scan.duplicate_count = static_cast<uint32_t>(
+                duplicates.value_or(0));
+            event.scan.conflict_count = static_cast<uint32_t>(
+                conflicts.value_or(0));
+            const auto missing_count = static_cast<uint32_t>(
+                missing.value_or(0));
+            const auto corrupt_count = static_cast<uint32_t>(
+                corrupt.value_or(0));
+            event.scan.missing_parts.resize(missing_count);
+            event.scan.corrupt_parts.resize(corrupt_count);
+        }
+        return event;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 PlanSummary summarize_plan(const video_set::SetPlan &plan) {
@@ -466,6 +925,54 @@ DownloadProgress parse_ytdlp_progress(const std::string_view output) {
         result.total_items = static_cast<uint32_t>(
             std::stoul(match[2].str()));
     }
+    const auto parse_size = [](const std::string &number,
+                               const std::string &unit) -> uint64_t {
+        const double value = std::stod(number);
+        const auto normalized = [&] {
+            std::string lowered = unit;
+            std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                [](const unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+            return lowered;
+        }();
+        double multiplier = 1.0;
+        if (normalized == "kib") multiplier = 1024.0;
+        else if (normalized == "mib") multiplier = 1024.0 * 1024.0;
+        else if (normalized == "gib")
+            multiplier = 1024.0 * 1024.0 * 1024.0;
+        return static_cast<uint64_t>(value * multiplier);
+    };
+    if (std::regex_search(text, match,
+            std::regex(R"(([0-9]+(?:\.[0-9]+)?)(KiB|MiB|GiB)\s+of\s+~?\s*([0-9]+(?:\.[0-9]+)?)(KiB|MiB|GiB))",
+                       std::regex_constants::icase))) {
+        result.downloaded_bytes = parse_size(match[1].str(), match[2].str());
+        result.total_bytes = parse_size(match[3].str(), match[4].str());
+    } else if (result.percent && std::regex_search(text, match,
+            std::regex(R"(of\s+~?\s*([0-9]+(?:\.[0-9]+)?)(KiB|MiB|GiB))",
+                       std::regex_constants::icase))) {
+        result.total_bytes = parse_size(match[1].str(), match[2].str());
+        result.downloaded_bytes = static_cast<uint64_t>(
+            static_cast<double>(*result.total_bytes) * *result.percent / 100.0);
+    }
+    if (std::regex_search(text, match,
+            std::regex(R"(at\s+([0-9]+(?:\.[0-9]+)?)(KiB|MiB|GiB)/s)",
+                       std::regex_constants::icase)))
+        result.speed_bytes_per_second = static_cast<double>(
+            parse_size(match[1].str(), match[2].str()));
+    if (std::regex_search(text, match,
+            std::regex(R"(ETA\s+(?:(\d+):)?(\d+):(\d+))",
+                       std::regex_constants::icase))) {
+        const uint32_t hours = match[1].matched
+            ? static_cast<uint32_t>(std::stoul(match[1].str())) : 0;
+        result.eta_seconds = hours * 3600u +
+            static_cast<uint32_t>(std::stoul(match[2].str())) * 60u +
+            static_cast<uint32_t>(std::stoul(match[3].str()));
+    }
+    if (std::regex_search(text, match,
+            std::regex(R"(\[download\]\s+Destination:\s+(.+?)(?:\r?\n|$))",
+                       std::regex_constants::icase)))
+        result.destination_filename = match[1].str();
     return result;
 }
 

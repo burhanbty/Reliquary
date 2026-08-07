@@ -14,6 +14,45 @@ namespace video_set_workflow {
 
 enum class Path { None, Create, Recover };
 
+enum class OperationType {
+    None,
+    Plan,
+    Encode,
+    Download,
+    Scan,
+    Recover,
+    FinalHash,
+    Finalize
+};
+
+enum class OperationPhase {
+    Idle,
+    Preparing,
+    DiscoveringFiles,
+    ReadingMetadata,
+    HashingSource,
+    CalculatingPlan,
+    EncodingPart,
+    DecodingVideo,
+    VerifyingPart,
+    WritingChunk,
+    CheckingFullFile,
+    Finalizing,
+    Completed,
+    Cancelled,
+    Failed,
+    Unknown
+};
+
+enum class OperationState {
+    Idle,
+    Running,
+    Cancelling,
+    Completed,
+    Cancelled,
+    Failed
+};
+
 enum class State {
     Welcome,
     SourceRequired,
@@ -89,6 +128,106 @@ struct DownloadProgress {
     std::optional<double> percent;
     std::optional<uint32_t> current_item;
     std::optional<uint32_t> total_items;
+    std::optional<uint64_t> downloaded_bytes;
+    std::optional<uint64_t> total_bytes;
+    std::optional<double> speed_bytes_per_second;
+    std::optional<uint32_t> eta_seconds;
+    std::string destination_filename;
+};
+
+struct OperationEvent {
+    uint64_t operation_id = 0;
+    OperationType operation_type = OperationType::None;
+    OperationPhase phase = OperationPhase::Unknown;
+    OperationState state = OperationState::Running;
+    std::string primary_message;
+    std::string secondary_message;
+    std::string current_item_name;
+    std::optional<uint64_t> current_index;
+    std::optional<uint64_t> total_items;
+    std::optional<uint64_t> completed_items;
+    std::optional<uint64_t> progress_current;
+    std::optional<uint64_t> progress_total;
+    std::optional<double> estimated_remaining_seconds;
+    bool progress_is_determinate = false;
+    bool can_retry = false;
+    std::string technical_detail;
+    int backend_exit_code = 0;
+    std::string suggested_action;
+    std::string status;
+    std::string sha256;
+    std::string output_path;
+    ScanSummary scan;
+    bool has_scan_summary = false;
+};
+
+struct OperationProgress {
+    uint64_t operation_id = 0;
+    OperationType operation_type = OperationType::None;
+    OperationPhase phase = OperationPhase::Idle;
+    OperationState state = OperationState::Idle;
+    std::string primary_message;
+    std::string secondary_message;
+    std::string current_item_name;
+    uint64_t current_index = 0;
+    uint64_t total_items = 0;
+    uint64_t completed_items = 0;
+    uint64_t progress_current = 0;
+    uint64_t progress_total = 0;
+    std::optional<double> progress_percent;
+    bool progress_is_determinate = false;
+    double elapsed_seconds = 0.0;
+    std::optional<double> estimated_remaining_seconds;
+    bool can_cancel = false;
+    bool can_retry = false;
+    bool can_continue = false;
+    bool is_busy = false;
+    bool taking_longer_than_usual = false;
+    int64_t started_at_ms = 0;
+    int64_t last_progress_at_ms = 0;
+    std::string technical_detail;
+    int backend_exit_code = 0;
+    std::string suggested_action;
+    std::string status;
+    std::string sha256;
+    std::string output_path;
+    ScanSummary scan;
+    bool has_scan_summary = false;
+};
+
+class OperationProgressModel {
+public:
+    [[nodiscard]] const OperationProgress &view() const noexcept {
+        return progress_;
+    }
+
+    uint64_t begin(OperationType type,
+                   OperationPhase phase,
+                   int64_t now_ms,
+                   std::string primary_message,
+                   std::string secondary_message = {});
+    [[nodiscard]] bool apply(const OperationEvent &event,
+                             int64_t now_ms);
+    [[nodiscard]] bool tick(int64_t now_ms);
+    [[nodiscard]] bool request_cancel(int64_t now_ms);
+    [[nodiscard]] bool complete(uint64_t operation_id,
+                                int64_t now_ms,
+                                std::string message = {});
+    [[nodiscard]] bool cancel(uint64_t operation_id,
+                              int64_t now_ms,
+                              std::string message = {});
+    [[nodiscard]] bool fail(uint64_t operation_id,
+                            int64_t now_ms,
+                            int exit_code,
+                            std::string message,
+                            std::string suggested_action = {});
+    void reset();
+
+private:
+    void refresh_derived(int64_t now_ms);
+    uint64_t next_operation_id_ = 0;
+    bool eta_from_event_ = false;
+    OperationProgress progress_;
 };
 
 class Controller {
@@ -127,6 +266,16 @@ private:
 };
 
 [[nodiscard]] std::string_view state_name(State state) noexcept;
+[[nodiscard]] std::string_view operation_type_name(
+    OperationType type) noexcept;
+[[nodiscard]] std::string_view operation_phase_name(
+    OperationPhase phase) noexcept;
+[[nodiscard]] OperationType parse_operation_type(
+    std::string_view value) noexcept;
+[[nodiscard]] OperationPhase parse_operation_phase(
+    std::string_view value) noexcept;
+[[nodiscard]] std::optional<OperationEvent> parse_progress_jsonl(
+    std::string_view line) noexcept;
 [[nodiscard]] PlanSummary summarize_plan(const video_set::SetPlan &plan);
 [[nodiscard]] bool is_youtube_playlist_url(std::string_view url) noexcept;
 [[nodiscard]] std::vector<std::string> ytdlp_arguments(

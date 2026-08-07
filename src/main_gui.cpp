@@ -22,11 +22,13 @@
 #include <QLineEdit>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
 #include <QListWidget>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
 #include <QStyleFactory>
+#include <QTextDocument>
 
 #include <algorithm>
 #include <filesystem>
@@ -129,9 +131,21 @@ int main(int argc, char *argv[]) {
             "videoSetAdvancedSettingsPanel");
         auto *classicTools = window.findChild<QGroupBox *>(
             "videoSetClassicTools");
+        auto *activityPanel = window.findChild<QFrame *>(
+            "videoSetActivityPanel");
+        auto *activityTitle = window.findChild<QLabel *>(
+            "videoSetActivityTitle");
+        auto *activityProgress = window.findChild<QProgressBar *>(
+            "videoSetProgressBar");
+        auto *technicalToggle = window.findChild<QToolButton *>(
+            "videoSetTechnicalLogToggle");
+        auto *technicalLog = window.findChild<QTextEdit *>(
+            "videoSetTechnicalLog");
         if (!assistantStack || !assistantScroll || !createChoice ||
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
-            !advancedToggle || !advancedPanel || !classicTools) {
+            !advancedToggle || !advancedPanel || !classicTools ||
+            !activityPanel || !activityTitle || !activityProgress ||
+            !technicalToggle || !technicalLog) {
             qCritical() << "Video Set Assistant controls were not found";
             return 6;
         }
@@ -141,7 +155,9 @@ int main(int argc, char *argv[]) {
             !assistantScroll->widgetResizable() ||
             window.minimumHeight() > 720 ||
             createChoice->focusPolicy() == Qt::NoFocus ||
-            recoverChoice->focusPolicy() == Qt::NoFocus) {
+            recoverChoice->focusPolicy() == Qt::NoFocus ||
+            assistantScroll->isAncestorOf(activityPanel) ||
+            technicalLog->document()->maximumBlockCount() != 5000) {
             qCritical() << "Video Set Assistant welcome/scroll/focus invariant failed";
             return 6;
         }
@@ -153,6 +169,18 @@ int main(int argc, char *argv[]) {
             return 7;
         }
         advancedToggle->setChecked(false);
+        technicalToggle->setChecked(true);
+        QApplication::processEvents();
+        if (technicalLog->isHidden()) {
+            qCritical() << "Technical Video Set log did not expand";
+            return 12;
+        }
+        technicalToggle->setChecked(false);
+        QApplication::processEvents();
+        if (!technicalLog->isHidden()) {
+            qCritical() << "Technical Video Set log did not collapse";
+            return 13;
+        }
         QApplication::processEvents();
         if (!advancedPanel->isHidden()) {
             qCritical() << "Advanced settings did not collapse";
@@ -288,12 +316,21 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantExactSuccess");
         auto *recent = window.findChild<QListWidget *>(
             "videoSetRecentList");
+        auto *activityPanel = window.findChild<QFrame *>(
+            "videoSetActivityPanel");
+        auto *activityTitle = window.findChild<QLabel *>(
+            "videoSetActivityTitle");
+        auto *activityDescription = window.findChild<QLabel *>(
+            "videoSetActivityDescription");
+        auto *activityProgress = window.findChild<QProgressBar *>(
+            "videoSetProgressBar");
         if (!stack || !create || !input || !output || !sourceContinue ||
             !highCapacity || !target || !maximumSize || !calculate ||
             !planSummary || !createVideos || !progressContinue ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
-            !success || !recent) {
+            !success || !recent || !activityPanel || !activityTitle ||
+            !activityDescription || !activityProgress) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
         }
@@ -303,17 +340,23 @@ int main(int argc, char *argv[]) {
             qint64 deadline = 0;
             QString setRoot;
             QStringList returnedFiles;
+            QStringList sourceVideoFiles;
+            bool sawScan = false;
+            bool sawRecovery = false;
         };
         auto *state = new SmokeState{
-            0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}};
+            0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
+            false, false};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
             [&, state, timer, root, source, sets, returned, recovered]() {
             const auto fail = [&](const int code, const QString &message) {
                 qCritical() << message;
+                QFile diagnostic(QDir(root).filePath("e2e-failure.txt"));
+                if (diagnostic.open(QIODevice::WriteOnly | QIODevice::Text))
+                    diagnostic.write(message.toUtf8());
                 timer->stop();
-                window.close();
                 app.exit(code);
             };
             if (QDateTime::currentMSecsSinceEpoch() > state->deadline) {
@@ -327,7 +370,12 @@ int main(int argc, char *argv[]) {
                     .arg(createVideos->isEnabled())
                     .arg(progressContinue->isEnabled())
                     .arg(scan->isEnabled())
-                    .arg(recover->isEnabled()));
+                    .arg(recover->isEnabled()) +
+                    QString(" activity=%1 observedScan=%2 observedRecovery=%3 finalHash=%4")
+                        .arg(activityTitle->text())
+                        .arg(activityPanel->property("observedScan").toBool())
+                        .arg(activityPanel->property("observedRecovery").toBool())
+                        .arg(activityPanel->property("observedFinalHash").toBool()));
                 return;
             }
             if (state->stage == 0) {
@@ -395,6 +443,7 @@ int main(int argc, char *argv[]) {
                         return;
                     }
                     state->returnedFiles << destination;
+                    state->sourceVideoFiles << videos.filePath(name);
                 }
                 progressContinue->click();
                 uploaded->click();
@@ -402,11 +451,47 @@ int main(int argc, char *argv[]) {
                 recoveryOutput->setText(recovered);
                 stack->setCurrentIndex(7);
                 scan->click();
+                if (recover->isEnabled()) {
+                    fail(46, "Recovery was enabled while a new scan was starting");
+                    return;
+                }
                 state->stage = 4;
                 qInfo() << "Assistant E2E stage 4: scanning returned videos";
                 return;
             }
+            if (state->stage == 4 &&
+                activityPanel->property("observedScan").toBool()) {
+                state->sawScan = true;
+                if (recover->isEnabled()) {
+                    if (activityPanel->isHidden() ||
+                        activityTitle->text() !=
+                            "Scanning downloaded videos" ||
+                        !activityDescription->text().contains(
+                            "The original file is not being rebuilt yet.")) {
+                        fail(45, "Completed scan activity is not clearly identified");
+                        return;
+                    }
+                }
+                if (activityProgress->maximum() == 0 &&
+                    activityProgress->minimum() != 0) {
+                    fail(46, "Scan progress range is invalid");
+                    return;
+                }
+            }
+            if (state->stage == 5 && !activityPanel->isHidden() &&
+                activityTitle->text() == "Recovering the original file")
+                state->sawRecovery = true;
             if (state->stage == 4 && recover->isEnabled()) {
+                if (!state->sawScan) {
+                    fail(47, QString(
+                        "Assistant did not expose a distinct scan phase "
+                        "(observed=%1, visible=%2, title=%3, description=%4)")
+                        .arg(activityPanel->property("observedScan").toBool())
+                        .arg(!activityPanel->isHidden())
+                        .arg(activityTitle->text(),
+                             activityDescription->text()));
+                    return;
+                }
                 if (!scanSummary->text().contains("found and verified")) {
                     fail(38, "Assistant scan did not report a complete set");
                     return;
@@ -417,6 +502,11 @@ int main(int argc, char *argv[]) {
                 return;
             }
             if (state->stage == 5 && stack->currentIndex() == 9) {
+                if (!state->sawRecovery ||
+                    !activityPanel->property("observedFinalHash").toBool()) {
+                    fail(48, "Recovery or final SHA phase was not observed");
+                    return;
+                }
                 if (!success->text().contains("recovered exactly")) {
                     fail(39, "Assistant exact-success screen was not shown");
                     return;
@@ -450,6 +540,32 @@ int main(int argc, char *argv[]) {
                     Qt::CaseInsensitive)) {
                 if (recover->isEnabled()) {
                     fail(43, "Recover remained enabled with a missing part");
+                    return;
+                }
+                if (state->sourceVideoFiles.isEmpty() ||
+                    !QFile::copy(state->sourceVideoFiles.front(),
+                                 state->returnedFiles.front())) {
+                    fail(49, "Could not restore the missing part for corrupt test");
+                    return;
+                }
+                QFile corruptCandidate(state->returnedFiles.at(1));
+                if (!corruptCandidate.open(QIODevice::ReadWrite) ||
+                    !corruptCandidate.seek(0) ||
+                    corruptCandidate.write("X", 1) != 1) {
+                    fail(50, "Could not prepare corrupt-part GUI scenario");
+                    return;
+                }
+                corruptCandidate.close();
+                scan->click();
+                state->stage = 7;
+                qInfo() << "Assistant E2E stage 7: checking corrupt part";
+                return;
+            }
+            if (state->stage == 7 && scan->isEnabled() &&
+                scanSummary->text().contains("corrupt",
+                    Qt::CaseInsensitive)) {
+                if (recover->isEnabled()) {
+                    fail(51, "Recover remained enabled with a corrupt part");
                     return;
                 }
                 qInfo() << "Assistant E2E complete";

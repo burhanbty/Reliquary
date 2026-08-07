@@ -1031,6 +1031,32 @@ recent manifest paths are remembered for convenience; their actual state is
 always reloaded from the manifest and recovery files, not inferred from GUI
 settings.
 
+### Clear operation progress
+
+The Assistant uses one persistent activity panel for planning, encoding,
+playlist download, returned-video scanning, and recovery. It shows the current
+phase, real item or byte counters when the backend knows a total, the current
+filename, elapsed time, an estimate only when enough information exists, and a
+safe Cancel action. Work with no trustworthy denominator stays visibly active
+without inventing a percentage. After 30 seconds without a new progress event,
+an informational “taking longer than usual” message appears; it does not stop,
+retry, or mark the operation as failed.
+
+Scanning and recovery are deliberately separate. A scan first discovers video
+files, then checks their embedded Video Set information while reporting live
+candidate, checked, verified, missing, corrupt, duplicate, and conflict counts.
+It does not rebuild the source file and never displays a misleading `0/0`
+result during discovery. When every required part is verified, the Assistant
+enables **Recover Original File** and waits for that explicit action. Recovery
+then reports decoding, part verification, exact byte writing, final full-file
+SHA-256 checking, and atomic publication as distinct phases.
+
+The GUI receives these updates through an optional operation-ID-tagged JSONL
+channel from its child CLI process, so stale events from an earlier operation
+are ignored. Normal CLI output and defaults are unchanged when that internal
+progress option is absent. Technical output remains collapsed by default and
+is bounded to the most recent 5,000 lines.
+
 Encoding keeps one temporary logical payload at a time and hashes source
 ranges with a bounded streaming buffer. `--resume` accepts a prior part only
 when source/plan identity, recorded video size/SHA, and exact local

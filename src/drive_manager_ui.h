@@ -285,6 +285,10 @@ private:
 
     void handleVideoSetOutput(const QString &text);
 
+    void handleVideoSetProgressOutput(const QString &text);
+
+    void renderVideoSetActivity();
+
     void handleVideoSetFinished(int exitCode,
                                 QProcess::ExitStatus exitStatus);
 
@@ -477,6 +481,18 @@ private:
     QPushButton *videoSetProgressContinueButton = nullptr;
     QPushButton *videoSetProgressResumeButton = nullptr;
     QPushButton *videoSetAssistantCancelButton = nullptr;
+    QFrame *videoSetActivityPanel = nullptr;
+    QLabel *videoSetActivityIcon = nullptr;
+    QLabel *videoSetActivityTitle = nullptr;
+    QLabel *videoSetActivityDescription = nullptr;
+    QProgressBar *videoSetActivityProgress = nullptr;
+    QLabel *videoSetActivityCounter = nullptr;
+    QLabel *videoSetActivityCurrentItem = nullptr;
+    QLabel *videoSetActivityElapsed = nullptr;
+    QLabel *videoSetActivityRemaining = nullptr;
+    QLabel *videoSetActivityWatchdog = nullptr;
+    QPushButton *videoSetActivityRetryButton = nullptr;
+    QLabel *videoSetRecoveryAvailabilityLabel = nullptr;
     QToolButton *videoSetTechnicalLogButton = nullptr;
     QTextEdit *videoSetLog = nullptr;
     QLabel *videoSetUploadInstructionsLabel = nullptr;
@@ -517,9 +533,13 @@ private:
     QProcess *videoSetProcess = nullptr;
     QProcess *videoSetDownloadProcess = nullptr;
     QTimer *videoSetPlanDebounceTimer = nullptr;
+    QTimer *videoSetOperationTimer = nullptr;
     video_set_workflow::Controller videoSetWorkflow;
+    video_set_workflow::OperationProgressModel videoSetOperationProgress;
     QString videoSetProcessBuffer;
+    QString videoSetProgressLineBuffer;
     QString videoSetActiveCommand;
+    QStringList videoSetLastAssistantArguments;
     QString videoSetCurrentSetRoot;
     QString videoSetCurrentManifest;
     QString videoSetFinalSha;

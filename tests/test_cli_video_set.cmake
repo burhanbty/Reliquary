@@ -95,6 +95,24 @@ if (NOT INSPECT_RESULT EQUAL 0 OR NOT INSPECT_OUTPUT MATCHES "available ${VIDEO_
     message(FATAL_ERROR "Renamed sidecar-free scan failed: ${INSPECT_RESULT}\n${INSPECT_OUTPUT}\n${INSPECT_ERROR}")
 endif ()
 execute_process(
+    COMMAND "${CLI}" set-inspect "${TEST_ROOT}/returned-renamed"
+        --progress-format jsonl --operation-id 77
+    RESULT_VARIABLE STRUCTURED_INSPECT_RESULT
+    OUTPUT_VARIABLE STRUCTURED_INSPECT_OUTPUT
+    ERROR_VARIABLE STRUCTURED_INSPECT_PROGRESS)
+if (NOT STRUCTURED_INSPECT_RESULT EQUAL 0 OR
+    NOT STRUCTURED_INSPECT_OUTPUT STREQUAL INSPECT_OUTPUT OR
+    NOT STRUCTURED_INSPECT_PROGRESS MATCHES
+        "\"operation_id\":77.*\"operation\":\"scan\"" OR
+    NOT STRUCTURED_INSPECT_PROGRESS MATCHES
+        "\"phase\":\"discovering_files\"" OR
+    NOT STRUCTURED_INSPECT_PROGRESS MATCHES
+        "\"phase\":\"completed\".*\"status\":\"scan_complete\"")
+    message(FATAL_ERROR
+        "Structured scan progress changed stdout or omitted required events:\n"
+        "${STRUCTURED_INSPECT_OUTPUT}\n${STRUCTURED_INSPECT_PROGRESS}")
+endif ()
+execute_process(
     COMMAND "${CLI}" set-recover "${TEST_ROOT}/returned-renamed" "${TEST_ROOT}/recovered"
     RESULT_VARIABLE RECOVER_RESULT
     OUTPUT_VARIABLE RECOVER_OUTPUT

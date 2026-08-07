@@ -41,6 +41,7 @@
 #include <QSettings>
 #include <QHeaderView>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFormLayout>
@@ -51,6 +52,7 @@
 #include <QUrl>
 #include <QRegularExpression>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QCloseEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -885,7 +887,7 @@ void DriveManagerUI::setupUI() {
     mainTabs->addTab(videoSetPage, "Video Set Assistant");
 
     videoSetProcess = new QProcess(this);
-    videoSetProcess->setProcessChannelMode(QProcess::MergedChannels);
+    videoSetProcess->setProcessChannelMode(QProcess::SeparateChannels);
     connect(videoSetProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         const QString text = QString::fromUtf8(videoSetProcess->readAllStandardOutput());
         videoSetLog->moveCursor(QTextCursor::End);
@@ -904,9 +906,24 @@ void DriveManagerUI::setupUI() {
             videoSetPlanTable->setItem(row, 5, new QTableWidgetItem("Planned"));
         }
     });
+    connect(videoSetProcess, &QProcess::readyReadStandardError, this, [this]() {
+        handleVideoSetProgressOutput(QString::fromUtf8(
+            videoSetProcess->readAllStandardError()));
+    });
     connect(videoSetProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](const int code, QProcess::ExitStatus) {
+                const QString remainingOutput = QString::fromUtf8(
+                    videoSetProcess->readAllStandardOutput());
+                if (!remainingOutput.isEmpty()) {
+                    videoSetLog->moveCursor(QTextCursor::End);
+                    videoSetLog->insertPlainText(remainingOutput);
+                    handleVideoSetOutput(remainingOutput);
+                }
+                const QString remainingProgress = QString::fromUtf8(
+                    videoSetProcess->readAllStandardError());
+                if (!remainingProgress.isEmpty())
+                    handleVideoSetProgressOutput(remainingProgress);
                 videoSetCancelButton->setEnabled(false);
                 videoSetPlanButton->setEnabled(true);
                 videoSetEncodeButton->setEnabled(true);
@@ -939,10 +956,16 @@ void DriveManagerUI::setupUI() {
             "The VidStoreX backend could not be started: " +
             videoSetProcess->errorString());
         if (videoSetAssistantOperation) {
+            const auto id = videoSetOperationProgress.view().operation_id;
+            (void) videoSetOperationProgress.fail(
+                id, QDateTime::currentMSecsSinceEpoch(), -1,
+                "The VidStoreX backend could not be started.",
+                "Keep the media_storage executable beside the GUI, then retry.");
             videoSetWorkflow.fail(
                 "The VidStoreX backend could not be started.",
                 "Keep the media_storage executable beside the GUI, then retry.");
             updateVideoSetAssistant();
+            renderVideoSetActivity();
         }
     });
     const auto launchVideoSet = [this](QStringList arguments) {
@@ -1727,6 +1750,63 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetSuggestedAction->setWordWrap(true);
     root->insertWidget(4, videoSetSuggestedAction);
 
+    videoSetActivityPanel = new QFrame();
+    videoSetActivityPanel->setObjectName("videoSetActivityPanel");
+    videoSetActivityPanel->setFrameShape(QFrame::StyledPanel);
+    videoSetActivityPanel->setProperty("observedScan", false);
+    videoSetActivityPanel->setProperty("observedRecovery", false);
+    videoSetActivityPanel->setProperty("observedFinalHash", false);
+    auto *activityLayout = new QVBoxLayout(videoSetActivityPanel);
+    activityLayout->setContentsMargins(10, 8, 10, 8);
+    activityLayout->setSpacing(4);
+    auto *activityHeading = new QHBoxLayout();
+    videoSetActivityIcon = new QLabel("●");
+    videoSetActivityIcon->setObjectName("videoSetActivityIcon");
+    videoSetActivityTitle = new QLabel("No operation is running");
+    videoSetActivityTitle->setObjectName("videoSetActivityTitle");
+    videoSetActivityTitle->setStyleSheet("font-weight: 700;");
+    videoSetActivityElapsed = new QLabel("Elapsed: 0:00");
+    videoSetActivityElapsed->setObjectName("videoSetElapsedTime");
+    videoSetActivityRemaining = new QLabel();
+    videoSetActivityRemaining->setObjectName("videoSetEstimatedRemaining");
+    activityHeading->addWidget(videoSetActivityIcon);
+    activityHeading->addWidget(videoSetActivityTitle, 1);
+    activityHeading->addWidget(videoSetActivityElapsed);
+    activityHeading->addWidget(videoSetActivityRemaining);
+    activityLayout->addLayout(activityHeading);
+    videoSetActivityDescription = new QLabel();
+    videoSetActivityDescription->setObjectName("videoSetActivityDescription");
+    videoSetActivityDescription->setWordWrap(true);
+    activityLayout->addWidget(videoSetActivityDescription);
+    videoSetActivityProgress = new QProgressBar();
+    videoSetActivityProgress->setObjectName("videoSetProgressBar");
+    activityLayout->addWidget(videoSetActivityProgress);
+    auto *activityDetails = new QHBoxLayout();
+    videoSetActivityCounter = new QLabel();
+    videoSetActivityCounter->setObjectName("videoSetProgressCounter");
+    videoSetActivityCurrentItem = new QLabel();
+    videoSetActivityCurrentItem->setObjectName("videoSetCurrentItem");
+    activityDetails->addWidget(videoSetActivityCounter);
+    activityDetails->addWidget(videoSetActivityCurrentItem, 1);
+    activityLayout->addLayout(activityDetails);
+    videoSetActivityWatchdog = new QLabel(
+        "This is taking longer than usual. VidStoreX is still working; no action is required.");
+    videoSetActivityWatchdog->setObjectName("videoSetActivityWatchdog");
+    videoSetActivityWatchdog->setWordWrap(true);
+    videoSetActivityWatchdog->setVisible(false);
+    activityLayout->addWidget(videoSetActivityWatchdog);
+    auto *activityActions = new QHBoxLayout();
+    videoSetAssistantCancelButton = new QPushButton("Cancel safely");
+    videoSetAssistantCancelButton->setObjectName("videoSetCancelButton");
+    videoSetAssistantCancelButton->setAccessibleName("Cancel current Video Set operation safely");
+    videoSetActivityRetryButton = new QPushButton("Retry");
+    videoSetActivityRetryButton->setObjectName("videoSetRetryButton");
+    activityActions->addWidget(videoSetAssistantCancelButton);
+    activityActions->addWidget(videoSetActivityRetryButton);
+    activityActions->addStretch();
+    activityLayout->addLayout(activityActions);
+    root->insertWidget(5, videoSetActivityPanel);
+
     videoSetAssistantStack = new QStackedWidget();
     videoSetAssistantStack->setObjectName("videoSetAssistantStack");
     auto *assistantScroll = new QScrollArea();
@@ -1735,7 +1815,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     assistantScroll->setFrameShape(QFrame::NoFrame);
     assistantScroll->setWidget(videoSetAssistantStack);
     assistantScroll->setMinimumHeight(330);
-    root->insertWidget(5, assistantScroll, 1);
+    root->insertWidget(6, assistantScroll, 1);
 
     const auto makePage = [this](const QString &title,
                                  const QString &description) {
@@ -1983,13 +2063,10 @@ void DriveManagerUI::setupVideoSetAssistant(
     progressLayout->addWidget(videoSetProgressPartLabel);
     progressLayout->addStretch();
     auto *progressButtons = new QHBoxLayout();
-    videoSetAssistantCancelButton = new QPushButton("Cancel safely");
-    videoSetAssistantCancelButton->setObjectName("videoSetAssistantCancel");
     videoSetProgressResumeButton = new QPushButton("Resume");
     videoSetProgressResumeButton->setObjectName("videoSetAssistantResume");
     videoSetProgressContinueButton = new QPushButton("Continue to upload guide");
     videoSetProgressContinueButton->setObjectName("videoSetAssistantProgressContinue");
-    progressButtons->addWidget(videoSetAssistantCancelButton);
     progressButtons->addWidget(videoSetProgressResumeButton);
     progressButtons->addStretch();
     progressButtons->addWidget(videoSetProgressContinueButton);
@@ -2082,7 +2159,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetScanSummaryLabel->setWordWrap(true);
     videoSetScanSummaryLabel->setStyleSheet("font-size: 13pt; font-weight: 600;");
     scanLayout->addWidget(videoSetScanSummaryLabel);
-    videoSetScanCountsLabel = new QLabel("Found: 0   Missing: 0   Corrupt: 0   Duplicates: 0   Conflicts: 0");
+    videoSetScanCountsLabel = new QLabel("Scan has not started.");
     videoSetScanCountsLabel->setObjectName("videoSetAssistantScanCounts");
     scanLayout->addWidget(videoSetScanCountsLabel);
     videoSetDetectedSetsList = new QListWidget();
@@ -2100,6 +2177,12 @@ void DriveManagerUI::setupVideoSetAssistant(
     scanActions->addStretch();
     scanActions->addWidget(videoSetAssistantRecoverButton);
     scanLayout->addLayout(scanActions);
+    videoSetRecoveryAvailabilityLabel = new QLabel(
+        "Recovery will become available after scanning finishes and every required part is verified.");
+    videoSetRecoveryAvailabilityLabel->setObjectName(
+        "videoSetRecoveryAvailability");
+    videoSetRecoveryAvailabilityLabel->setWordWrap(true);
+    scanLayout->addWidget(videoSetRecoveryAvailabilityLabel);
     scanLayout->addStretch();
 
     // 8: Recovery progress
@@ -2147,12 +2230,13 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetTechnicalLogButton->setText("Show technical log");
     videoSetTechnicalLogButton->setCheckable(true);
     videoSetTechnicalLogButton->setArrowType(Qt::RightArrow);
-    root->addWidget(videoSetTechnicalLogButton);
+    activityLayout->addWidget(videoSetTechnicalLogButton);
     videoSetLog->setObjectName("videoSetTechnicalLog");
     videoSetLog->setVisible(false);
     videoSetLog->setFontFamily("Consolas");
     videoSetLog->setMaximumHeight(180);
-    root->addWidget(videoSetLog);
+    videoSetLog->document()->setMaximumBlockCount(5000);
+    activityLayout->addWidget(videoSetLog);
 
     // Keep every established manual control in a collapsed Classic area.
     root->removeWidget(classicEncodeGroup);
@@ -2199,6 +2283,14 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetPlanDebounceTimer->setInterval(450);
     connect(videoSetPlanDebounceTimer, &QTimer::timeout,
             this, &DriveManagerUI::calculateVideoSetPlan);
+    videoSetOperationTimer = new QTimer(this);
+    videoSetOperationTimer->setInterval(1000);
+    connect(videoSetOperationTimer, &QTimer::timeout, this, [this]() {
+        (void) videoSetOperationProgress.tick(
+            QDateTime::currentMSecsSinceEpoch());
+        renderVideoSetActivity();
+    });
+    videoSetOperationTimer->start();
 
     connect(videoSetWelcomeCreateButton, &QPushButton::clicked, this, [this]() {
         videoSetWorkflow.choose_create();
@@ -2333,6 +2425,10 @@ void DriveManagerUI::setupVideoSetAssistant(
                     "will remain in the returned folder.",
                     QMessageBox::Yes | QMessageBox::No,
                     QMessageBox::No) != QMessageBox::Yes) return;
+            (void) videoSetOperationProgress.request_cancel(
+                QDateTime::currentMSecsSinceEpoch());
+            renderVideoSetActivity();
+            videoSetCancelRequested = true;
             videoSetDownloadProcess->terminate();
             QTimer::singleShot(3000, videoSetDownloadProcess, [this]() {
                 if (videoSetDownloadProcess &&
@@ -2350,12 +2446,25 @@ void DriveManagerUI::setupVideoSetAssistant(
                 QMessageBox::Yes | QMessageBox::No,
                 QMessageBox::No) != QMessageBox::Yes) return;
         videoSetCancelRequested = true;
+        (void) videoSetOperationProgress.request_cancel(
+            QDateTime::currentMSecsSinceEpoch());
+        renderVideoSetActivity();
         videoSetProcess->terminate();
         QTimer::singleShot(3000, videoSetProcess, [this]() {
             if (videoSetProcess &&
                 videoSetProcess->state() != QProcess::NotRunning)
                 videoSetProcess->kill();
         });
+    });
+    connect(videoSetActivityRetryButton, &QPushButton::clicked,
+            this, [this]() {
+        if (videoSetLastAssistantArguments.isEmpty()) return;
+        const auto command = videoSetLastAssistantArguments.front();
+        if (command == "set-inspect") startVideoSetScan();
+        else if (command == "set-recover") startVideoSetRecovery(true);
+        else if (command == "set-encode") startVideoSetEncode(true);
+        else if (command == "set-plan") calculateVideoSetPlan();
+        else if (command == "yt-dlp") startVideoSetDownload();
     });
     connect(videoSetOpenVideosButton, &QPushButton::clicked, this, [this]() {
         if (!videoSetCurrentSetRoot.isEmpty())
@@ -2513,10 +2622,19 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetLog->append("[yt-dlp] " + text.trimmed());
         const auto progress = video_set_workflow::parse_ytdlp_progress(
             text.toStdString());
+        video_set_workflow::OperationEvent event;
+        event.operation_id = videoSetOperationProgress.view().operation_id;
+        event.operation_type = video_set_workflow::OperationType::Download;
+        event.phase = video_set_workflow::OperationPhase::Preparing;
+        event.primary_message = "Downloading processed videos";
         if (progress.percent.has_value()) {
             videoSetDownloadProgress->setRange(0, 100);
             videoSetDownloadProgress->setValue(
                 static_cast<int>(*progress.percent));
+            event.progress_is_determinate = true;
+            event.progress_current = static_cast<uint64_t>((std::clamp)(
+                *progress.percent, 0.0, 100.0) * 10.0);
+            event.progress_total = 1000;
         }
         if (progress.current_item.has_value() &&
             progress.total_items.has_value())
@@ -2524,6 +2642,26 @@ void DriveManagerUI::setupVideoSetAssistant(
                 QString("Downloading playlist item %1 of %2...")
                     .arg(*progress.current_item)
                     .arg(*progress.total_items));
+        if (progress.current_item) event.current_index = *progress.current_item;
+        if (progress.total_items) event.total_items = *progress.total_items;
+        if (!progress.destination_filename.empty())
+            event.current_item_name = progress.destination_filename;
+        if (progress.eta_seconds)
+            event.estimated_remaining_seconds = *progress.eta_seconds;
+        QStringList details;
+        if (progress.downloaded_bytes && progress.total_bytes)
+            details << QString("%1 of %2")
+                .arg(QLocale().formattedDataSize(
+                    static_cast<qint64>(*progress.downloaded_bytes)))
+                .arg(QLocale().formattedDataSize(
+                    static_cast<qint64>(*progress.total_bytes)));
+        if (progress.speed_bytes_per_second)
+            details << QString("%1/s").arg(QLocale().formattedDataSize(
+                static_cast<qint64>(*progress.speed_bytes_per_second)));
+        event.secondary_message = details.join("   ").toStdString();
+        (void) videoSetOperationProgress.apply(
+            event, QDateTime::currentMSecsSinceEpoch());
+        renderVideoSetActivity();
     });
     connect(videoSetDownloadProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
@@ -2531,6 +2669,10 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetDownloadButton->setEnabled(true);
         videoSetAssistantCancelButton->setEnabled(false);
         if (status == QProcess::NormalExit && code == 0) {
+            (void) videoSetOperationProgress.complete(
+                videoSetOperationProgress.view().operation_id,
+                QDateTime::currentMSecsSinceEpoch(),
+                "Download complete");
             videoSetDownloadProgress->setRange(0, 100);
             videoSetDownloadProgress->setValue(100);
             videoSetDownloadStatusLabel->setText(
@@ -2541,6 +2683,16 @@ void DriveManagerUI::setupVideoSetAssistant(
             videoSetAssistantStack->setCurrentIndex(7);
             startVideoSetScan();
         } else {
+            if (videoSetCancelRequested)
+                (void) videoSetOperationProgress.cancel(
+                    videoSetOperationProgress.view().operation_id,
+                    QDateTime::currentMSecsSinceEpoch());
+            else
+                (void) videoSetOperationProgress.fail(
+                    videoSetOperationProgress.view().operation_id,
+                    QDateTime::currentMSecsSinceEpoch(), code,
+                    "The playlist download stopped.",
+                    "Retry, choose yt-dlp again, or download the videos manually.");
             videoSetWorkflow.cancel_download();
             videoSetDownloadStatusLabel->setText(
                 QString("Download stopped with exit code %1. Retry, choose yt-dlp, or download manually.")
@@ -2552,6 +2704,11 @@ void DriveManagerUI::setupVideoSetAssistant(
             this, [this](const QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart) return;
         videoSetWorkflow.cancel_download();
+        (void) videoSetOperationProgress.fail(
+            videoSetOperationProgress.view().operation_id,
+            QDateTime::currentMSecsSinceEpoch(), -1,
+            "yt-dlp could not be started.",
+            "Select the executable again or download the videos manually.");
         videoSetDownloadButton->setEnabled(true);
         videoSetAssistantCancelButton->setEnabled(false);
         videoSetDownloadProgress->setRange(0, 100);
@@ -2602,6 +2759,7 @@ void DriveManagerUI::startVideoSetProcess(
     videoSetAssistantOperation = assistantOperation;
     videoSetActiveCommand = arguments.front();
     videoSetProcessBuffer.clear();
+    videoSetProgressLineBuffer.clear();
     videoSetCancelRequested = false;
     videoSetLog->clear();
     videoSetAssistantCancelButton->setEnabled(true);
@@ -2609,6 +2767,42 @@ void DriveManagerUI::startVideoSetProcess(
     videoSetProgressResumeButton->setEnabled(false);
     videoSetAssistantScanButton->setEnabled(false);
     videoSetAssistantRecoverButton->setEnabled(false);
+    QStringList launchArguments = arguments;
+    if (assistantOperation) {
+        videoSetLastAssistantArguments = arguments;
+        using video_set_workflow::OperationPhase;
+        using video_set_workflow::OperationType;
+        OperationType type = OperationType::None;
+        OperationPhase phase = OperationPhase::Preparing;
+        QString title = "Preparing Video Set operation";
+        QString description;
+        if (videoSetActiveCommand == "set-plan") {
+            type = OperationType::Plan;
+            phase = OperationPhase::HashingSource;
+            title = "Calculating the Video Set plan";
+            description = "VidStoreX is reading the source and calculating real part capacity.";
+        } else if (videoSetActiveCommand == "set-encode") {
+            type = OperationType::Encode;
+            title = "Creating and verifying videos";
+            description = "Each completed video is decoded and verified locally.";
+        } else if (videoSetActiveCommand == "set-inspect") {
+            type = OperationType::Scan;
+            phase = OperationPhase::DiscoveringFiles;
+            title = "Scanning downloaded videos";
+            description = "VidStoreX is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.";
+        } else if (videoSetActiveCommand == "set-recover") {
+            type = OperationType::Recover;
+            title = "Recovering the original file";
+            description = "Verified parts are being decoded and written back into the original file.";
+        }
+        const auto operationId = videoSetOperationProgress.begin(
+            type, phase, QDateTime::currentMSecsSinceEpoch(),
+            title.toStdString(), description.toStdString());
+        launchArguments << "--progress-format" << "jsonl"
+                        << "--operation-id"
+                        << QString::number(operationId);
+        renderVideoSetActivity();
+    }
 #ifdef Q_OS_WIN
     const QString executable =
         QCoreApplication::applicationDirPath() + "/media_storage.exe";
@@ -2616,7 +2810,163 @@ void DriveManagerUI::startVideoSetProcess(
     const QString executable =
         QCoreApplication::applicationDirPath() + "/media_storage";
 #endif
-    videoSetProcess->start(executable, arguments);
+    videoSetProcess->start(executable, launchArguments);
+}
+
+void DriveManagerUI::handleVideoSetProgressOutput(const QString &text) {
+    videoSetProgressLineBuffer += text;
+    while (true) {
+        const qsizetype newline = videoSetProgressLineBuffer.indexOf('\n');
+        if (newline < 0) break;
+        QString line = videoSetProgressLineBuffer.left(newline);
+        videoSetProgressLineBuffer.remove(0, newline + 1);
+        if (line.endsWith('\r')) line.chop(1);
+        const auto event = video_set_workflow::parse_progress_jsonl(
+            line.toUtf8().toStdString());
+        if (!event.has_value()) {
+            if (!line.trimmed().isEmpty())
+                videoSetLog->append(line.toHtmlEscaped());
+            continue;
+        }
+        if (!videoSetOperationProgress.apply(
+                *event, QDateTime::currentMSecsSinceEpoch()))
+            continue;
+        if (event->operation_type ==
+            video_set_workflow::OperationType::Scan)
+            videoSetActivityPanel->setProperty("observedScan", true);
+        if (event->operation_type ==
+            video_set_workflow::OperationType::Recover)
+            videoSetActivityPanel->setProperty("observedRecovery", true);
+        if (event->phase ==
+            video_set_workflow::OperationPhase::CheckingFullFile)
+            videoSetActivityPanel->setProperty("observedFinalHash", true);
+        renderVideoSetActivity();
+    }
+}
+
+void DriveManagerUI::renderVideoSetActivity() {
+    if (!videoSetActivityPanel) return;
+    const auto &operation = videoSetOperationProgress.view();
+    const bool visible = operation.state !=
+        video_set_workflow::OperationState::Idle;
+    videoSetActivityPanel->setVisible(visible);
+    if (!visible) return;
+
+    QString title;
+    QString description = QString::fromStdString(
+        operation.secondary_message);
+    switch (operation.operation_type) {
+        case video_set_workflow::OperationType::Plan:
+            title = "Calculating the Video Set plan";
+            break;
+        case video_set_workflow::OperationType::Encode:
+            title = "Creating and verifying videos";
+            break;
+        case video_set_workflow::OperationType::Download:
+            title = "Downloading processed videos";
+            break;
+        case video_set_workflow::OperationType::Scan:
+            title = "Scanning downloaded videos";
+            description = "VidStoreX is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.";
+            break;
+        case video_set_workflow::OperationType::Recover:
+        case video_set_workflow::OperationType::FinalHash:
+        case video_set_workflow::OperationType::Finalize:
+            title = "Recovering the original file";
+            description = operation.phase ==
+                video_set_workflow::OperationPhase::CheckingFullFile
+                ? "VidStoreX is checking the final full-file SHA-256. Recovery succeeds only if it matches."
+                : "Verified parts are being decoded and written back into the original file.";
+            break;
+        default:
+            title = QString::fromStdString(operation.primary_message);
+            break;
+    }
+    if (operation.state == video_set_workflow::OperationState::Cancelling)
+        title = "Cancelling...";
+    videoSetActivityTitle->setText(title);
+    videoSetActivityDescription->setText(description);
+    videoSetActivityIcon->setText(
+        operation.state == video_set_workflow::OperationState::Completed
+            ? "✓" : operation.state == video_set_workflow::OperationState::Failed
+            ? "!" : operation.state == video_set_workflow::OperationState::Cancelled
+            ? "■" : "●");
+
+    if (operation.progress_is_determinate && operation.progress_total != 0) {
+        videoSetActivityProgress->setRange(0, 1000);
+        videoSetActivityProgress->setValue(static_cast<int>((std::min)(
+            1000.0, static_cast<double>(operation.progress_current) *
+                1000.0 / static_cast<double>(operation.progress_total))));
+        videoSetActivityProgress->setFormat("%p%");
+    } else if (operation.is_busy) {
+        videoSetActivityProgress->setRange(0, 0);
+        videoSetActivityProgress->setFormat(QString());
+    } else {
+        videoSetActivityProgress->setRange(0, 100);
+        videoSetActivityProgress->setValue(
+            operation.state == video_set_workflow::OperationState::Completed
+                ? 100 : 0);
+        videoSetActivityProgress->setFormat(
+            operation.state == video_set_workflow::OperationState::Completed
+                ? "Completed" : "Inactive");
+    }
+    videoSetActivityProgress->setEnabled(operation.is_busy);
+
+    QString counter;
+    if (operation.operation_type == video_set_workflow::OperationType::Scan) {
+        if (operation.phase ==
+            video_set_workflow::OperationPhase::DiscoveringFiles ||
+            operation.total_items == 0) {
+            counter = "Discovering videos...";
+        } else {
+            counter = QString(
+                "Candidates: %1   Checked: %2/%1   Verified: %3   Missing: %4   Corrupt: %5   Duplicates: %6   Conflicts: %7")
+                .arg(operation.total_items)
+                .arg(operation.current_index)
+                .arg(operation.scan.exact_parts)
+                .arg(operation.scan.missing_parts.size())
+                .arg(operation.scan.corrupt_parts.size())
+                .arg(operation.scan.duplicate_count)
+                .arg(operation.scan.conflict_count);
+        }
+    } else if (operation.total_items != 0) {
+        counter = QString("Part/item %1 of %2   Completed: %3")
+            .arg(operation.current_index)
+            .arg(operation.total_items)
+            .arg(operation.completed_items);
+    } else {
+        counter = QString::fromStdString(operation.primary_message);
+    }
+    videoSetActivityCounter->setText(counter);
+    const QString fullItem = QString::fromStdString(
+        operation.current_item_name);
+    videoSetActivityCurrentItem->setText(
+        QFontMetrics(videoSetActivityCurrentItem->font()).elidedText(
+            fullItem, Qt::ElideMiddle, 360));
+    videoSetActivityCurrentItem->setToolTip(fullItem);
+    const auto formatDuration = [](const double seconds) {
+        const auto rounded = static_cast<qint64>((std::max)(0.0, seconds));
+        return QString("%1:%2").arg(rounded / 60)
+            .arg(rounded % 60, 2, 10, QLatin1Char('0'));
+    };
+    videoSetActivityElapsed->setText(
+        "Elapsed: " + formatDuration(operation.elapsed_seconds));
+    videoSetActivityRemaining->setText(
+        operation.estimated_remaining_seconds.has_value()
+            ? "Remaining: " + formatDuration(
+                *operation.estimated_remaining_seconds)
+            : QString());
+    videoSetActivityWatchdog->setVisible(
+        operation.taking_longer_than_usual);
+    videoSetAssistantCancelButton->setEnabled(operation.can_cancel);
+    videoSetActivityRetryButton->setVisible(operation.can_retry);
+    videoSetActivityRetryButton->setEnabled(operation.can_retry);
+    videoSetAssistantScanButton->setEnabled(!operation.is_busy);
+    videoSetAssistantRecoverButton->setEnabled(
+        !operation.is_busy && videoSetWorkflow.view().can_recover);
+    videoSetDownloadButton->setEnabled(!operation.is_busy &&
+        video_set_workflow::is_youtube_playlist_url(
+            videoSetPlaylistUrlEdit->text().toStdString()));
 }
 
 void DriveManagerUI::calculateVideoSetPlan() {
@@ -2787,7 +3137,10 @@ void DriveManagerUI::handleVideoSetFinished(
         video_set_workflow::is_youtube_playlist_url(
             videoSetPlaylistUrlEdit->text().toStdString()));
     const bool success = exitStatus == QProcess::NormalExit && exitCode == 0;
+    const auto operationId = videoSetOperationProgress.view().operation_id;
     if (videoSetCancelRequested) {
+        (void) videoSetOperationProgress.cancel(
+            operationId, QDateTime::currentMSecsSinceEpoch());
         if (videoSetActiveCommand == "set-encode")
             videoSetWorkflow.cancel_encoding();
         else if (videoSetActiveCommand == "set-recover")
@@ -2795,7 +3148,21 @@ void DriveManagerUI::handleVideoSetFinished(
         videoSetProgressPhaseLabel->setText(
             "Stopped safely. You can continue this Video Set later.");
         updateVideoSetAssistant();
+        renderVideoSetActivity();
         return;
+    }
+    const bool hasFinalScanSummary =
+        videoSetOperationProgress.view().has_scan_summary &&
+        !videoSetOperationProgress.view().status.empty();
+    if ((videoSetActiveCommand == "set-inspect" && hasFinalScanSummary) ||
+        success) {
+        (void) videoSetOperationProgress.complete(
+            operationId, QDateTime::currentMSecsSinceEpoch());
+    } else {
+        (void) videoSetOperationProgress.fail(
+            operationId, QDateTime::currentMSecsSinceEpoch(), exitCode,
+            "The Video Set operation did not finish.",
+            "Review the suggested action or technical log, then retry.");
     }
 
     if (videoSetActiveCommand == "set-plan") {
@@ -2914,11 +3281,15 @@ void DriveManagerUI::handleVideoSetFinished(
     }
 
     if (videoSetActiveCommand == "set-inspect") {
-        video_set_workflow::ScanSummary summary;
+        video_set_workflow::ScanSummary summary =
+            hasFinalScanSummary
+            ? videoSetOperationProgress.view().scan
+            : video_set_workflow::ScanSummary{};
         const QRegularExpression available(
             R"(available\s+(\d+)/(\d+)\s+parts,\s+duplicates\s+(\d+))");
         const auto match = available.match(videoSetProcessBuffer);
-        if (match.hasMatch()) {
+        if (!hasFinalScanSummary &&
+            match.hasMatch()) {
             summary.returned_parts = match.captured(1).toUInt();
             summary.exact_parts = summary.returned_parts;
             summary.expected_parts = match.captured(2).toUInt();
@@ -2929,16 +3300,19 @@ void DriveManagerUI::handleVideoSetFinished(
         }
         const QRegularExpression conflicts(R"(conflicts\s+(\d+))");
         const auto conflictMatch = conflicts.match(videoSetProcessBuffer);
-        if (conflictMatch.hasMatch())
+        if (!hasFinalScanSummary &&
+            conflictMatch.hasMatch())
             summary.conflict_count = conflictMatch.captured(1).toUInt();
         const QRegularExpression corrupt(R"(Corrupt/unreadable videos:\s*(\d+))");
         const auto corruptMatch = corrupt.match(videoSetProcessBuffer);
-        if (corruptMatch.hasMatch()) {
+        if (!hasFinalScanSummary &&
+            corruptMatch.hasMatch()) {
             const uint32_t count = corruptMatch.captured(1).toUInt();
             for (uint32_t index = 0; index < count; ++index)
                 summary.corrupt_parts.push_back(index);
         }
-        if (!match.hasMatch()) {
+        if (!hasFinalScanSummary &&
+            !match.hasMatch()) {
             videoSetWorkflow.fail(
                 "No valid Video Set parts were found.",
                 "Choose downloaded video files or a Video Set folder and scan again.");
@@ -2950,19 +3324,28 @@ void DriveManagerUI::handleVideoSetFinished(
             videoSetWorkflow.apply_scan(std::move(summary));
         }
         updateVideoSetAssistant();
+        renderVideoSetActivity();
         return;
     }
 
     if (videoSetActiveCommand == "set-recover") {
-        if (success && videoSetProcessBuffer.contains("Recovered exact")) {
+        const auto &operation = videoSetOperationProgress.view();
+        const bool structuredExact = operation.status == "recovered_exact" &&
+            !operation.sha256.empty() && !operation.output_path.empty();
+        if (success && (structuredExact ||
+                        videoSetProcessBuffer.contains("Recovered exact"))) {
             const QRegularExpression final(R"(Final:\s*([^\r\n]+))");
             const QRegularExpression sha(R"(SHA-256:\s*([0-9a-fA-F]{64}))");
             const auto finalMatch = final.match(videoSetProcessBuffer);
             const auto shaMatch = sha.match(videoSetProcessBuffer);
-            const QString output = finalMatch.hasMatch()
-                ? finalMatch.captured(1).trimmed() : QString();
-            videoSetFinalSha = shaMatch.hasMatch()
-                ? shaMatch.captured(1).toUpper() : QString();
+            const QString output = structuredExact
+                ? QString::fromStdString(operation.output_path)
+                : (finalMatch.hasMatch()
+                    ? finalMatch.captured(1).trimmed() : QString());
+            videoSetFinalSha = structuredExact
+                ? QString::fromStdString(operation.sha256).toUpper()
+                : (shaMatch.hasMatch()
+                    ? shaMatch.captured(1).toUpper() : QString());
             videoSetWorkflow.apply_recovery_result(
                 output.toStdString(), true);
             videoSetRecoveryProgressBar->setRange(0, 100);
@@ -2991,6 +3374,7 @@ void DriveManagerUI::handleVideoSetFinished(
             videoSetWorkflow.apply_recovery_result({}, false);
         }
         updateVideoSetAssistant();
+        renderVideoSetActivity();
     }
 }
 
@@ -3066,21 +3450,30 @@ void DriveManagerUI::updateVideoSetAssistant() {
         view.state == video_set_workflow::State::LocallyVerified);
     videoSetProgressResumeButton->setVisible(
         view.state == video_set_workflow::State::EncodingPaused);
-    videoSetAssistantCancelButton->setEnabled(
-        view.state == video_set_workflow::State::Encoding ||
-        view.state == video_set_workflow::State::Recovering ||
-        view.state == video_set_workflow::State::DownloadingReturnedVideos);
-    videoSetAssistantRecoverButton->setEnabled(view.can_recover);
+    videoSetAssistantRecoverButton->setEnabled(
+        view.can_recover && !videoSetOperationProgress.view().is_busy);
     videoSetScanSummaryLabel->setText(
         QString::fromStdString(view.primary_message));
-    videoSetScanCountsLabel->setText(
-        QString("Found: %1/%2   Missing: %3   Corrupt: %4   Duplicates: %5   Conflicts: %6")
-            .arg(view.scan.returned_parts)
-            .arg(view.scan.expected_parts)
-            .arg(view.scan.missing_parts.size())
-            .arg(view.scan.corrupt_parts.size())
-            .arg(view.scan.duplicate_count)
-            .arg(view.scan.conflict_count));
+    if (view.state == video_set_workflow::State::ScanningReturnedVideos) {
+        videoSetScanCountsLabel->setText("Discovering and checking videos...");
+    } else if (view.scan.expected_parts != 0 ||
+               view.scan.returned_parts != 0 ||
+               !view.scan.corrupt_parts.empty()) {
+        videoSetScanCountsLabel->setText(
+            QString("Verified: %1/%2   Missing: %3   Corrupt: %4   Duplicates: %5   Conflicts: %6")
+                .arg(view.scan.exact_parts)
+                .arg(view.scan.expected_parts)
+                .arg(view.scan.missing_parts.size())
+                .arg(view.scan.corrupt_parts.size())
+                .arg(view.scan.duplicate_count)
+                .arg(view.scan.conflict_count));
+    } else {
+        videoSetScanCountsLabel->setText("Scan has not found a Video Set summary yet.");
+    }
+    videoSetRecoveryAvailabilityLabel->setText(view.can_recover
+        ? "Scan complete. Select Recover Original File to rebuild the file."
+        : "Recovery will become available after scanning finishes and every required part is verified.");
+    renderVideoSetActivity();
 }
 
 QString DriveManagerUI::findYtDlpExecutable() const {
@@ -3147,6 +3540,14 @@ void DriveManagerUI::startVideoSetDownload() {
     for (const auto &argument : rawArguments)
         arguments << QString::fromStdString(argument);
     videoSetWorkflow.begin_download();
+    videoSetCancelRequested = false;
+    videoSetLastAssistantArguments = {"yt-dlp"};
+    (void) videoSetOperationProgress.begin(
+        video_set_workflow::OperationType::Download,
+        video_set_workflow::OperationPhase::Preparing,
+        QDateTime::currentMSecsSinceEpoch(),
+        "Downloading processed videos",
+        "VidStoreX is downloading YouTube's processed copies into this set's returned folder.");
     videoSetDownloadProgress->setRange(0, 0);
     videoSetDownloadButton->setEnabled(false);
     videoSetAssistantCancelButton->setEnabled(true);

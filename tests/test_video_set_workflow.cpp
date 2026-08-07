@@ -197,15 +197,127 @@ TEST(VideoSetWorkflow, YtDlpDetectionUsesPathToolsThenSavedSelection) {
 
 TEST(VideoSetWorkflow, YtDlpProgressParsingIsOptionalAndNonFatal) {
     const auto parsed = video_set_workflow::parse_ytdlp_progress(
-        "[download] Downloading item 2 of 4\n[download] 37.5% of 20MiB");
+        "[download] Downloading item 2 of 4\n"
+        "[download] Destination: returned/part 2.mkv\n"
+        "[download] 37.5% of 20MiB at 2.5MiB/s ETA 00:05");
     ASSERT_TRUE(parsed.percent.has_value());
     EXPECT_DOUBLE_EQ(*parsed.percent, 37.5);
     EXPECT_EQ(parsed.current_item, 2u);
     EXPECT_EQ(parsed.total_items, 4u);
+    ASSERT_TRUE(parsed.total_bytes.has_value());
+    EXPECT_EQ(*parsed.total_bytes, 20u * 1024u * 1024u);
+    ASSERT_TRUE(parsed.downloaded_bytes.has_value());
+    EXPECT_EQ(*parsed.downloaded_bytes, 7864320u);
+    ASSERT_TRUE(parsed.speed_bytes_per_second.has_value());
+    EXPECT_DOUBLE_EQ(*parsed.speed_bytes_per_second, 2621440.0);
+    EXPECT_EQ(parsed.eta_seconds, 5u);
+    EXPECT_EQ(parsed.destination_filename, "returned/part 2.mkv");
     const auto unknown = video_set_workflow::parse_ytdlp_progress(
         "yt-dlp output changed but the process can continue");
     EXPECT_FALSE(unknown.percent.has_value());
     EXPECT_FALSE(unknown.current_item.has_value());
+}
+
+TEST(VideoSetWorkflow, OperationProgressStartsIndeterminateAndRejectsStaleEvents) {
+    using namespace video_set_workflow;
+    OperationProgressModel model;
+    EXPECT_EQ(model.view().state, OperationState::Idle);
+    const auto first = model.begin(OperationType::Scan,
+        OperationPhase::DiscoveringFiles, 1000, "Scanning", "Discovering");
+    EXPECT_TRUE(model.view().is_busy);
+    EXPECT_FALSE(model.view().progress_percent.has_value());
+    const auto second = model.begin(OperationType::Recover,
+        OperationPhase::Preparing, 2000, "Recovering");
+    EXPECT_GT(second, first);
+    OperationEvent stale;
+    stale.operation_id = first;
+    stale.operation_type = OperationType::Scan;
+    stale.phase = OperationPhase::Completed;
+    EXPECT_FALSE(model.apply(stale, 2100));
+    EXPECT_EQ(model.view().operation_id, second);
+    EXPECT_EQ(model.view().operation_type, OperationType::Recover);
+}
+
+TEST(VideoSetWorkflow, OperationProgressIsDeterminateOnlyWithAnHonestTotal) {
+    using namespace video_set_workflow;
+    OperationProgressModel model;
+    const auto id = model.begin(OperationType::Scan,
+        OperationPhase::ReadingMetadata, 1000, "Scanning");
+    OperationEvent event;
+    event.operation_id = id;
+    event.operation_type = OperationType::Scan;
+    event.phase = OperationPhase::ReadingMetadata;
+    event.progress_is_determinate = true;
+    event.progress_current = 10;
+    event.progress_total = 0;
+    EXPECT_TRUE(model.apply(event, 2000));
+    EXPECT_FALSE(model.view().progress_percent.has_value());
+    event.progress_current = 12;
+    event.progress_total = 10;
+    EXPECT_TRUE(model.apply(event, 3000));
+    ASSERT_TRUE(model.view().progress_percent.has_value());
+    EXPECT_DOUBLE_EQ(*model.view().progress_percent, 100.0);
+    EXPECT_EQ(model.view().progress_current, 10u);
+}
+
+TEST(VideoSetWorkflow, OperationProgressWatchdogCancelAndTerminalStatesAreSafe) {
+    using namespace video_set_workflow;
+    OperationProgressModel model;
+    const auto id = model.begin(OperationType::Encode,
+        OperationPhase::EncodingPart, 1000, "Encoding");
+    EXPECT_TRUE(model.tick(31000));
+    EXPECT_TRUE(model.view().taking_longer_than_usual);
+    EXPECT_EQ(model.view().state, OperationState::Running);
+    EXPECT_TRUE(model.request_cancel(32000));
+    EXPECT_TRUE(model.request_cancel(33000));
+    EXPECT_EQ(model.view().state, OperationState::Cancelling);
+    EXPECT_EQ(model.view().primary_message, "Cancelling...");
+    EXPECT_TRUE(model.cancel(id, 34000));
+    EXPECT_TRUE(model.view().can_retry);
+    EXPECT_FALSE(model.view().is_busy);
+    EXPECT_FALSE(model.apply(OperationEvent{.operation_id = id}, 35000));
+}
+
+TEST(VideoSetWorkflow, StructuredProgressParsingIsSafeAndForwardCompatible) {
+    using namespace video_set_workflow;
+    const auto parsed = parse_progress_jsonl(
+        R"({"type":"progress","operation_id":7,"operation":"scan","phase":"reading_metadata","message":"Dosyalar taranıyor","current_item":"parça ü.mkv","current":2,"total":4,"completed":1,"progress_current":2,"progress_total":4,"determinate":true,"candidates":4,"checked":2,"verified":1,"corrupt":1,"unknown_future_field":"ok"})");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->operation_id, 7u);
+    EXPECT_EQ(parsed->operation_type, OperationType::Scan);
+    EXPECT_EQ(parsed->phase, OperationPhase::ReadingMetadata);
+    EXPECT_EQ(parsed->current_item_name, "parça ü.mkv");
+    EXPECT_EQ(parsed->progress_total, 4u);
+    EXPECT_TRUE(parsed->has_scan_summary);
+    EXPECT_EQ(parsed->scan.exact_parts, 1u);
+    EXPECT_EQ(parsed->scan.corrupt_parts.size(), 1u);
+    EXPECT_FALSE(parse_progress_jsonl("not json").has_value());
+    EXPECT_FALSE(parse_progress_jsonl(
+        R"({"type":"progress","operation_id":0,"operation":"scan"})").has_value());
+}
+
+TEST(VideoSetWorkflow, StructuredResultCarriesRecoveryProof) {
+    using namespace video_set_workflow;
+    const auto parsed = parse_progress_jsonl(
+        R"({"type":"result","operation_id":9,"operation":"recover","status":"recovered_exact","sha256":"2FAD","output_path":"C:/out/archive.bin"})");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->state, OperationState::Completed);
+    EXPECT_EQ(parsed->phase, OperationPhase::Completed);
+    EXPECT_EQ(parsed->status, "recovered_exact");
+    EXPECT_EQ(parsed->sha256, "2FAD");
+    EXPECT_EQ(parsed->output_path, "C:/out/archive.bin");
+}
+
+TEST(VideoSetWorkflow, StructuredErrorCarriesRetryGuidanceAndExitCode) {
+    using namespace video_set_workflow;
+    const auto parsed = parse_progress_jsonl(
+        R"({"type":"error","operation_id":11,"operation":"encode","phase":"failed","message":"disk full","suggested_action":"Free disk space and retry.","can_retry":true,"exit_code":5})");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->state, OperationState::Failed);
+    EXPECT_EQ(parsed->phase, OperationPhase::Failed);
+    EXPECT_TRUE(parsed->can_retry);
+    EXPECT_EQ(parsed->backend_exit_code, 5);
+    EXPECT_EQ(parsed->suggested_action, "Free disk space and retry.");
 }
 
 TEST(VideoSetWorkflow, RecentSetsDeduplicateAndRemainBounded) {
