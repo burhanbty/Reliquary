@@ -78,6 +78,7 @@ test_*
 !tests/test_encoding_preflight.cpp
 !tests/test_cli_preflight.cmake
 !tests/test_gui_preflight_model.cpp
+!tests/test_ui_language.cpp
 !tests/test_fast_local.cpp
 !tests/test_cli_fast_local.cmake
 !tests/test_youtube_test_lab.cpp

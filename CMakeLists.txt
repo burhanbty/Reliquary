@@ -27,7 +27,7 @@ option(BUILD_GUI "Build the Qt GUI executable" ON)
 find_package(PkgConfig REQUIRED)
 find_package(OpenMP REQUIRED)
 if (BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+    find_package(Qt6 REQUIRED COMPONENTS Core Widgets LinguistTools)
 endif ()
 
 # Enable Qt MOC, UIC, and RCC for GUI only
@@ -88,6 +88,11 @@ if (BUILD_GUI)
             media_storage_core
             Qt6::Core
             Qt6::Widgets
+    )
+    qt_add_translations(media_storage_gui
+            TS_FILES
+            "${CMAKE_SOURCE_DIR}/translations/vidstorex_tr.ts"
+            RESOURCE_PREFIX "/i18n"
     )
 endif ()
 

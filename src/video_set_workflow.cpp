@@ -594,7 +594,7 @@ void Controller::refresh_message() {
             break;
         case State::DownloadingReturnedVideos:
             view_.primary_message = "Downloading returned videos...";
-            view_.suggested_action = "The folder will be scanned automatically when download finishes.";
+            view_.suggested_action = "When download finishes, choose Check Videos.";
             break;
         case State::ScanningReturnedVideos:
             view_.primary_message = "Checking embedded Video Set information...";

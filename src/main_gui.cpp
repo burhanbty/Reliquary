@@ -26,6 +26,7 @@
 #include <QListWidget>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSet>
 #include <QTimer>
 #include <QStyleFactory>
 #include <QTextDocument>
@@ -71,10 +72,16 @@ int main(int argc, char *argv[]) {
     
     // Set application properties
     QApplication::setApplicationName("YouTube Media Storage");
-    QApplication::setApplicationDisplayName("Drive Manager");
+    QApplication::setApplicationDisplayName("VidStoreX");
     QApplication::setApplicationVersion("1.0");
     QApplication::setOrganizationName("Media Storage");
     QApplication::setOrganizationDomain("brandonli.me");
+    if (!videoSetAssistantSmokeRoot.isEmpty()) {
+        QSettings settings;
+        settings.setValue("ui/language", "en");
+        settings.setValue("ui/rememberRecentSets", true);
+        settings.setValue("ui/showAdvancedTools", true);
+    }
     
     // Set application icon (if available)
     // app.setWindowIcon(QIcon(":/icons/app_icon.png"));
@@ -105,11 +112,9 @@ int main(int argc, char *argv[]) {
             qCritical() << "profile controls were not found";
             return 2;
         }
-        if (!videoSetValidation->text().contains("Real YouTube") ||
-            !videoSetValidation->text().contains("4/4 parts") ||
-            !videoSetValidation->text().contains("full-file SHA exact") ||
-            !videoSetValidation->text().contains(
-                "successful only after the final full-file SHA-256 matches")) {
+        if (!videoSetValidation->text().contains("6/6") ||
+            !videoSetValidation->text().contains("4/4") ||
+            !videoSetValidation->text().contains("SHA-256")) {
             qCritical() << "Video Set validation notice invariant failed";
             return 2;
         }
@@ -141,11 +146,22 @@ int main(int argc, char *argv[]) {
             "videoSetTechnicalLogToggle");
         auto *technicalLog = window.findChild<QTextEdit *>(
             "videoSetTechnicalLog");
+        auto *homeNavigation = window.findChild<QPushButton *>(
+            "homeNavigationButton");
+        auto *settingsNavigation = window.findChild<QPushButton *>(
+            "settingsNavigationButton");
+        auto *language = window.findChild<QComboBox *>(
+            "uiLanguageCombo");
+        auto *settingsLanguage = window.findChild<QComboBox *>(
+            "settingsLanguageCombo");
+        auto *settingsPage = window.findChild<QWidget *>("settingsPage");
         if (!assistantStack || !assistantScroll || !createChoice ||
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
             !activityPanel || !activityTitle || !activityProgress ||
-            !technicalToggle || !technicalLog) {
+            !technicalToggle || !technicalLog || !homeNavigation ||
+            !settingsNavigation || !language || !settingsLanguage ||
+            !settingsPage) {
             qCritical() << "Video Set Assistant controls were not found";
             return 6;
         }
@@ -161,6 +177,57 @@ int main(int argc, char *argv[]) {
             qCritical() << "Video Set Assistant welcome/scroll/focus invariant failed";
             return 6;
         }
+        const QList<QSize> supportedSizes{
+            QSize(1280, 720), QSize(1366, 768), QSize(1920, 1080)};
+        for (const auto &size : supportedSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            for (auto *button : {homeNavigation, settingsNavigation,
+                                 createChoice, recoverChoice}) {
+                if (button->isVisible() &&
+                    (button->width() < button->minimumSizeHint().width() ||
+                     button->height() < button->minimumSizeHint().height())) {
+                    qCritical() << "Critical control is clipped at" << size
+                                << button->objectName();
+                    return 14;
+                }
+            }
+        }
+        QSet<QString> customObjectNames;
+        const QStringList customPrefixes{
+            "videoSet", "homeNavigation", "createNavigation",
+            "recoverNavigation", "recentNavigation", "advancedNavigation",
+            "settingsNavigation", "brand", "uiLanguage",
+            "defaultVideoSet", "rememberRecent", "showAdvanced"};
+        for (auto *widget : window.findChildren<QWidget *>()) {
+            const QString name = widget->objectName();
+            bool custom = false;
+            for (const auto &prefix : customPrefixes)
+                custom = custom || name.startsWith(prefix);
+            if (!custom || name.isEmpty()) continue;
+            if (customObjectNames.contains(name)) {
+                qCritical() << "Duplicate custom objectName" << name;
+                return 15;
+            }
+            customObjectNames.insert(name);
+        }
+        if (createChoice->accessibleName().isEmpty() ||
+            createChoice->accessibleDescription().isEmpty() ||
+            recoverChoice->accessibleName().isEmpty() ||
+            recoverChoice->accessibleDescription().isEmpty() ||
+            homeNavigation->accessibleName().isEmpty()) {
+            qCritical() << "Critical accessibility metadata is missing";
+            return 16;
+        }
+        settingsNavigation->click();
+        QApplication::processEvents();
+        if (!settingsPage->isVisible() ||
+            settingsLanguage->currentData() != language->currentData()) {
+            qCritical() << "Settings page language selector is not synchronized";
+            return 17;
+        }
+        homeNavigation->click();
+        QApplication::processEvents();
         createChoice->click();
         QApplication::processEvents();
         if (assistantStack->currentIndex() != 1 ||
@@ -259,6 +326,14 @@ int main(int argc, char *argv[]) {
     }
 
     if (!videoSetAssistantSmokeRoot.isEmpty()) {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != QStringLiteral("windows")) {
+            qCritical() << "Assistant E2E requires the real qwindows platform plugin; active platform is"
+                        << QGuiApplication::platformName();
+            return 29;
+        }
+        qInfo() << "Assistant E2E platform: qwindows.dll (Qt key: windows)";
+#endif
         const QString root = QDir(videoSetAssistantSmokeRoot).absolutePath();
         const QString source = QDir(root).filePath("source.bin");
         const QString sets = QDir(root).filePath("sets");
@@ -324,13 +399,25 @@ int main(int argc, char *argv[]) {
             "videoSetActivityDescription");
         auto *activityProgress = window.findChild<QProgressBar *>(
             "videoSetProgressBar");
+        auto *language = window.findChild<QComboBox *>(
+            "uiLanguageCombo");
+        auto *homeNavigation = window.findChild<QPushButton *>(
+            "homeNavigationButton");
+        auto *brandSubtitle = window.findChild<QLabel *>(
+            "brandSubtitle");
+        auto *resilientCard = window.findChild<QGroupBox *>(
+            "videoSetResilientCard");
+        auto *highCapacityCard = window.findChild<QGroupBox *>(
+            "videoSetHighCapacityCard");
         if (!stack || !create || !input || !output || !sourceContinue ||
             !highCapacity || !target || !maximumSize || !calculate ||
             !planSummary || !createVideos || !progressContinue ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
             !success || !recent || !activityPanel || !activityTitle ||
-            !activityDescription || !activityProgress) {
+            !activityDescription || !activityProgress || !language ||
+            !homeNavigation || !brandSubtitle || !resilientCard ||
+            !highCapacityCard) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
         }
@@ -343,10 +430,11 @@ int main(int argc, char *argv[]) {
             QStringList sourceVideoFiles;
             bool sawScan = false;
             bool sawRecovery = false;
+            bool testedActiveLanguageSwitch = false;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
-            false, false};
+            false, false, false};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
@@ -459,6 +547,24 @@ int main(int argc, char *argv[]) {
                 qInfo() << "Assistant E2E stage 4: scanning returned videos";
                 return;
             }
+            if (state->stage == 3 &&
+                !state->testedActiveLanguageSwitch &&
+                stack->currentIndex() == 4 &&
+                !progressContinue->isEnabled()) {
+                const QString savedInput = input->text();
+                const QString savedOutput = output->text();
+                language->setCurrentIndex(language->findData("tr"));
+                language->setCurrentIndex(language->findData("en"));
+                if (stack->currentIndex() != 4 ||
+                    input->text() != savedInput ||
+                    output->text() != savedOutput ||
+                    !highCapacity->isChecked() ||
+                    progressContinue->isEnabled()) {
+                    fail(55, "Language switch changed an active encode workflow");
+                    return;
+                }
+                state->testedActiveLanguageSwitch = true;
+            }
             if (state->stage == 4 &&
                 activityPanel->property("observedScan").toBool()) {
                 state->sawScan = true;
@@ -492,7 +598,7 @@ int main(int argc, char *argv[]) {
                              activityDescription->text()));
                     return;
                 }
-                if (!scanSummary->text().contains("found and verified")) {
+                if (!scanSummary->text().contains("Everything is ready")) {
                     fail(38, "Assistant scan did not report a complete set");
                     return;
                 }
@@ -524,6 +630,44 @@ int main(int argc, char *argv[]) {
                     fail(41, "Assistant recovered SHA-256 does not match source");
                     return;
                 }
+                homeNavigation->click();
+                language->setCurrentIndex(language->findData("tr"));
+                QApplication::processEvents();
+                if (window.property("uiLanguage").toString() != "tr" ||
+                    !window.property("uiTranslationLoaded").toBool() ||
+                    stack->currentIndex() != 0 ||
+                    brandSubtitle->text() != QString::fromUtf8(
+                        "Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtarın.") ||
+                    create->text() != QString::fromUtf8("Dosya Seç") ||
+                    !activityTitle->text().contains(
+                        QString::fromUtf8("Orijinal dosya")) ||
+                    success->text() != QString::fromUtf8(
+                        "Dosyanız birebir kurtarıldı.")) {
+                    fail(52, "Runtime English-to-Turkish translation failed");
+                    return;
+                }
+                stack->setCurrentIndex(2);
+                QApplication::processEvents();
+                if (resilientCard->title() != QString::fromUtf8("En Güvenli") ||
+                    highCapacityCard->title() != QString::fromUtf8(
+                        "Daha Az ve Daha Kısa Video") ||
+                    !highCapacity->isChecked()) {
+                    fail(53, "Turkish profile cards or selected profile changed");
+                    return;
+                }
+                language->setCurrentIndex(language->findData("en"));
+                QApplication::processEvents();
+                if (window.property("uiLanguage").toString() != "en" ||
+                    stack->currentIndex() != 2 ||
+                    input->text() != source || output->text() != sets ||
+                    recoveryInput->text() != returned ||
+                    recoveryOutput->text() != recovered ||
+                    !highCapacity->isChecked() || recent->count() != 1) {
+                    fail(54, "Runtime Turkish-to-English switch changed workflow state");
+                    return;
+                }
+                language->setCurrentIndex(language->findData("tr"));
+                QApplication::processEvents();
                 if (state->returnedFiles.isEmpty() ||
                     !QFile::remove(state->returnedFiles.front())) {
                     fail(42, "Could not prepare missing-part GUI scenario");
@@ -536,8 +680,10 @@ int main(int argc, char *argv[]) {
                 return;
             }
             if (state->stage == 6 && scan->isEnabled() &&
-                scanSummary->text().contains("missing",
-                    Qt::CaseInsensitive)) {
+                (scanSummary->text().contains("missing",
+                     Qt::CaseInsensitive) ||
+                 scanSummary->text().contains(QString::fromUtf8("eksik"),
+                     Qt::CaseInsensitive))) {
                 if (recover->isEnabled()) {
                     fail(43, "Recover remained enabled with a missing part");
                     return;
@@ -562,10 +708,16 @@ int main(int argc, char *argv[]) {
                 return;
             }
             if (state->stage == 7 && scan->isEnabled() &&
-                scanSummary->text().contains("corrupt",
-                    Qt::CaseInsensitive)) {
+                (scanSummary->text().contains("corrupt",
+                     Qt::CaseInsensitive) ||
+                 scanSummary->text().contains(QString::fromUtf8("bozuk"),
+                     Qt::CaseInsensitive))) {
                 if (recover->isEnabled()) {
                     fail(51, "Recover remained enabled with a corrupt part");
+                    return;
+                }
+                if (QSettings().value("ui/language").toString() != "tr") {
+                    fail(56, "Runtime language preference was not persisted");
                     return;
                 }
                 qInfo() << "Assistant E2E complete";

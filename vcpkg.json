@@ -33,6 +33,13 @@
           ]
         },
         {
+          "name": "qttools",
+          "default-features": false,
+          "features": [
+            "linguist"
+          ]
+        },
+        {
           "name": "qtbase",
           "default-features": false,
           "features": [

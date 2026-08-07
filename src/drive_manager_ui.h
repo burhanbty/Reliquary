@@ -45,6 +45,8 @@
 #include <QStackedWidget>
 #include <QRadioButton>
 #include <QButtonGroup>
+#include <QTranslator>
+#include <QVector>
 
 #include <memory>
 #include <optional>
@@ -158,6 +160,7 @@ public:
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private
 slots:
@@ -278,6 +281,25 @@ private:
     void setupVideoSetAssistant(QGroupBox *classicEncodeGroup,
                                 QGroupBox *classicRecoveryGroup);
 
+    void setupApplicationNavigation();
+
+    void setupSettingsPage();
+
+    void setUiLanguage(const QString &language, bool persist = true);
+
+    void retranslateUserInterface();
+
+    [[nodiscard]] QString translatedWorkflowText(
+        const std::string &english) const;
+
+    void showVideoSetHome();
+
+    void showVideoSetCreate();
+
+    void showVideoSetRecover();
+
+    void updateProfileCardVisuals();
+
     void updateVideoSetAssistant();
 
     void startVideoSetProcess(const QStringList &arguments,
@@ -314,7 +336,7 @@ private:
         const QString &command) const;
 
     // UI Components
-    QWidget *centralWidget;
+    QWidget *centralWidget = nullptr;
     QSplitter *mainSplitter;
 
     // Left panel - File operations
@@ -403,6 +425,29 @@ private:
 
     // YouTube Test Lab
     QTabWidget *mainTabs = nullptr;
+    QFrame *applicationHeader = nullptr;
+    QLabel *brandLabel = nullptr;
+    QLabel *brandSubtitleLabel = nullptr;
+    QPushButton *homeNavigationButton = nullptr;
+    QPushButton *createNavigationButton = nullptr;
+    QPushButton *recoverNavigationButton = nullptr;
+    QPushButton *recentNavigationButton = nullptr;
+    QToolButton *advancedNavigationButton = nullptr;
+    QPushButton *settingsNavigationButton = nullptr;
+    QComboBox *languageCombo = nullptr;
+    QComboBox *settingsLanguageCombo = nullptr;
+    QWidget *settingsPage = nullptr;
+    QLabel *settingsHeadingLabel = nullptr;
+    QLabel *settingsDescriptionLabel = nullptr;
+    QLabel *settingsLanguageLabel = nullptr;
+    QLabel *settingsOutputLabel = nullptr;
+    QLineEdit *settingsOutputEdit = nullptr;
+    QPushButton *settingsOutputBrowseButton = nullptr;
+    QCheckBox *rememberRecentCheckBox = nullptr;
+    QCheckBox *showAdvancedToolsCheckBox = nullptr;
+    QTranslator *uiTranslator = nullptr;
+    QString uiLanguage = QStringLiteral("en");
+    bool uiTranslationLoaded = false;
     QComboBox *testLabPresetCombo = nullptr;
     QLineEdit *testLabOutputEdit = nullptr;
     QLineEdit *testLabManifestEdit = nullptr;
@@ -435,12 +480,21 @@ private:
 
     // Video Set Assistant (guided UI over the existing file-only CLI workflow)
     QWidget *videoSetPage = nullptr;
+    QLabel *videoSetIntroLabel = nullptr;
+    QLabel *videoSetValidationLabel = nullptr;
     QStackedWidget *videoSetAssistantStack = nullptr;
+    QVector<QLabel *> videoSetAssistantPageHeadings;
+    QVector<QLabel *> videoSetAssistantPageSubtitles;
     QLabel *videoSetStepIndicator = nullptr;
     QLabel *videoSetPrimaryMessage = nullptr;
     QLabel *videoSetSuggestedAction = nullptr;
     QPushButton *videoSetWelcomeCreateButton = nullptr;
     QPushButton *videoSetWelcomeRecoverButton = nullptr;
+    QGroupBox *videoSetCreateCard = nullptr;
+    QGroupBox *videoSetRecoverCard = nullptr;
+    QLabel *videoSetCreateCardDescription = nullptr;
+    QLabel *videoSetRecoverCardDescription = nullptr;
+    QGroupBox *videoSetRecentGroup = nullptr;
     QListWidget *videoSetRecentList = nullptr;
     QPushButton *videoSetRecentContinueButton = nullptr;
     QPushButton *videoSetRecentOpenFolderButton = nullptr;
@@ -468,6 +522,10 @@ private:
     QSpinBox *videoSetMaximumSizeSpin = nullptr;
     QDoubleSpinBox *videoSetReserveSpin = nullptr;
     QLabel *videoSetAdvancedProfileLabel = nullptr;
+    QGroupBox *videoSetResilientCard = nullptr;
+    QGroupBox *videoSetHighCapacityCard = nullptr;
+    QLabel *videoSetResilientDescription = nullptr;
+    QLabel *videoSetHighCapacityDescription = nullptr;
     QLabel *videoSetPlanSummaryLabel = nullptr;
     QLabel *videoSetPlanMetricsLabel = nullptr;
     QToolButton *videoSetPartDetailsButton = nullptr;
@@ -479,6 +537,7 @@ private:
     QLabel *videoSetProgressPhaseLabel = nullptr;
     QLabel *videoSetProgressPartLabel = nullptr;
     QPushButton *videoSetProgressContinueButton = nullptr;
+    QPushButton *videoSetProgressOpenFolderButton = nullptr;
     QPushButton *videoSetProgressResumeButton = nullptr;
     QPushButton *videoSetAssistantCancelButton = nullptr;
     QFrame *videoSetActivityPanel = nullptr;
@@ -511,6 +570,8 @@ private:
     QLineEdit *videoSetAssistantRecoveryOutputEdit = nullptr;
     QLabel *videoSetScanSummaryLabel = nullptr;
     QLabel *videoSetScanCountsLabel = nullptr;
+    QVector<QLabel *> videoSetScanMetricTitles;
+    QVector<QLabel *> videoSetScanMetricValues;
     QListWidget *videoSetDetectedSetsList = nullptr;
     QPushButton *videoSetAssistantScanButton = nullptr;
     QPushButton *videoSetAssistantRecoverButton = nullptr;
@@ -518,6 +579,7 @@ private:
     QLabel *videoSetRecoveryProgressLabel = nullptr;
     QProgressBar *videoSetRecoveryProgressBar = nullptr;
     QLabel *videoSetSuccessLabel = nullptr;
+    QLabel *videoSetSuccessIcon = nullptr;
     QLabel *videoSetSuccessDetailsLabel = nullptr;
     QPushButton *videoSetOpenRecoveredButton = nullptr;
     QPushButton *videoSetCopyShaButton = nullptr;

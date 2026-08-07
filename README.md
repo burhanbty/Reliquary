@@ -33,6 +33,20 @@ an efficient, general-purpose archive or backup tool.
 - Encode preflight estimation and target-disk safety checks
 - Separate Resilient / Platform and Fast Local encoding modes
 
+## User interface / Kullanıcı arayüzü
+
+The desktop app opens on a card-based Video Set home screen with separate
+Create, Recover, Recent, Advanced, and Settings paths. Resilient is always
+the default; High Capacity remains an explicit opt-in. English and Turkish
+can be switched at runtime from the header or Settings without clearing the
+current workflow. The chosen language is saved for the next launch.
+
+Masaüstü uygulaması; Oluştur, Kurtar, Son Kullanılanlar, Gelişmiş ve Ayarlar
+yollarını ayıran kart tabanlı Video Set ana ekranıyla açılır. Dayanıklı mod
+her zaman varsayılandır; Yüksek Kapasite açıkça seçilmesi gereken bir
+seçenektir. İngilizce ve Türkçe, mevcut akış temizlenmeden üst çubuktan veya
+Ayarlar'dan değiştirilebilir. Seçilen dil sonraki açılış için kaydedilir.
+
 ## Encoding Modes
 
 VidStoreX has two explicitly different storage modes. Decode does not require

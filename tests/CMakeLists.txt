@@ -57,6 +57,23 @@ endif ()
 include(GoogleTest)
 gtest_discover_tests(media_storage_tests)
 
+if (TARGET media_storage_gui)
+    add_executable(media_storage_ui_language_tests
+            test_ui_language.cpp
+            "${CMAKE_SOURCE_DIR}/src/interface_language.cpp"
+            "${CMAKE_SOURCE_DIR}/src/interface_language.h"
+    )
+    target_include_directories(media_storage_ui_language_tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/src")
+    target_compile_definitions(media_storage_ui_language_tests PRIVATE
+            VIDSTOREX_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(media_storage_ui_language_tests PRIVATE
+            Qt6::Core
+            GTest::gtest
+            GTest::gtest_main)
+    gtest_discover_tests(media_storage_ui_language_tests)
+endif ()
+
 add_test(
         NAME CLI.PreflightIntegration
         COMMAND ${CMAKE_COMMAND}
