@@ -24,18 +24,55 @@
 #include <QDir>
 #include <QFile>
 #include <QFrame>
+#include <QIcon>
 #include <QListWidget>
+#include <QPainter>
+#include <QPixmap>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSet>
 #include <QTimer>
 #include <QStyleFactory>
+#include <QStatusBar>
 #include <QTextDocument>
 
 #include <algorithm>
 #include <filesystem>
 
 #include "drive_manager_ui.h"
+
+namespace {
+
+QIcon vidStoreXApplicationIcon() {
+    QIcon icon;
+    for (const int size : {16, 24, 32, 48, 256}) {
+        QPixmap pixmap(size, size);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing, size >= 32);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor("#262522"));
+        painter.drawRoundedRect(QRectF(1, 1, size - 2, size - 2),
+                                size * 0.16, size * 0.16);
+        const qreal unit = size / 8.0;
+        painter.setBrush(QColor("#F3EEE5"));
+        painter.drawRect(QRectF(unit * 1.4, unit * 1.6,
+                                unit * 2.4, unit * 4.8));
+        painter.setBrush(QColor("#D58A20"));
+        for (int row = 0; row < 2; ++row)
+            for (int column = 0; column < 2; ++column)
+                painter.drawRect(QRectF(unit * (4.6 + column * 1.25),
+                                        unit * (2.2 + row * 1.25),
+                                        unit, unit));
+        painter.drawRect(QRectF(unit * 4.6, unit * 5.2,
+                                unit * 2.25, unit * 0.65));
+        icon.addPixmap(pixmap);
+    }
+    return icon;
+}
+
+} // namespace
 
 int main(int argc, char *argv[]) {
     bool smokeTest = false;
@@ -89,8 +126,7 @@ int main(int argc, char *argv[]) {
         settings.setValue("ui/showAdvancedTools", true);
     }
     
-    // Set application icon (if available)
-    // app.setWindowIcon(QIcon(":/icons/app_icon.png"));
+    app.setWindowIcon(vidStoreXApplicationIcon());
     
     // Enable high DPI scaling (deprecated in Qt6, but kept for compatibility)
     // app.setAttribute(Qt::AA_EnableHighDpiScaling);
@@ -175,6 +211,13 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantStepper");
         auto *recentEmpty = window.findChild<QFrame *>(
             "videoSetRecentEmptyState");
+        auto *createCard = window.findChild<QFrame *>("videoSetCreateCard");
+        auto *recoverCard = window.findChild<QFrame *>("videoSetRecoverCard");
+        auto *createCardTitle = window.findChild<QLabel *>(
+            "videoSetCreateCardTitle");
+        auto *recoverCardTitle = window.findChild<QLabel *>(
+            "videoSetRecoverCardTitle");
+        auto *recentGroup = window.findChild<QFrame *>("videoSetRecentGroup");
         auto *classicAction = window.findChild<QAction *>(
             "advancedClassicVideoSetAction");
         if (!assistantStack || !assistantScroll || !createChoice ||
@@ -185,7 +228,8 @@ int main(int argc, char *argv[]) {
             !settingsNavigation || !language || !settingsLanguage ||
             !settingsPage || !advancedNavigation || !trustLabel ||
             !homeHeading || !createRail || !recoverRail || !stepper ||
-            !recentEmpty || !classicAction) {
+            !recentEmpty || !classicAction || !createCard || !recoverCard ||
+            !createCardTitle || !recoverCardTitle || !recentGroup) {
             qCritical() << "Video Set Assistant controls were not found";
             return 6;
         }
@@ -203,12 +247,31 @@ int main(int argc, char *argv[]) {
              !homeHeading->text().contains(QString::fromUtf8("güvenle"))) ||
             !trustLabel->text().contains("YouTube") ||
             createRail->height() < 1 || recoverRail->height() < 1 ||
+            createRail->width() > 100 || recoverRail->width() > 100 ||
+            createCardTitle->geometry().top() <= 0 ||
+            recoverCardTitle->geometry().top() <= 0 ||
+            qAbs(createCard->height() - recoverCard->height()) > 1 ||
             !recentEmpty->isVisible() ||
             (advancedNavigation->text() != QStringLiteral("Advanced") &&
              advancedNavigation->text() != QString::fromUtf8("Gelişmiş"))) {
             qCritical() << "Video Set Assistant welcome/scroll/focus invariant failed";
             return 6;
         }
+        window.resize(1920, 1080);
+        QApplication::processEvents();
+        const int heroContentWidth = recoverCard->geometry().right() -
+            createCard->geometry().left() + 1;
+        if (assistantScroll->verticalScrollBar()->isVisible() ||
+            !window.statusBar()->isHidden() || qApp->windowIcon().isNull() ||
+            heroContentWidth > 1450) {
+            qCritical() << "Consumer Home sizing, status bar, or app icon invariant failed"
+                        << "window" << window.size()
+                        << "hero" << heroContentWidth
+                        << "scroll" << assistantScroll->verticalScrollBar()->isVisible();
+            return 19;
+        }
+        window.resize(1280, 720);
+        QApplication::processEvents();
         int strongHomeActions = 0;
         for (auto *button : assistantStack->currentWidget()
                                 ->findChildren<QPushButton *>()) {
@@ -516,10 +579,48 @@ int main(int argc, char *argv[]) {
             qCritical() << "Turkish visual identity home invariant failed";
             return 57;
         }
-        if (!window.grab().save(QDir(root).filePath("e2e-home-tr.png"))) {
-            qCritical() << "Could not save Turkish Home visual audit";
-            return 58;
+        auto *assistantScroll = window.findChild<QScrollArea *>(
+            "videoSetAssistantScrollArea");
+        const QList<QPair<QSize, QString>> homeSizes{
+            {{1280, 720}, "1280x720"}, {{1366, 768}, "1366x768"},
+            {{1600, 900}, "1600x900"}, {{1920, 1080}, "1920x1080"}};
+        for (const auto &[size, suffix] : homeSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            if (!window.grab().save(QDir(root).filePath(
+                    "e2e-home-tr-light-" + suffix + ".png"))) {
+                qCritical() << "Could not save Turkish Home visual audit" << suffix;
+                return 58;
+            }
+            if (size.height() >= 768 && assistantScroll &&
+                assistantScroll->verticalScrollBar()->isVisible()) {
+                qCritical() << "Home has an unnecessary vertical scrollbar" << suffix;
+                return 62;
+            }
         }
+        const QPalette originalPalette = window.palette();
+        QPalette darkPalette = originalPalette;
+        darkPalette.setColor(QPalette::Window, QColor("#20201E"));
+        darkPalette.setColor(QPalette::Base, QColor("#181816"));
+        darkPalette.setColor(QPalette::WindowText, QColor("#F1EEE7"));
+        darkPalette.setColor(QPalette::Text, QColor("#F1EEE7"));
+        darkPalette.setColor(QPalette::ButtonText, QColor("#F1EEE7"));
+        qApp->setPalette(darkPalette);
+        window.resize(1366, 768);
+        QApplication::processEvents();
+        if (!window.grab().save(QDir(root).filePath(
+                "e2e-home-tr-dark-1366x768.png")))
+            return 63;
+        qApp->setPalette(originalPalette);
+        window.setPalette(originalPalette);
+        QApplication::processEvents();
+        language->setCurrentIndex(language->findData("en"));
+        QApplication::processEvents();
+        if (!window.grab().save(QDir(root).filePath(
+                "e2e-home-en-light-1366x768.png")))
+            return 64;
+        language->setCurrentIndex(language->findData("tr"));
+        QApplication::processEvents();
         capacityAction->trigger();
         QApplication::processEvents();
         if (!capacityHeading->isVisible() ||
@@ -528,6 +629,7 @@ int main(int argc, char *argv[]) {
             qCritical() << "Turkish Advanced Capacity wrapper failed";
             return 59;
         }
+        window.grab().save(QDir(root).filePath("e2e-capacity-tr.png"));
         settingsNavigation->click();
         QApplication::processEvents();
         auto *settingsLanguageSection = window.findChild<QLabel *>(
@@ -537,6 +639,7 @@ int main(int argc, char *argv[]) {
             qCritical() << "Turkish Settings sections failed";
             return 60;
         }
+        window.grab().save(QDir(root).filePath("e2e-settings-tr.png"));
         language->setCurrentIndex(language->findData("en"));
         homeNavigation->click();
         QApplication::processEvents();
@@ -596,6 +699,8 @@ int main(int argc, char *argv[]) {
             if (state->stage == 1 && sourceContinue->isEnabled()) {
                 sourceContinue->click();
                 highCapacity->click();
+                QApplication::processEvents();
+                window.grab().save(QDir(root).filePath("e2e-profile-en.png"));
                 target->setValue(1);
                 maximumSize->setValue(0);
                 calculate->click();
@@ -628,11 +733,13 @@ int main(int argc, char *argv[]) {
                     return;
                 }
                 state->setRoot = setsDirectory.filePath(setNames.front());
+                const QString recentAccessible = recent->item(0)->data(
+                    Qt::AccessibleTextRole).toString();
                 if (recent->count() != 1 ||
-                    !recent->item(0)->text().contains("Last opened:") ||
-                    recent->item(0)->text().contains(state->setRoot,
+                    !recentAccessible.contains("Last opened:") ||
+                    recentAccessible.contains(state->setRoot,
                         Qt::CaseInsensitive) ||
-                    recent->item(0)->text().contains("set_manifest",
+                    recentAccessible.contains("set_manifest",
                         Qt::CaseInsensitive)) {
                     fail(44, "Recent Video Sets did not record last-opened time");
                     return;
@@ -657,6 +764,8 @@ int main(int argc, char *argv[]) {
                     state->sourceVideoFiles << videos.filePath(name);
                 }
                 progressContinue->click();
+                QApplication::processEvents();
+                window.grab().save(QDir(root).filePath("e2e-youtube-en.png"));
                 uploaded->click();
                 recoveryInput->setText(returned);
                 recoveryOutput->setText(recovered);
@@ -725,6 +834,7 @@ int main(int argc, char *argv[]) {
                     fail(38, "Assistant scan did not report a complete set");
                     return;
                 }
+                window.grab().save(QDir(root).filePath("e2e-scan-en.png"));
                 recover->click();
                 state->stage = 5;
                 qInfo() << "Assistant E2E stage 5: recovering";
@@ -762,6 +872,63 @@ int main(int argc, char *argv[]) {
                 homeNavigation->click();
                 language->setCurrentIndex(language->findData("tr"));
                 QApplication::processEvents();
+                auto *recentEntry = recent->itemWidget(recent->item(0));
+                auto *recentTitle = recentEntry
+                    ? recentEntry->findChild<QLabel *>(
+                        "videoSetRecentEntryTitle0") : nullptr;
+                auto *recentMetadata = recentEntry
+                    ? recentEntry->findChild<QLabel *>(
+                        "videoSetRecentEntryMetadata0") : nullptr;
+                auto *recentStatus = recentEntry
+                    ? recentEntry->findChild<QLabel *>(
+                        "videoSetRecentEntryStatus0") : nullptr;
+                const bool recentSaved = window.grab().save(
+                    QDir(root).filePath("e2e-home-tr-one-recent.png"));
+                const bool titleMetadataOverlap = recentTitle && recentMetadata &&
+                    recentTitle->geometry().intersects(recentMetadata->geometry());
+                const bool titleStatusOverlap = recentTitle && recentStatus &&
+                    recentTitle->geometry().intersects(recentStatus->geometry());
+                const bool metadataStatusOverlap = recentMetadata && recentStatus &&
+                    recentMetadata->geometry().intersects(recentStatus->geometry());
+                const bool homeScroll = assistantScroll &&
+                    assistantScroll->verticalScrollBar()->isVisible();
+                if (!recentTitle || !recentMetadata || !recentStatus ||
+                    titleMetadataOverlap || titleStatusOverlap ||
+                    metadataStatusOverlap || recent->height() > 110 ||
+                    homeScroll || !recentSaved) {
+                    fail(65, QString(
+                        "Recent invariant failed: labels=%1/%2/%3 overlap=%4/%5/%6 "
+                        "height=%7 scroll=%8 saved=%9")
+                        .arg(recentTitle != nullptr)
+                        .arg(recentMetadata != nullptr)
+                        .arg(recentStatus != nullptr)
+                        .arg(titleMetadataOverlap).arg(titleStatusOverlap)
+                        .arg(metadataStatusOverlap).arg(recent->height())
+                        .arg(homeScroll).arg(recentSaved));
+                    return;
+                }
+                const QStringList originalRecent = QSettings().value(
+                    "videoSet/recentManifests").toStringList();
+                if (!originalRecent.isEmpty()) {
+                    QSettings().setValue("videoSet/recentManifests",
+                        QStringList(5, originalRecent.front()));
+                    homeNavigation->click();
+                    window.resize(1920, 1080);
+                    QApplication::processEvents();
+                    if (recent->count() != 5 ||
+                        !recent->verticalScrollBar()->isVisible() ||
+                        recent->height() < 3 * 58 ||
+                        !window.grab().save(QDir(root).filePath(
+                            "e2e-home-tr-five-recent.png"))) {
+                        fail(66, "Multiple Recent rows did not use bounded scrolling");
+                        return;
+                    }
+                    QSettings().setValue(
+                        "videoSet/recentManifests", originalRecent);
+                    window.resize(1366, 768);
+                    homeNavigation->click();
+                    QApplication::processEvents();
+                }
                 if (window.property("uiLanguage").toString() != "tr" ||
                     !window.property("uiTranslationLoaded").toBool() ||
                     stack->currentIndex() != 0 ||

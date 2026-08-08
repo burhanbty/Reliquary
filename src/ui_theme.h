@@ -28,10 +28,21 @@ struct Control final {
     static constexpr int Large = 42;
 };
 
+struct Layout final {
+    static constexpr int ContentMaxWidth = 1420;
+    static constexpr int HeroPadding = 18;
+    static constexpr int SectionGap = 18;
+    static constexpr int CompactActionGap = 8;
+    static constexpr int RecentVisibleRows = 4;
+};
+
 struct ThemeTokens final {
     bool dark = false;
     QColor surfaceBase;
+    QColor surfacePage;
     QColor surfaceRaised;
+    QColor surfaceRecent;
+    QColor surfaceTrust;
     QColor surfaceHover;
     QColor surfaceSelected;
     QColor textPrimary;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFrame>
 #include <QWidget>
 #include <QStringList>
 
@@ -26,6 +27,26 @@ protected:
 
 private:
     Mode mode_;
+};
+
+class QLabel;
+
+class VidStoreXRecentEntry final : public QFrame {
+public:
+    explicit VidStoreXRecentEntry(const QString &title,
+                                  const QString &metadata,
+                                  const QString &status,
+                                  const char *statusState,
+                                  QWidget *parent = nullptr);
+    [[nodiscard]] QLabel *titleLabel() const noexcept { return title_; }
+    [[nodiscard]] QLabel *metadataLabel() const noexcept { return metadata_; }
+    [[nodiscard]] QLabel *statusLabel() const noexcept { return status_; }
+    [[nodiscard]] QSize sizeHint() const override;
+
+private:
+    QLabel *title_ = nullptr;
+    QLabel *metadata_ = nullptr;
+    QLabel *status_ = nullptr;
 };
 
 class VidStoreXStepper final : public QWidget {

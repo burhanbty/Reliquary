@@ -30,9 +30,12 @@ ThemeTokens themeTokens(const QPalette &palette) {
     const QColor anchor = result.dark ? QColor("#E3A94B")
                                       : QColor("#A85E08");
     result.surfaceBase = mix(base, window, result.dark ? 0.16 : 0.09);
+    result.surfacePage = mix(window, base, result.dark ? 0.24 : 0.34);
     result.surfaceRaised = mix(base, result.dark ? QColor("#FFFFFF")
                                                 : QColor("#FFF8EA"),
                                result.dark ? 0.045 : 0.22);
+    result.surfaceRecent = mix(result.surfaceRaised, window,
+                               result.dark ? 0.55 : 0.28);
     result.surfaceHover = mix(result.surfaceRaised, anchor,
                               result.dark ? 0.07 : 0.055);
     result.surfaceSelected = mix(result.surfaceRaised, anchor,
@@ -50,6 +53,8 @@ ThemeTokens themeTokens(const QPalette &palette) {
     result.warning = result.dark ? QColor("#E5AD4F") : QColor("#9A5B05");
     result.error = result.dark ? QColor("#E17A75") : QColor("#A63D39");
     result.info = result.dark ? QColor("#72AFC2") : QColor("#36778C");
+    result.surfaceTrust = mix(result.surfacePage, result.success,
+                              result.dark ? 0.10 : 0.07);
     result.border = mix(text, window, result.dark ? 0.78 : 0.82);
     result.borderStrong = mix(text, window, result.dark ? 0.58 : 0.65);
     return result;
@@ -60,6 +65,8 @@ QString applicationStyleSheet(const QPalette &palette) {
     return QString(R"CSS(
         QWidget { font-size: 13px; }
         QMainWindow, QWidget#centralWidget { background: palette(window); }
+        QScrollArea#videoSetAssistantScrollArea QWidget#qt_scrollarea_viewport,
+        QWidget#videoSetAssistantWelcomePage { background: %22; }
         QFrame#applicationHeader {
             background: %1; border: 0; border-bottom: 1px solid %13;
         }
@@ -76,13 +83,14 @@ QString applicationStyleSheet(const QPalette &palette) {
             font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
         }
         QFrame[vsxSurface="raised"], QGroupBox[vsxRole="section"],
-        QGroupBox[vsxRole="actionCard"],
+        QFrame[vsxRole="actionCard"], QFrame[vsxRole="section"],
         QGroupBox[vsxRole="profileCard"] {
             background: %2; border: 1px solid %13; border-radius: 10px;
         }
-        QGroupBox[vsxRole="section"], QGroupBox[vsxRole="actionCard"],
+        QFrame[vsxRole="actionCard"], QFrame[vsxRole="section"],
+        QGroupBox[vsxRole="section"],
         QGroupBox[vsxRole="profileCard"] {
-            margin-top: 16px; padding: 16px; font-size: 16px; font-weight: 700;
+            font-size: 16px; font-weight: 700;
         }
         QGroupBox[vsxRole="actionCard"]::title,
         QGroupBox[vsxRole="section"]::title,
@@ -92,6 +100,19 @@ QString applicationStyleSheet(const QPalette &palette) {
         QGroupBox[vsxRole="profileCard"][selected="true"] {
             background: %4; border: 2px solid %8;
         }
+        QFrame#videoSetRecentGroup { background: %23; }
+        QFrame#videoSetTrustStrip { background: %24; border-color: %18; }
+        QListWidget#videoSetRecentList {
+            background: transparent; border: 0; border-radius: 0;
+        }
+        QListWidget#videoSetRecentList::item {
+            background: %2; border: 0; border-radius: 8px; margin-bottom: 6px;
+            padding: 0;
+        }
+        QListWidget#videoSetRecentList::item:hover { background: %3; }
+        QListWidget#videoSetRecentList::item:selected { background: %4; color: %5; }
+        QLabel[recentTitle="true"] { font-size: 14px; font-weight: 700; color: %5; }
+        QLabel[recentMeta="true"] { font-size: 12px; color: %7; }
         QLabel[vsxRole="dropZone"] {
             background: %1; border: 2px dashed %14; border-radius: 10px;
             padding: 18px; color: %6;
@@ -151,7 +172,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         QListWidget, QTableWidget, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
         QTextEdit {
             background: %1; border: 1px solid %13; border-radius: 6px;
-            selection-background-color: %4; selection-color: %5;
+            color: %5; selection-background-color: %4; selection-color: %5;
         }
         QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { min-height: 32px; padding: 1px 7px; }
         QListWidget::item { padding: 10px 8px; border-bottom: 1px solid %13; }
@@ -161,6 +182,16 @@ QString applicationStyleSheet(const QPalette &palette) {
         QProgressBar::chunk { border-radius: 6px; background: %8; }
         QScrollArea { background: transparent; }
         QScrollArea > QWidget > QWidget { background: transparent; }
+        QScrollArea#videoSetAssistantScrollArea QScrollBar:vertical {
+            width: 12px; background: transparent; margin: 2px;
+        }
+        QScrollArea#videoSetAssistantScrollArea QScrollBar::handle:vertical {
+            background: %14; min-height: 28px; border-radius: 5px;
+        }
+        QScrollArea#videoSetAssistantScrollArea QScrollBar::add-line:vertical,
+        QScrollArea#videoSetAssistantScrollArea QScrollBar::sub-line:vertical {
+            height: 0; background: transparent;
+        }
         QMenu { background: %2; border: 1px solid %13; padding: 5px; }
         QMenu::item { padding: 7px 24px 7px 10px; border-radius: 4px; }
         QMenu::item:selected { background: %4; color: %5; }
@@ -174,7 +205,8 @@ QString applicationStyleSheet(const QPalette &palette) {
              css(mix(t.surfaceBase, t.success, t.dark ? 0.13 : 0.08)),
              css(mix(t.surfaceBase, t.warning, t.dark ? 0.13 : 0.08)),
              css(mix(t.surfaceBase, t.error, t.dark ? 0.13 : 0.08)),
-             css(mix(t.surfaceBase, t.info, t.dark ? 0.13 : 0.08)));
+             css(mix(t.surfaceBase, t.info, t.dark ? 0.13 : 0.08)),
+             css(t.surfacePage), css(t.surfaceRecent), css(t.surfaceTrust));
 }
 
 void applyTheme(QWidget *root) {

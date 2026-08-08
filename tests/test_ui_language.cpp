@@ -76,6 +76,9 @@ TEST(UiLanguage, TurkishCatalogCoversCriticalUserInterface) {
          QString::fromUtf8("Teknik araçlar, deneyler ve düşük seviyeli kontroller.")},
         {"No recent Video Sets yet.",
          QString::fromUtf8("Henüz Video Set oluşturmadınız.")},
+        {"Technical details", QString::fromUtf8("Teknik ayrıntılar")},
+        {"Copy manifest location",
+         QString::fromUtf8("Manifest konumunu kopyala")},
         {"Download Processed Videos",
          QString::fromUtf8("İşlenmiş Videoları İndir")}};
     for (auto it = critical.cbegin(); it != critical.cend(); ++it) {

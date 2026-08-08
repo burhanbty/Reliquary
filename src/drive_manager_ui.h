@@ -487,6 +487,7 @@ private:
 
     // Video Set Assistant (guided UI over the existing file-only CLI workflow)
     QWidget *videoSetPage = nullptr;
+    QWidget *videoSetWelcomePage = nullptr;
     QLabel *videoSetIntroLabel = nullptr;
     QLabel *videoSetValidationLabel = nullptr;
     QStackedWidget *videoSetAssistantStack = nullptr;
@@ -497,15 +498,18 @@ private:
     QLabel *videoSetSuggestedAction = nullptr;
     QPushButton *videoSetWelcomeCreateButton = nullptr;
     QPushButton *videoSetWelcomeRecoverButton = nullptr;
-    QGroupBox *videoSetCreateCard = nullptr;
-    QGroupBox *videoSetRecoverCard = nullptr;
+    QFrame *videoSetCreateCard = nullptr;
+    QFrame *videoSetRecoverCard = nullptr;
+    QLabel *videoSetCreateCardTitle = nullptr;
+    QLabel *videoSetRecoverCardTitle = nullptr;
     QLabel *videoSetCreateCardDescription = nullptr;
     QLabel *videoSetRecoverCardDescription = nullptr;
     QLabel *videoSetCreateFlowLabel = nullptr;
     QLabel *videoSetRecoverFlowLabel = nullptr;
     QLabel *videoSetTrustLabel = nullptr;
     QToolButton *videoSetTrustDetailsButton = nullptr;
-    QGroupBox *videoSetRecentGroup = nullptr;
+    QFrame *videoSetRecentGroup = nullptr;
+    QLabel *videoSetRecentTitle = nullptr;
     QListWidget *videoSetRecentList = nullptr;
     QPushButton *videoSetRecentContinueButton = nullptr;
     QPushButton *videoSetRecentOpenFolderButton = nullptr;

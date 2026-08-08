@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QImage>
+#include <QLabel>
 #include <QPainter>
 #include <QPalette>
 #include <QSet>
@@ -141,6 +142,49 @@ TEST(UiVisualIdentity, DataGlyphModesRenderWithoutExternalAssets) {
     }
 }
 
+TEST(UiVisualIdentity, RecentEntryLayoutKeepsTextAndStatusSeparate) {
+    for (const qreal fontScale : {1.0, 1.25, 1.5}) {
+        VidStoreXRecentEntry entry(
+            QStringLiteral("ceng113-with-a-long-safe-archive-name.zip"),
+            QString::fromUtf8("2 parça · Son açılma: 7 Ağu 12:16"),
+            QString::fromUtf8("YouTube için hazır"), "success");
+        QFont font = entry.font();
+        font.setPointSizeF(font.pointSizeF() * fontScale);
+        entry.setFont(font);
+        entry.setStyleSheet(
+            vidstorex_ui::applicationStyleSheet(entry.palette()));
+        const QImage image = render(entry, {760, entry.sizeHint().height()});
+        EXPECT_FALSE(image.isNull());
+        EXPECT_LT(entry.titleLabel()->geometry().bottom(),
+                  entry.metadataLabel()->geometry().top());
+        EXPECT_FALSE(entry.titleLabel()->geometry().intersects(
+            entry.statusLabel()->geometry()));
+        EXPECT_FALSE(entry.metadataLabel()->geometry().intersects(
+            entry.statusLabel()->geometry()));
+        EXPECT_GE(entry.height(), 58);
+        EXPECT_LE(entry.height(), 110);
+    }
+}
+
+TEST(UiVisualIdentity, SurfaceHierarchyHasDistinctSemanticLevels) {
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor("#20201E"));
+    palette.setColor(QPalette::Base, QColor("#181816"));
+    palette.setColor(QPalette::WindowText, QColor("#F1EEE7"));
+    const auto tokens = vidstorex_ui::themeTokens(palette);
+    EXPECT_NE(tokens.surfaceBase, tokens.surfacePage);
+    EXPECT_NE(tokens.surfacePage, tokens.surfaceRaised);
+    EXPECT_NE(tokens.surfaceRaised, tokens.surfaceRecent);
+    EXPECT_NE(tokens.surfaceTrust, tokens.surfacePage);
+}
+
+TEST(UiVisualIdentity, LayoutTokensKeepHomeAndRecentBounded) {
+    EXPECT_GE(vidstorex_ui::Layout::ContentMaxWidth, 1200);
+    EXPECT_LE(vidstorex_ui::Layout::ContentMaxWidth, 1500);
+    EXPECT_EQ(vidstorex_ui::Layout::RecentVisibleRows, 4);
+    EXPECT_GE(vidstorex_ui::Layout::HeroPadding, 18);
+}
+
 TEST(UiVisualIdentity, GuiSourceDeclaresIdentityAndRecentPrivacyContract) {
     QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) +
                "/src/drive_manager_ui.cpp");
@@ -150,8 +194,21 @@ TEST(UiVisualIdentity, GuiSourceDeclaresIdentityAndRecentPrivacyContract) {
     EXPECT_TRUE(source.contains("videoSetSuccessSignalRail"));
     EXPECT_TRUE(source.contains("Advanced / Classic Video Set Tools"));
     EXPECT_TRUE(source.contains("Unavailable Video Set"));
+    EXPECT_TRUE(source.contains("new VidStoreXRecentEntry"));
+    EXPECT_TRUE(source.contains("Copy manifest location"));
+    EXPECT_TRUE(source.contains("setFixedHeight(listHeight)"));
+    EXPECT_FALSE(source.contains("new QGroupBox(\"Create a Video Set\")"));
     EXPECT_FALSE(source.contains(
         "display = manifest.absolutePath() +"));
+}
+
+TEST(UiVisualIdentity, AppIconIsGeneratedFromRepositoryOwnedGeometry) {
+    QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) + "/src/main_gui.cpp");
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString source = QString::fromUtf8(file.readAll());
+    EXPECT_TRUE(source.contains("vidStoreXApplicationIcon"));
+    EXPECT_TRUE(source.contains("{16, 24, 32, 48, 256}"));
+    EXPECT_TRUE(source.contains("app.setWindowIcon"));
 }
 
 TEST(UiVisualIdentity, ThemeSourceAvoidsDisallowedVisualTrends) {

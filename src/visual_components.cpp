@@ -4,6 +4,9 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QVBoxLayout>
 
 VidStoreXSignalRail::VidStoreXSignalRail(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("vidStoreXSignalRail"));
@@ -110,6 +113,42 @@ void VidStoreXDataGlyph::paintEvent(QPaintEvent *) {
     } else {
         p.drawLine(10, 14, 29, 34); p.drawLine(29, 14, 10, 34);
     }
+}
+
+VidStoreXRecentEntry::VidStoreXRecentEntry(
+    const QString &title, const QString &metadata, const QString &status,
+    const char *statusState, QWidget *parent)
+    : QFrame(parent) {
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *layout = new QHBoxLayout(this);
+    layout->setContentsMargins(12, 8, 10, 8);
+    layout->setSpacing(12);
+    auto *textLayout = new QVBoxLayout();
+    textLayout->setSpacing(3);
+    title_ = new QLabel(title);
+    title_->setObjectName(QStringLiteral("videoSetRecentEntryTitle"));
+    title_->setProperty("recentTitle", true);
+    title_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    title_->setToolTip(title);
+    metadata_ = new QLabel(metadata);
+    metadata_->setObjectName(QStringLiteral("videoSetRecentEntryMetadata"));
+    metadata_->setProperty("recentMeta", true);
+    metadata_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    metadata_->setToolTip(metadata);
+    textLayout->addWidget(title_);
+    textLayout->addWidget(metadata_);
+    status_ = new QLabel(status);
+    status_->setObjectName(QStringLiteral("videoSetRecentEntryStatus"));
+    status_->setProperty("vsxState", statusState);
+    status_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    status_->setWordWrap(false);
+    layout->addLayout(textLayout, 1);
+    layout->addWidget(status_, 0, Qt::AlignVCenter);
+}
+
+QSize VidStoreXRecentEntry::sizeHint() const {
+    const QSize natural = QFrame::sizeHint();
+    return {natural.width(), qMax(58, natural.height())};
 }
 
 VidStoreXStepper::VidStoreXStepper(QWidget *parent) : QWidget(parent) {
