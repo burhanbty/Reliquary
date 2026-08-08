@@ -38,6 +38,8 @@ list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/main_gui.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/media_storage_api.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/video_set_cli.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/interface_language.cpp")
+list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp")
+list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.cpp")
 
 target_sources(media_storage_core PRIVATE
         ${SRC_CPP} ${SRC_HDR}
@@ -60,12 +62,19 @@ target_sources(media_storage PRIVATE
 )
 
 if (BUILD_GUI)
+    set_source_files_properties(
+            "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.h"
+            PROPERTIES SKIP_AUTOUIC ON)
     target_sources(media_storage_gui PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/drive_manager_ui.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drive_manager_ui.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/main_gui.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/interface_language.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/interface_language.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.cpp"
     )
 
     target_include_directories(media_storage_gui PRIVATE

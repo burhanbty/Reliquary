@@ -117,7 +117,7 @@ if (MEDIA_STORAGE_STATIC_BINARIES)
 endif ()
 
 if (BUILD_GUI)
-    set_target_properties(media_storage_gui PROPERTIES AUTOMOC ON AUTOUIC ON)
+    set_target_properties(media_storage_gui PROPERTIES AUTOMOC ON AUTOUIC OFF)
 endif ()
 if (MSVC)
     set(_msvc_arch_flags "")

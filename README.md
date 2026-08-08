@@ -12,8 +12,8 @@ an efficient, general-purpose archive or backup tool.
 
 - Tested on Windows 10/11
 - Release configuration builds successfully
-- **256 automated tests registered** (run the Release test command below
-  to verify the current machine)
+- Automated GUI, CLI, codec, format, recovery, localization, and visual
+  identity tests (run the Release test command below for the current count)
 - Successful encode/decode roundtrip with SHA-256 verification
 - Both GUI and CLI applications are available
 
@@ -46,6 +46,20 @@ yollarını ayıran kart tabanlı Video Set ana ekranıyla açılır. Dayanıkl�
 her zaman varsayılandır; Yüksek Kapasite açıkça seçilmesi gereken bir
 seçenektir. İngilizce ve Türkçe, mevcut akış temizlenmeden üst çubuktan veya
 Ayarlar'dan değiştirilebilir. Seçilen dil sonraki açılış için kaydedilir.
+
+### Visual identity
+
+The desktop interface uses a **Digital Archive / Signal Grid** visual
+language. Small block-and-data glyphs show the file-to-video and
+video-to-file direction, while the VidStoreX Signal Rail represents verified
+data moving through the workflow. A palette-derived graphite surface system
+and one signal-amber accent keep primary actions, status, and focus clear in
+both light and dark system palettes without changing the native title bar.
+
+The guided Home, Create, Recover, Recent, and Settings surfaces are intended
+for normal use. **Advanced** in the application header opens Storage,
+YouTube Test Lab, and Capacity Lab; the collapsed **Advanced / Classic Video
+Set Tools** section keeps the established low-level controls available.
 
 ## Encoding Modes
 

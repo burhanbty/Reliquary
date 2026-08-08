@@ -72,6 +72,32 @@ if (TARGET media_storage_gui)
             GTest::gtest
             GTest::gtest_main)
     gtest_discover_tests(media_storage_ui_language_tests)
+
+    add_executable(media_storage_ui_visual_identity_tests
+            test_ui_visual_identity.cpp
+            test_ui_visual_identity_main.cpp
+            "${CMAKE_SOURCE_DIR}/src/ui_theme.cpp"
+            "${CMAKE_SOURCE_DIR}/src/ui_theme.h"
+            "${CMAKE_SOURCE_DIR}/src/visual_components.cpp"
+            "${CMAKE_SOURCE_DIR}/src/visual_components.h"
+    )
+    target_include_directories(media_storage_ui_visual_identity_tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/src")
+    target_compile_definitions(media_storage_ui_visual_identity_tests PRIVATE
+            VIDSTOREX_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(media_storage_ui_visual_identity_tests PRIVATE
+            Qt6::Core
+            Qt6::Widgets
+            GTest::gtest)
+    if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
+        gtest_discover_tests(media_storage_ui_visual_identity_tests
+                DISCOVERY_MODE PRE_TEST
+                PROPERTIES ENVIRONMENT
+                "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
+    else ()
+        gtest_discover_tests(media_storage_ui_visual_identity_tests
+                DISCOVERY_MODE PRE_TEST)
+    endif ()
 endif ()
 
 add_test(

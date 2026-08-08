@@ -57,6 +57,9 @@
 #include "media_storage.h"
 #include "video_set_workflow.h"
 
+class VidStoreXSignalRail;
+class VidStoreXStepper;
+
 class WorkerThread : public QThread {
     Q_OBJECT
 
@@ -285,6 +288,10 @@ private:
 
     void setupSettingsPage();
 
+    void applySemanticVisualRoles();
+
+    void updateNavigationVisuals();
+
     void setUiLanguage(const QString &language, bool persist = true);
 
     void retranslateUserInterface();
@@ -485,7 +492,7 @@ private:
     QStackedWidget *videoSetAssistantStack = nullptr;
     QVector<QLabel *> videoSetAssistantPageHeadings;
     QVector<QLabel *> videoSetAssistantPageSubtitles;
-    QLabel *videoSetStepIndicator = nullptr;
+    VidStoreXStepper *videoSetStepIndicator = nullptr;
     QLabel *videoSetPrimaryMessage = nullptr;
     QLabel *videoSetSuggestedAction = nullptr;
     QPushButton *videoSetWelcomeCreateButton = nullptr;
@@ -494,11 +501,19 @@ private:
     QGroupBox *videoSetRecoverCard = nullptr;
     QLabel *videoSetCreateCardDescription = nullptr;
     QLabel *videoSetRecoverCardDescription = nullptr;
+    QLabel *videoSetCreateFlowLabel = nullptr;
+    QLabel *videoSetRecoverFlowLabel = nullptr;
+    QLabel *videoSetTrustLabel = nullptr;
+    QToolButton *videoSetTrustDetailsButton = nullptr;
     QGroupBox *videoSetRecentGroup = nullptr;
     QListWidget *videoSetRecentList = nullptr;
     QPushButton *videoSetRecentContinueButton = nullptr;
     QPushButton *videoSetRecentOpenFolderButton = nullptr;
     QPushButton *videoSetRecentRemoveButton = nullptr;
+    QFrame *videoSetRecentEmptyState = nullptr;
+    QLabel *videoSetRecentEmptyLabel = nullptr;
+    QPushButton *videoSetRecentEmptyCreateButton = nullptr;
+    QPushButton *videoSetRecentEmptyRecoverButton = nullptr;
     QLineEdit *videoSetAssistantInputEdit = nullptr;
     QLineEdit *videoSetAssistantOutputEdit = nullptr;
     QPushButton *videoSetAssistantInputBrowseButton = nullptr;
@@ -555,6 +570,7 @@ private:
     QToolButton *videoSetTechnicalLogButton = nullptr;
     QTextEdit *videoSetLog = nullptr;
     QLabel *videoSetUploadInstructionsLabel = nullptr;
+    QVector<QLabel *> videoSetUploadInstructionLabels;
     QPushButton *videoSetOpenVideosButton = nullptr;
     QPushButton *videoSetOpenChecklistButton = nullptr;
     QPushButton *videoSetUploadedButton = nullptr;
@@ -581,7 +597,9 @@ private:
     QLabel *videoSetSuccessLabel = nullptr;
     QLabel *videoSetSuccessIcon = nullptr;
     QLabel *videoSetSuccessDetailsLabel = nullptr;
+    VidStoreXSignalRail *videoSetSuccessRail = nullptr;
     QPushButton *videoSetOpenRecoveredButton = nullptr;
+    QPushButton *videoSetOpenSetFolderButton = nullptr;
     QPushButton *videoSetCopyShaButton = nullptr;
     QPushButton *videoSetReturnHomeButton = nullptr;
     QGroupBox *videoSetClassicToolsGroup = nullptr;

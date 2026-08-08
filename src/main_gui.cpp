@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <QApplication>
+#include <QAction>
 #include <QComboBox>
 #include <QDebug>
 #include <QDoubleSpinBox>
@@ -62,11 +63,16 @@ int main(int argc, char *argv[]) {
                 QString::fromLocal8Bit(argv[++i]);
         }
     }
-    if (!videoSetAssistantSmokeRoot.isEmpty()) {
+    const bool isolatedUiRun = !videoSetAssistantSmokeRoot.isEmpty() ||
+        smokeTest || closeDuringEstimate;
+    if (isolatedUiRun) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(
             QSettings::IniFormat, QSettings::UserScope,
-            QDir(videoSetAssistantSmokeRoot).filePath("settings"));
+            !videoSetAssistantSmokeRoot.isEmpty()
+                ? QDir(videoSetAssistantSmokeRoot).filePath("settings")
+                : QDir(QDir::tempPath()).filePath(
+                    "vidstorex-gui-smoke-settings"));
     }
     QApplication app(argc, argv);
     
@@ -76,7 +82,7 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationVersion("1.0");
     QApplication::setOrganizationName("Media Storage");
     QApplication::setOrganizationDomain("brandonli.me");
-    if (!videoSetAssistantSmokeRoot.isEmpty()) {
+    if (isolatedUiRun) {
         QSettings settings;
         settings.setValue("ui/language", "en");
         settings.setValue("ui/rememberRecentSets", true);
@@ -155,13 +161,31 @@ int main(int argc, char *argv[]) {
         auto *settingsLanguage = window.findChild<QComboBox *>(
             "settingsLanguageCombo");
         auto *settingsPage = window.findChild<QWidget *>("settingsPage");
+        auto *advancedNavigation = window.findChild<QToolButton *>(
+            "advancedNavigationButton");
+        auto *trustLabel = window.findChild<QLabel *>(
+            "videoSetTrustLabel");
+        auto *homeHeading = window.findChild<QLabel *>(
+            "videoSetPageHeading0");
+        auto *createRail = window.findChild<QWidget *>(
+            "videoSetCreateSignalRail");
+        auto *recoverRail = window.findChild<QWidget *>(
+            "videoSetRecoverSignalRail");
+        auto *stepper = window.findChild<QWidget *>(
+            "videoSetAssistantStepper");
+        auto *recentEmpty = window.findChild<QFrame *>(
+            "videoSetRecentEmptyState");
+        auto *classicAction = window.findChild<QAction *>(
+            "advancedClassicVideoSetAction");
         if (!assistantStack || !assistantScroll || !createChoice ||
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
             !activityPanel || !activityTitle || !activityProgress ||
             !technicalToggle || !technicalLog || !homeNavigation ||
             !settingsNavigation || !language || !settingsLanguage ||
-            !settingsPage) {
+            !settingsPage || !advancedNavigation || !trustLabel ||
+            !homeHeading || !createRail || !recoverRail || !stepper ||
+            !recentEmpty || !classicAction) {
             qCritical() << "Video Set Assistant controls were not found";
             return 6;
         }
@@ -173,9 +197,37 @@ int main(int argc, char *argv[]) {
             createChoice->focusPolicy() == Qt::NoFocus ||
             recoverChoice->focusPolicy() == Qt::NoFocus ||
             assistantScroll->isAncestorOf(activityPanel) ||
-            technicalLog->document()->maximumBlockCount() != 5000) {
+            technicalLog->document()->maximumBlockCount() != 5000 ||
+            homeHeading->text() == QStringLiteral("VidStoreX") ||
+            (!homeHeading->text().contains("safely") &&
+             !homeHeading->text().contains(QString::fromUtf8("güvenle"))) ||
+            !trustLabel->text().contains("YouTube") ||
+            createRail->height() < 1 || recoverRail->height() < 1 ||
+            !recentEmpty->isVisible() ||
+            (advancedNavigation->text() != QStringLiteral("Advanced") &&
+             advancedNavigation->text() != QString::fromUtf8("Gelişmiş"))) {
             qCritical() << "Video Set Assistant welcome/scroll/focus invariant failed";
             return 6;
+        }
+        int strongHomeActions = 0;
+        for (auto *button : assistantStack->currentWidget()
+                                ->findChildren<QPushButton *>()) {
+            if (button->isVisible() &&
+                button->property("vsxRole").toString() ==
+                    QStringLiteral("primary"))
+                ++strongHomeActions;
+        }
+        int visibleBrandLabels = 0;
+        for (auto *label : window.findChildren<QLabel *>())
+            if (label->isVisible() && label->text() == QStringLiteral("VidStoreX"))
+                ++visibleBrandLabels;
+        if (strongHomeActions != 2 || visibleBrandLabels != 1 ||
+            createChoice->property("vsxRole").toString() !=
+                QStringLiteral("primary") ||
+            !settingsNavigation->property("nav").toBool()) {
+            qCritical() << "Visual hierarchy or single-brand invariant failed"
+                        << strongHomeActions << visibleBrandLabels;
+            return 18;
         }
         const QList<QSize> supportedSizes{
             QSize(1280, 720), QSize(1366, 768), QSize(1920, 1080)};
@@ -260,9 +312,9 @@ int main(int argc, char *argv[]) {
             return 10;
         }
         advancedToggle->setChecked(false);
-        classicTools->setChecked(true);
+        classicAction->trigger();
         QApplication::processEvents();
-        if (classicTools->isHidden()) {
+        if (classicTools->isHidden() || !classicTools->isChecked()) {
             qCritical() << "Classic Video Set tools are inaccessible";
             return 11;
         }
@@ -353,6 +405,8 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantStack");
         auto *create = window.findChild<QPushButton *>(
             "videoSetAssistantCreateChoice");
+        auto *recoverChoice = window.findChild<QPushButton *>(
+            "videoSetAssistantRecoverChoice");
         auto *input = window.findChild<QLineEdit *>(
             "videoSetAssistantSourcePath");
         auto *output = window.findChild<QLineEdit *>(
@@ -403,12 +457,28 @@ int main(int argc, char *argv[]) {
             "uiLanguageCombo");
         auto *homeNavigation = window.findChild<QPushButton *>(
             "homeNavigationButton");
+        auto *settingsNavigation = window.findChild<QPushButton *>(
+            "settingsNavigationButton");
+        auto *advancedNavigation = window.findChild<QToolButton *>(
+            "advancedNavigationButton");
         auto *brandSubtitle = window.findChild<QLabel *>(
             "brandSubtitle");
         auto *resilientCard = window.findChild<QGroupBox *>(
             "videoSetResilientCard");
         auto *highCapacityCard = window.findChild<QGroupBox *>(
             "videoSetHighCapacityCard");
+        auto *homeHeading = window.findChild<QLabel *>(
+            "videoSetPageHeading0");
+        auto *trustLabel = window.findChild<QLabel *>(
+            "videoSetTrustLabel");
+        auto *classicTools = window.findChild<QGroupBox *>(
+            "videoSetClassicTools");
+        auto *successRail = window.findChild<QWidget *>(
+            "videoSetSuccessSignalRail");
+        auto *capacityHeading = window.findChild<QLabel *>(
+            "capacityLabPageHeading");
+        auto *capacityAction = window.findChild<QAction *>(
+            "advancedCapacityLabAction");
         if (!stack || !create || !input || !output || !sourceContinue ||
             !highCapacity || !target || !maximumSize || !calculate ||
             !planSummary || !createVideos || !progressContinue ||
@@ -417,10 +487,59 @@ int main(int argc, char *argv[]) {
             !success || !recent || !activityPanel || !activityTitle ||
             !activityDescription || !activityProgress || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
-            !highCapacityCard) {
+            !highCapacityCard || !recoverChoice || !settingsNavigation ||
+            !advancedNavigation || !homeHeading || !trustLabel ||
+            !classicTools || !successRail || !capacityHeading ||
+            !capacityAction) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
         }
+
+        language->setCurrentIndex(language->findData("tr"));
+        QApplication::processEvents();
+        window.resize(1280, 720);
+        QApplication::processEvents();
+        int visibleBrands = 0;
+        for (auto *label : window.findChildren<QLabel *>())
+            if (label->isVisible() && label->text() == QStringLiteral("VidStoreX"))
+                ++visibleBrands;
+        if (window.property("uiLanguage").toString() != "tr" ||
+            homeHeading->text() != QString::fromUtf8(
+                "Dosyalarınızı videolarda güvenle saklayın") ||
+            !trustLabel->text().contains(QStringLiteral("YouTube")) ||
+            visibleBrands != 1 ||
+            create->property("vsxRole").toString() != "primary" ||
+            recoverChoice->property("vsxRole").toString() != "primary" ||
+            advancedNavigation->text() != QString::fromUtf8("Gelişmiş") ||
+            classicTools->title() != QString::fromUtf8(
+                "Gelişmiş / Klasik Video Set Araçları")) {
+            qCritical() << "Turkish visual identity home invariant failed";
+            return 57;
+        }
+        if (!window.grab().save(QDir(root).filePath("e2e-home-tr.png"))) {
+            qCritical() << "Could not save Turkish Home visual audit";
+            return 58;
+        }
+        capacityAction->trigger();
+        QApplication::processEvents();
+        if (!capacityHeading->isVisible() ||
+            capacityHeading->text() != QString::fromUtf8(
+                "Gelişmiş / Kapasite Laboratuvarı")) {
+            qCritical() << "Turkish Advanced Capacity wrapper failed";
+            return 59;
+        }
+        settingsNavigation->click();
+        QApplication::processEvents();
+        auto *settingsLanguageSection = window.findChild<QLabel *>(
+            "settingsLanguageSection");
+        if (!settingsLanguageSection ||
+            settingsLanguageSection->text() != QString::fromUtf8("Dil")) {
+            qCritical() << "Turkish Settings sections failed";
+            return 60;
+        }
+        language->setCurrentIndex(language->findData("en"));
+        homeNavigation->click();
+        QApplication::processEvents();
 
         struct SmokeState {
             int stage = 0;
@@ -510,7 +629,11 @@ int main(int argc, char *argv[]) {
                 }
                 state->setRoot = setsDirectory.filePath(setNames.front());
                 if (recent->count() != 1 ||
-                    !recent->item(0)->text().contains("Last opened:")) {
+                    !recent->item(0)->text().contains("Last opened:") ||
+                    recent->item(0)->text().contains(state->setRoot,
+                        Qt::CaseInsensitive) ||
+                    recent->item(0)->text().contains("set_manifest",
+                        Qt::CaseInsensitive)) {
                     fail(44, "Recent Video Sets did not record last-opened time");
                     return;
                 }
@@ -617,6 +740,12 @@ int main(int argc, char *argv[]) {
                     fail(39, "Assistant exact-success screen was not shown");
                     return;
                 }
+                if (!successRail->isVisible() || successRail->height() < 1 ||
+                    !window.grab().save(
+                        QDir(root).filePath("e2e-success-en.png"))) {
+                    fail(61, "Exact-success signature or visual audit is missing");
+                    return;
+                }
                 const QString recoveredFile = QDir(recovered).filePath("source.bin");
                 if (!QFileInfo::exists(recoveredFile)) {
                     fail(40, "Assistant recovered file is missing");
@@ -637,13 +766,21 @@ int main(int argc, char *argv[]) {
                     !window.property("uiTranslationLoaded").toBool() ||
                     stack->currentIndex() != 0 ||
                     brandSubtitle->text() != QString::fromUtf8(
-                        "Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtarın.") ||
+                        "DOSYA → VİDEO → DOSYA · DİJİTAL ARŞİV") ||
                     create->text() != QString::fromUtf8("Dosya Seç") ||
                     !activityTitle->text().contains(
                         QString::fromUtf8("Orijinal dosya")) ||
                     success->text() != QString::fromUtf8(
                         "Dosyanız birebir kurtarıldı.")) {
-                    fail(52, "Runtime English-to-Turkish translation failed");
+                    fail(52, QString(
+                        "Runtime English-to-Turkish translation failed: "
+                        "language=%1 loaded=%2 stack=%3 brand=%4 create=%5 "
+                        "activity=%6 success=%7")
+                        .arg(window.property("uiLanguage").toString())
+                        .arg(window.property("uiTranslationLoaded").toBool())
+                        .arg(stack->currentIndex())
+                        .arg(brandSubtitle->text(), create->text(),
+                             activityTitle->text(), success->text()));
                     return;
                 }
                 stack->setCurrentIndex(2);

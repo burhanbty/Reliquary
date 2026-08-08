@@ -67,7 +67,17 @@ TEST(UiLanguage, TurkishCatalogCoversCriticalUserInterface) {
         {"Fewer & Shorter Videos", QString::fromUtf8("Daha Az ve Daha Kısa Video")},
         {"Everything is ready.", QString::fromUtf8("Her şey hazır.")},
         {"Your file was recovered exactly.",
-         QString::fromUtf8("Dosyanız birebir kurtarıldı.")}};
+         QString::fromUtf8("Dosyanız birebir kurtarıldı.")},
+        {"Store your files safely in videos",
+         QString::fromUtf8("Dosyalarınızı videolarda güvenle saklayın")},
+        {"Advanced / Classic Video Set Tools",
+         QString::fromUtf8("Gelişmiş / Klasik Video Set Araçları")},
+        {"Technical tools, experiments and low-level controls.",
+         QString::fromUtf8("Teknik araçlar, deneyler ve düşük seviyeli kontroller.")},
+        {"No recent Video Sets yet.",
+         QString::fromUtf8("Henüz Video Set oluşturmadınız.")},
+        {"Download Processed Videos",
+         QString::fromUtf8("İşlenmiş Videoları İndir")}};
     for (auto it = critical.cbegin(); it != critical.cend(); ++it) {
         ASSERT_TRUE(messages.contains(it.key()))
             << it.key().toStdString();
