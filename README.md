@@ -35,6 +35,8 @@ an efficient, general-purpose archive or backup tool.
 
 ## User interface / Kullanıcı arayüzü
 
+VidStoreX includes a three-step first-run guide that explains creation, manual video upload, and playlist-based recovery.
+
 The desktop app opens on a card-based Video Set home screen with separate
 Create, Recover, Recent, Advanced, and Settings paths. Resilient is always
 the default; High Capacity remains an explicit opt-in. English and Turkish

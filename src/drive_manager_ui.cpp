@@ -408,6 +408,8 @@ DriveManagerUI::DriveManagerUI(QWidget *parent)
     setupStatusBar();
     connectSignals();
     retranslateUserInterface();
+    if (QSettings().value("ui/onboardingVersion", 0).toInt() < 1)
+        showOnboarding();
 
     preflightDebounceTimer = new QTimer(this);
     preflightDebounceTimer->setSingleShot(true);
@@ -1805,6 +1807,7 @@ void DriveManagerUI::setupUI() {
     });
 
     setupSettingsPage();
+    setupOnboardingPage();
     setupApplicationNavigation();
 
     // Main layout
@@ -1850,6 +1853,8 @@ void DriveManagerUI::setupSettingsPage() {
     auto *generalSection = section("General", "settingsGeneralSection");
     auto *languageSection = section("Language", "settingsLanguageSection");
     auto *storageSection = section("Storage", "settingsStorageSection");
+    auto *gettingStartedSection = section(
+        "Getting Started", "settingsGettingStartedSection");
     auto *advancedSection = section("Advanced", "settingsAdvancedSection");
     settingsLanguageLabel = new QLabel();
     settingsLanguageCombo = new QComboBox();
@@ -1873,6 +1878,14 @@ void DriveManagerUI::setupSettingsPage() {
     rememberRecentCheckBox->setObjectName("rememberRecentVideoSets");
     showAdvancedToolsCheckBox = new QCheckBox();
     showAdvancedToolsCheckBox->setObjectName("showAdvancedTools");
+    settingsOnboardingDescription = new QLabel();
+    settingsOnboardingDescription->setObjectName(
+        "settingsGettingStartedDescription");
+    settingsOnboardingDescription->setWordWrap(true);
+    settingsOnboardingDescription->setProperty("muted", true);
+    settingsShowOnboardingButton = new QPushButton();
+    settingsShowOnboardingButton->setObjectName(
+        "settingsShowGettingStartedButton");
     auto *generalDescription = new QLabel(
         "Changes apply immediately and are saved for the next launch.");
     generalDescription->setObjectName("settingsGeneralDescription");
@@ -1889,8 +1902,11 @@ void DriveManagerUI::setupSettingsPage() {
     form->addWidget(settingsOutputEdit, 5, 1);
     form->addWidget(settingsOutputBrowseButton, 5, 2);
     form->addWidget(rememberRecentCheckBox, 6, 0, 1, 3);
-    form->addWidget(advancedSection, 7, 0, 1, 3);
-    form->addWidget(showAdvancedToolsCheckBox, 8, 0, 1, 3);
+    form->addWidget(gettingStartedSection, 7, 0, 1, 3);
+    form->addWidget(settingsOnboardingDescription, 8, 0, 1, 2);
+    form->addWidget(settingsShowOnboardingButton, 8, 2);
+    form->addWidget(advancedSection, 9, 0, 1, 3);
+    form->addWidget(showAdvancedToolsCheckBox, 10, 0, 1, 3);
     layout->addWidget(card);
     layout->addStretch();
 
@@ -2054,6 +2070,8 @@ void DriveManagerUI::setupSettingsPage() {
             settingsOutputEdit->text());
         if (!folder.isEmpty()) settingsOutputEdit->setText(folder);
     });
+    connect(settingsShowOnboardingButton, &QPushButton::clicked,
+            this, &DriveManagerUI::showOnboarding);
     connect(settingsOutputEdit, &QLineEdit::textChanged,
             this, [this](const QString &folder) {
         QSettings().setValue("ui/defaultVideoSetOutputFolder", folder);
@@ -2208,6 +2226,181 @@ void DriveManagerUI::setupSettingsPage() {
     });
 }
 
+void DriveManagerUI::setupOnboardingPage() {
+    onboardingPage = new QWidget();
+    onboardingPage->setObjectName("onboardingPage");
+    auto *outer = new QVBoxLayout(onboardingPage);
+    outer->setContentsMargins(24, 14, 24, 18);
+    outer->addStretch(1);
+
+    auto *centerRow = new QHBoxLayout();
+    centerRow->addStretch(1);
+    auto *card = new QFrame();
+    card->setObjectName("onboardingCard");
+    card->setProperty("vsxSurface", "raised");
+    card->setMaximumWidth(920);
+    card->setMinimumWidth(760);
+    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(36, 24, 36, 26);
+    cardLayout->setSpacing(12);
+
+    auto *topRow = new QHBoxLayout();
+    onboardingProgress = new VidStoreXOnboardingProgress();
+    topRow->addWidget(onboardingProgress, 0, Qt::AlignVCenter);
+    topRow->addStretch();
+    onboardingSkipButton = new QPushButton();
+    onboardingSkipButton->setObjectName("onboardingSkipButton");
+    onboardingSkipButton->setProperty("vsxRole", "ghost");
+    topRow->addWidget(onboardingSkipButton);
+    cardLayout->addLayout(topRow);
+
+    onboardingStack = new QStackedWidget();
+    onboardingStack->setObjectName("onboardingStack");
+    const QStringList titles{
+        "Turn your file into videos",
+        "Store the videos",
+        "Paste the playlist. Get your file back."};
+    const QStringList descriptions{
+        "Choose a file and let VidStoreX turn it into a resilient Video Set.",
+        "Upload the videos created by VidStoreX and place them in a single YouTube playlist.",
+        "VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file."};
+    const QStringList supporting{
+        "Large files can be split across multiple videos automatically.",
+        "Upload the videos\nUse Unlisted when possible\nWait for 1080p processing\nPlace all parts in one playlist",
+        "Recovery is marked successful only after the reconstructed file is verified."};
+    const auto modes = {
+        VidStoreXFlowIllustration::Mode::Create,
+        VidStoreXFlowIllustration::Mode::Store,
+        VidStoreXFlowIllustration::Mode::Recover};
+    int index = 0;
+    for (const auto mode : modes) {
+        auto *page = new QWidget();
+        page->setObjectName(QStringLiteral("onboardingPage%1").arg(index + 1));
+        auto *pageLayout = new QVBoxLayout(page);
+        pageLayout->setContentsMargins(0, 2, 0, 2);
+        pageLayout->setSpacing(10);
+        auto *title = new QLabel(titles.at(index));
+        title->setObjectName(QStringLiteral("onboardingTitle%1").arg(index + 1));
+        title->setProperty("pageTitle", true);
+        title->setProperty("i18nSource", titles.at(index));
+        title->setWordWrap(true);
+        auto *description = new QLabel(descriptions.at(index));
+        description->setObjectName(
+            QStringLiteral("onboardingDescription%1").arg(index + 1));
+        description->setProperty("i18nSource", descriptions.at(index));
+        description->setWordWrap(true);
+        auto *illustration = new VidStoreXFlowIllustration(mode);
+        illustration->setObjectName(
+            QStringLiteral("onboardingIllustration%1").arg(index + 1));
+        illustration->setMinimumHeight(140);
+        illustration->setMaximumHeight(210);
+        auto *support = new QLabel(supporting.at(index));
+        support->setObjectName(
+            QStringLiteral("onboardingSupporting%1").arg(index + 1));
+        support->setProperty("i18nSource", supporting.at(index));
+        support->setProperty(index == 1 ? "onboardingSteps" : "muted", true);
+        support->setWordWrap(true);
+        pageLayout->addWidget(title);
+        pageLayout->addWidget(description);
+        pageLayout->addWidget(illustration, 1);
+        pageLayout->addWidget(support);
+        onboardingTitles.push_back(title);
+        onboardingDescriptions.push_back(description);
+        onboardingSupportingLabels.push_back(support);
+        onboardingIllustrations.push_back(illustration);
+        onboardingStack->addWidget(page);
+        ++index;
+    }
+    cardLayout->addWidget(onboardingStack, 1);
+
+    auto *navigation = new QHBoxLayout();
+    onboardingBackButton = new QPushButton();
+    onboardingBackButton->setObjectName("onboardingBackButton");
+    onboardingBackButton->setProperty("vsxRole", "ghost");
+    onboardingNextButton = new QPushButton();
+    onboardingNextButton->setObjectName("onboardingNextButton");
+    onboardingNextButton->setProperty("vsxRole", "primary");
+    onboardingNextButton->setDefault(true);
+    navigation->addWidget(onboardingBackButton);
+    navigation->addStretch();
+    navigation->addWidget(onboardingNextButton);
+    cardLayout->addLayout(navigation);
+
+    centerRow->addWidget(card, 1);
+    centerRow->addStretch(1);
+    outer->addLayout(centerRow);
+    outer->addStretch(1);
+    mainTabs->addTab(onboardingPage, QStringLiteral("Getting Started"));
+
+    connect(onboardingSkipButton, &QPushButton::clicked,
+            this, &DriveManagerUI::completeOnboarding);
+    connect(onboardingBackButton, &QPushButton::clicked, this, [this]() {
+        setOnboardingPage(onboardingStack->currentIndex() - 1);
+    });
+    connect(onboardingNextButton, &QPushButton::clicked, this, [this]() {
+        if (onboardingStack->currentIndex() >= 2)
+            completeOnboarding();
+        else
+            setOnboardingPage(onboardingStack->currentIndex() + 1);
+    });
+    setOnboardingPage(0);
+}
+
+bool DriveManagerUI::canOpenOnboarding() const {
+    const bool childProcessRunning =
+        (videoSetProcess && videoSetProcess->state() != QProcess::NotRunning) ||
+        (videoSetDownloadProcess &&
+         videoSetDownloadProcess->state() != QProcess::NotRunning) ||
+        (testLabProcess && testLabProcess->state() != QProcess::NotRunning) ||
+        (youtubeReadinessProcess &&
+         youtubeReadinessProcess->state() != QProcess::NotRunning);
+    return !isOperationRunning && !videoSetOperationProgress.view().is_busy &&
+           !childProcessRunning;
+}
+
+void DriveManagerUI::updateOnboardingAvailability() {
+    if (!settingsShowOnboardingButton) return;
+    const bool available = canOpenOnboarding();
+    settingsShowOnboardingButton->setEnabled(available);
+    settingsShowOnboardingButton->setToolTip(available ? QString() : tr(
+        "Getting Started cannot be opened while an operation is running."));
+    if (gettingStartedAction) gettingStartedAction->setEnabled(available);
+}
+
+void DriveManagerUI::showOnboarding() {
+    if (!onboardingPage || !canOpenOnboarding()) return;
+    setOnboardingPage(0);
+    mainTabs->setCurrentWidget(onboardingPage);
+    updateNavigationVisuals();
+    onboardingSkipButton->setFocus(Qt::OtherFocusReason);
+}
+
+void DriveManagerUI::setOnboardingPage(const int page) {
+    if (!onboardingStack) return;
+    const int resolved = qBound(0, page, onboardingStack->count() - 1);
+    onboardingStack->setCurrentIndex(resolved);
+    onboardingProgress->setCurrentPage(resolved);
+    onboardingProgress->setAccessibleName(tr("Getting started progress"));
+    onboardingProgress->setAccessibleDescription(tr("Page %1 of 3")
+        .arg(resolved + 1));
+    onboardingBackButton->setVisible(resolved > 0);
+    onboardingNextButton->setText(
+        resolved == 2 ? tr("Start Using VidStoreX") : tr("Continue"));
+    onboardingNextButton->setAccessibleName(onboardingNextButton->text());
+    onboardingNextButton->setAccessibleDescription(resolved == 2
+        ? tr("Complete Getting Started and open Home.")
+        : tr("Open the next Getting Started page."));
+    onboardingNextButton->setFocus(Qt::OtherFocusReason);
+}
+
+void DriveManagerUI::completeOnboarding() {
+    QSettings settings;
+    settings.setValue("ui/onboardingVersion", 1);
+    settings.sync();
+    showVideoSetHome();
+}
+
 void DriveManagerUI::setupApplicationNavigation() {
     applicationHeader = new QFrame();
     applicationHeader->setObjectName("applicationHeader");
@@ -2322,7 +2515,10 @@ void DriveManagerUI::setupApplicationNavigation() {
     connect(settingsNavigationButton, &QPushButton::clicked,
             this, [this]() { mainTabs->setCurrentWidget(settingsPage); });
     connect(mainTabs, &QTabWidget::currentChanged,
-            this, [this]() { updateNavigationVisuals(); });
+            this, [this]() {
+        updateNavigationVisuals();
+        updateOnboardingAvailability();
+    });
     connect(videoSetAssistantStack, &QStackedWidget::currentChanged,
             this, [this]() { updateNavigationVisuals(); });
     connect(languageCombo,
@@ -2368,6 +2564,10 @@ void DriveManagerUI::setupApplicationNavigation() {
         settingsLanguageCombo->setCurrentIndex(
             languageIndex >= 0 ? languageIndex : 0);
     }
+    QWidget::setTabOrder(languageCombo, onboardingSkipButton);
+    QWidget::setTabOrder(onboardingSkipButton, onboardingBackButton);
+    QWidget::setTabOrder(onboardingBackButton, onboardingNextButton);
+    updateOnboardingAvailability();
 }
 
 void DriveManagerUI::applySemanticVisualRoles() {
@@ -2398,7 +2598,8 @@ void DriveManagerUI::applySemanticVisualRoles() {
                          videoSetAssistantScanButton,
                          videoSetOpenReturnedButton,
                          videoSetRecentOpenFolderButton,
-                         videoSetOpenSetFolderButton})
+                         videoSetOpenSetFolderButton,
+                         settingsShowOnboardingButton})
         role(button, "secondary");
     role(videoSetOpenVideosButton, "primary");
     for (auto *button : {videoSetCopyShaButton,
@@ -2422,6 +2623,7 @@ void DriveManagerUI::applySemanticVisualRoles() {
 
 void DriveManagerUI::updateNavigationVisuals() {
     if (!mainTabs || !videoSetAssistantStack) return;
+    const bool onboarding = mainTabs->currentWidget() == onboardingPage;
     const bool assistant = mainTabs->currentWidget() == videoSetPage;
     const int page = videoSetAssistantStack->currentIndex();
     const auto selected = [](QWidget *widget, const bool value) {
@@ -2441,6 +2643,11 @@ void DriveManagerUI::updateNavigationVisuals() {
              mainTabs->currentIndex() == 2 ||
              mainTabs->currentIndex() == 3 ||
              mainTabs->currentWidget() == youtubeSyncPage);
+    for (auto *button : {homeNavigationButton, createNavigationButton,
+                         recoverNavigationButton, recentNavigationButton,
+                         settingsNavigationButton})
+        button->setEnabled(!onboarding);
+    advancedNavigationButton->setEnabled(!onboarding);
 }
 
 void DriveManagerUI::showVideoSetHome() {
@@ -2606,7 +2813,27 @@ void DriveManagerUI::retranslateUserInterface() {
     settingsOutputLabel->setText(tr("Default output folder:"));
     settingsOutputBrowseButton->setText(tr("Choose folder"));
     rememberRecentCheckBox->setText(tr("Remember recent Video Sets"));
+    settingsOnboardingDescription->setText(tr(
+        "Review the three-step guide to creating, storing, and recovering a file."));
+    settingsShowOnboardingButton->setText(tr(
+        "Show Getting Started Again"));
     showAdvancedToolsCheckBox->setText(tr("Show Advanced tools"));
+    onboardingSkipButton->setText(tr("Skip"));
+    onboardingBackButton->setText(tr("Back"));
+    onboardingSkipButton->setAccessibleDescription(tr(
+        "Complete Getting Started and open Home."));
+    onboardingBackButton->setAccessibleDescription(tr(
+        "Return to the previous Getting Started page."));
+    setOnboardingPage(onboardingStack->currentIndex());
+    onboardingProgress->setAccessibleName(tr("Getting started progress"));
+    onboardingProgress->setAccessibleDescription(tr("Page %1 of 3")
+        .arg(onboardingStack->currentIndex() + 1));
+    for (int index = 0; index < onboardingStack->count(); ++index) {
+        auto *page = onboardingStack->widget(index);
+        page->setAccessibleName(onboardingTitles.at(index)->text());
+        page->setAccessibleDescription(
+            onboardingDescriptions.at(index)->text());
+    }
     if (auto *action = applicationHeader->findChild<QAction *>(
             "advancedStorageAction"))
         action->setText(tr("Storage"));
@@ -2670,9 +2897,12 @@ void DriveManagerUI::retranslateUserInterface() {
         action->setText(tr("E&xit"));
     if (auto *action = menuBar()->findChild<QAction *>("clearLogsAction"))
         action->setText(tr("&Clear Logs"));
+    if (gettingStartedAction)
+        gettingStartedAction->setText(tr("Getting Started"));
     if (auto *action = menuBar()->findChild<QAction *>("aboutAction"))
         action->setText(tr("&About"));
     if (permanentStatus) permanentStatus->setText(tr("Ready"));
+    updateOnboardingAvailability();
 
     videoSetIntroLabel->setText(tr(
         "<b>Video Set Assistant</b><br>Create resilient videos or recover an original file with a guided workflow. Advanced technical controls stay available separately."));
@@ -5290,6 +5520,7 @@ void DriveManagerUI::updateVideoSetAssistant() {
         ? tr("Scan complete. Select Recover Original File to rebuild the file.")
         : tr("Recovery will become available after scanning finishes and every required part is verified."));
     renderVideoSetActivity();
+    updateOnboardingAvailability();
 }
 
 QString DriveManagerUI::findYtDlpExecutable() const {
@@ -6146,6 +6377,10 @@ void DriveManagerUI::setupMenuBar() {
 
     QMenu *helpMenu = menuBar()->addMenu("&Help");
     helpMenu->setObjectName("helpMenu");
+    gettingStartedAction = helpMenu->addAction(
+        "Getting Started", this, &DriveManagerUI::showOnboarding);
+    gettingStartedAction->setObjectName("gettingStartedAction");
+    helpMenu->addSeparator();
     auto *aboutAction = helpMenu->addAction("&About", [this]() {
         QMessageBox::about(this, tr("About VidStoreX"),
                            tr("VidStoreX\n\nTurn files into resilient videos and recover them later.\nVersion 1.4"));

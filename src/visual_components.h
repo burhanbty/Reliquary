@@ -29,6 +29,38 @@ private:
     Mode mode_;
 };
 
+class VidStoreXFlowIllustration final : public QWidget {
+public:
+    enum class Mode { Create, Store, Recover };
+
+    explicit VidStoreXFlowIllustration(Mode mode,
+                                       QWidget *parent = nullptr);
+    void setMode(Mode mode);
+    [[nodiscard]] Mode mode() const noexcept { return mode_; }
+    [[nodiscard]] QSize sizeHint() const override;
+    [[nodiscard]] QSize minimumSizeHint() const override;
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    Mode mode_;
+};
+
+class VidStoreXOnboardingProgress final : public QWidget {
+public:
+    explicit VidStoreXOnboardingProgress(QWidget *parent = nullptr);
+    void setCurrentPage(int page);
+    [[nodiscard]] int currentPage() const noexcept { return currentPage_; }
+    [[nodiscard]] QSize sizeHint() const override;
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    int currentPage_ = 0;
+};
+
 class QLabel;
 
 class VidStoreXRecentEntry final : public QFrame {

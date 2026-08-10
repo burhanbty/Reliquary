@@ -223,11 +223,21 @@ if (TARGET media_storage_gui)
     )
     set_tests_properties(
             GUI.VideoSetAssistantE2E PROPERTIES TIMEOUT 130)
+    add_test(
+            NAME GUI.FirstRunOnboardingE2E
+            COMMAND ${CMAKE_COMMAND}
+                    "-DGUI=$<TARGET_FILE:media_storage_gui>"
+                    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/gui_first_run_onboarding"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_onboarding.cmake"
+    )
+    set_tests_properties(
+            GUI.FirstRunOnboardingE2E PROPERTIES TIMEOUT 90)
     if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
         set_tests_properties(
                 GUI.LaunchSmoke
                 GUI.CloseDuringEstimate
                 GUI.VideoSetAssistantE2E
+                GUI.FirstRunOnboardingE2E
                 PROPERTIES ENVIRONMENT
                 "QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
     endif ()

@@ -79,6 +79,11 @@ QString applicationStyleSheet(const QPalette &palette) {
         QLabel[cardTitle="true"] { font-size: 16px; font-weight: 700; color: %5; }
         QLabel[metricValue="true"] { font-size: 20px; font-weight: 750; color: %5; }
         QLabel[muted="true"] { color: %7; }
+        QFrame#onboardingCard { border-radius: 12px; }
+        QLabel[onboardingSteps="true"] {
+            color: %6; background: %1; border: 1px solid %13;
+            border-radius: 7px; padding: 9px 12px;
+        }
         QLabel[technical="true"], QTextEdit[technical="true"] {
             font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
         }

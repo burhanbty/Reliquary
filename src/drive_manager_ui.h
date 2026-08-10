@@ -60,6 +60,9 @@
 
 class VidStoreXSignalRail;
 class VidStoreXStepper;
+class VidStoreXFlowIllustration;
+class VidStoreXOnboardingProgress;
+class QAction;
 
 class WorkerThread : public QThread {
     Q_OBJECT
@@ -289,6 +292,8 @@ private:
 
     void setupSettingsPage();
 
+    void setupOnboardingPage();
+
     void applySemanticVisualRoles();
 
     void updateNavigationVisuals();
@@ -296,6 +301,16 @@ private:
     void setUiLanguage(const QString &language, bool persist = true);
 
     void retranslateUserInterface();
+
+    void showOnboarding();
+
+    void setOnboardingPage(int page);
+
+    void completeOnboarding();
+
+    void updateOnboardingAvailability();
+
+    [[nodiscard]] bool canOpenOnboarding() const;
 
     [[nodiscard]] QString translatedWorkflowText(
         const std::string &english) const;
@@ -455,6 +470,19 @@ private:
     QComboBox *settingsLanguageCombo = nullptr;
     QWidget *settingsPage = nullptr;
     QWidget *youtubeSyncPage = nullptr;
+    QWidget *onboardingPage = nullptr;
+    QStackedWidget *onboardingStack = nullptr;
+    VidStoreXOnboardingProgress *onboardingProgress = nullptr;
+    QVector<QLabel *> onboardingTitles;
+    QVector<QLabel *> onboardingDescriptions;
+    QVector<QLabel *> onboardingSupportingLabels;
+    QVector<VidStoreXFlowIllustration *> onboardingIllustrations;
+    QPushButton *onboardingSkipButton = nullptr;
+    QPushButton *onboardingBackButton = nullptr;
+    QPushButton *onboardingNextButton = nullptr;
+    QPushButton *settingsShowOnboardingButton = nullptr;
+    QLabel *settingsOnboardingDescription = nullptr;
+    QAction *gettingStartedAction = nullptr;
     QLabel *settingsHeadingLabel = nullptr;
     QLabel *settingsDescriptionLabel = nullptr;
     QLabel *settingsLanguageLabel = nullptr;

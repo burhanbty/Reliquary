@@ -142,6 +142,42 @@ TEST(UiVisualIdentity, DataGlyphModesRenderWithoutExternalAssets) {
     }
 }
 
+TEST(UiVisualIdentity, OnboardingIllustrationsArePaletteAndDpiSafe) {
+    for (const bool dark : {false, true}) {
+        QPalette palette;
+        palette.setColor(QPalette::Window,
+                         dark ? QColor("#20201E") : QColor("#F4F1EB"));
+        palette.setColor(QPalette::Base,
+                         dark ? QColor("#181816") : QColor("#FFFDF8"));
+        palette.setColor(QPalette::WindowText,
+                         dark ? QColor("#F1EEE7") : QColor("#24211D"));
+        for (const auto mode : {VidStoreXFlowIllustration::Mode::Create,
+                                VidStoreXFlowIllustration::Mode::Store,
+                                VidStoreXFlowIllustration::Mode::Recover}) {
+            VidStoreXFlowIllustration illustration(mode);
+            illustration.setPalette(palette);
+            for (const QSize size : {QSize(420, 140), QSize(680, 190),
+                                     QSize(1020, 285)}) {
+                const QImage image = render(illustration, size);
+                EXPECT_FALSE(image.isNull());
+                EXPECT_GT(unique_opaque_colors(image), 4);
+            }
+            EXPECT_TRUE(illustration.accessibleName().isEmpty());
+        }
+    }
+}
+
+TEST(UiVisualIdentity, OnboardingProgressUsesThreePaintedStates) {
+    VidStoreXOnboardingProgress progress;
+    for (int page = 0; page < 3; ++page) {
+        progress.setCurrentPage(page);
+        const QImage image = render(progress, progress.sizeHint());
+        EXPECT_EQ(progress.currentPage(), page);
+        EXPECT_GE(unique_opaque_colors(image), 2);
+        EXPECT_FALSE(progress.accessibleDescription().isEmpty());
+    }
+}
+
 TEST(UiVisualIdentity, RecentEntryLayoutKeepsTextAndStatusSeparate) {
     for (const qreal fontScale : {1.0, 1.25, 1.5}) {
         VidStoreXRecentEntry entry(
@@ -225,6 +261,33 @@ TEST(UiVisualIdentity, YouTubeSyncIsExperimentalAndConsumerFlowIsManual) {
     EXPECT_TRUE(source.contains("use the playlist link for recovery"));
     EXPECT_FALSE(source.contains(
         "uploadLayout->addWidget(youtubeSyncOperationCard)"));
+}
+
+TEST(UiVisualIdentity, OnboardingIsProductFocusedAndVersioned) {
+    QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) +
+               "/src/drive_manager_ui.cpp");
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString source = QString::fromUtf8(file.readAll());
+    const int start = source.indexOf("void DriveManagerUI::setupOnboardingPage");
+    const int end = source.indexOf(
+        "void DriveManagerUI::setupApplicationNavigation", start);
+    ASSERT_GE(start, 0);
+    ASSERT_GT(end, start);
+    const QString onboarding = source.mid(start, end - start);
+    EXPECT_TRUE(onboarding.contains("Turn your file into videos"));
+    EXPECT_TRUE(onboarding.contains("Store the videos"));
+    EXPECT_TRUE(onboarding.contains(
+        "Paste the playlist. Get your file back."));
+    EXPECT_TRUE(onboarding.contains("VidStoreXFlowIllustration"));
+    EXPECT_TRUE(onboarding.contains("VidStoreXOnboardingProgress"));
+    EXPECT_TRUE(source.contains("ui/onboardingVersion"));
+    EXPECT_TRUE(source.contains("settingsShowGettingStartedButton"));
+    EXPECT_TRUE(source.contains("gettingStartedAction"));
+    for (const QString forbidden : {"OAuth", "Google Cloud", "API quota",
+                                    "Wirehair", "VSXSET01", "packet",
+                                    "frame geometry"})
+        EXPECT_FALSE(onboarding.contains(forbidden))
+            << forbidden.toStdString();
 }
 
 TEST(UiVisualIdentity, ThemeSourceAvoidsDisallowedVisualTrends) {

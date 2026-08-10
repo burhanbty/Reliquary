@@ -453,7 +453,7 @@ Sürüm 1.4</translation>
     </message>
     <message>
         <source>Back</source>
-        <translation type="vanished">Geri</translation>
+        <translation>Geri</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2410"/>
@@ -1521,5 +1521,31 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
     <message><source>Local Desktop OAuth client JSON (not stored in Git)</source><translation>Yerel Masaüstü OAuth istemci JSON'u (Git'te saklanmaz)</translation></message>
     <message><source>Optional official API upload. Manual upload always remains available.</source><translation>İsteğe bağlı resmî API yüklemesi. Manuel yükleme her zaman kullanılabilir.</translation></message>
     <message><source>—</source><translation>—</translation></message>
+    <message><source>Getting Started</source><translation>Başlangıç Rehberi</translation></message>
+    <message><source>Review the three-step guide to creating, storing, and recovering a file.</source><translation>Dosya oluşturma, videoları saklama ve dosyayı kurtarmayı anlatan üç adımlı rehberi yeniden inceleyin.</translation></message>
+    <message><source>Show Getting Started Again</source><translation>Başlangıç Rehberini Tekrar Göster</translation></message>
+    <message><source>Turn your file into videos</source><translation>Dosyanızı videolara dönüştürün</translation></message>
+    <message><source>Choose a file and let VidStoreX turn it into a resilient Video Set.</source><translation>Bir dosya seçin. VidStoreX onu dayanıklı bir Video Set'e dönüştürsün.</translation></message>
+    <message><source>Large files can be split across multiple videos automatically.</source><translation>Büyük dosyalar gerektiğinde otomatik olarak birden fazla videoya bölünür.</translation></message>
+    <message><source>Store the videos</source><translation>Videoları saklayın</translation></message>
+    <message><source>Upload the videos created by VidStoreX and place them in a single YouTube playlist.</source><translation>VidStoreX'in oluşturduğu videoları YouTube'a yükleyin ve tek bir oynatma listesinde toplayın.</translation></message>
+    <message><source>Upload the videos
+Use Unlisted when possible
+Wait for 1080p processing
+Place all parts in one playlist</source><translation>Videoları yükleyin
+Mümkünse Liste Dışı seçin
+1080p işlemesini bekleyin
+Tüm parçaları tek bir oynatma listesine ekleyin</translation></message>
+    <message><source>Paste the playlist. Get your file back.</source><translation>Playlist bağlantısını yapıştırın, dosyanızı geri alın</translation></message>
+    <message><source>VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file.</source><translation>VidStoreX videoları indirir, doğru parçaları otomatik bulur ve orijinal dosyanızı yeniden oluşturur.</translation></message>
+    <message><source>Recovery is marked successful only after the reconstructed file is verified.</source><translation>VidStoreX, kurtarılan dosyanın orijinal dosyayla birebir aynı olduğunu doğrular.</translation></message>
+    <message><source>Skip</source><translation>Atla</translation></message>
+    <message><source>Start Using VidStoreX</source><translation>VidStoreX'i Kullanmaya Başla</translation></message>
+    <message><source>Getting started progress</source><translation>Başlangıç rehberi ilerlemesi</translation></message>
+    <message><source>Page %1 of 3</source><translation>3 sayfadan %1.</translation></message>
+    <message><source>Complete Getting Started and open Home.</source><translation>Başlangıç Rehberini tamamlayın ve Ana Sayfa'yı açın.</translation></message>
+    <message><source>Return to the previous Getting Started page.</source><translation>Önceki Başlangıç Rehberi sayfasına dönün.</translation></message>
+    <message><source>Open the next Getting Started page.</source><translation>Sonraki Başlangıç Rehberi sayfasını açın.</translation></message>
+    <message><source>Getting Started cannot be opened while an operation is running.</source><translation>Bir işlem sürerken Başlangıç Rehberi açılamaz.</translation></message>
 </context>
 </TS>

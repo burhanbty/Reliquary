@@ -45,6 +45,7 @@
 #include <memory>
 
 #include "drive_manager_ui.h"
+#include "ui_theme.h"
 #include "youtube_auth.h"
 #include "youtube_sync_state.h"
 
@@ -236,6 +237,7 @@ int main(int argc, char *argv[]) {
     QString instantRecoveryFixtureVideos;
     QString youtubeSyncSmokeRoot;
     QString youtubeSyncManifest;
+    QString onboardingSmokeRoot;
     for (int i = 1; i < argc; ++i) {
         const QString argument = QString::fromLocal8Bit(argv[i]);
         if (argument == "--smoke-test") {
@@ -263,6 +265,8 @@ int main(int argc, char *argv[]) {
         } else if (argument == "--instant-recovery-fixture-videos" &&
                    i + 1 < argc) {
             instantRecoveryFixtureVideos = QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--onboarding-smoke-root" && i + 1 < argc) {
+            onboardingSmokeRoot = QString::fromLocal8Bit(argv[++i]);
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
         } else if (argument == "--youtube-sync-smoke-root" && i + 1 < argc) {
             youtubeSyncSmokeRoot = QString::fromLocal8Bit(argv[++i]);
@@ -273,13 +277,15 @@ int main(int argc, char *argv[]) {
     }
     const bool isolatedUiRun = !videoSetAssistantSmokeRoot.isEmpty() ||
         !instantRecoverySmokeRoot.isEmpty() || !youtubeSyncSmokeRoot.isEmpty() ||
-        smokeTest || closeDuringEstimate;
+        !onboardingSmokeRoot.isEmpty() || smokeTest || closeDuringEstimate;
     if (isolatedUiRun) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(
             QSettings::IniFormat, QSettings::UserScope,
             !videoSetAssistantSmokeRoot.isEmpty()
                 ? QDir(videoSetAssistantSmokeRoot).filePath("settings")
+                : !onboardingSmokeRoot.isEmpty()
+                ? QDir(onboardingSmokeRoot).filePath("settings")
                 : !instantRecoverySmokeRoot.isEmpty()
                 ? QDir(instantRecoverySmokeRoot).filePath("settings")
                 : !youtubeSyncSmokeRoot.isEmpty()
@@ -314,9 +320,23 @@ int main(int argc, char *argv[]) {
     QApplication::setOrganizationDomain("brandonli.me");
     if (isolatedUiRun) {
         QSettings settings;
-        settings.setValue("ui/language", "en");
+        settings.clear();
+        settings.setValue("ui/language",
+                          onboardingSmokeRoot.isEmpty() ? "en" : "tr");
         settings.setValue("ui/rememberRecentSets", true);
         settings.setValue("ui/showAdvancedTools", true);
+        if (onboardingSmokeRoot.isEmpty())
+            settings.setValue("ui/onboardingVersion", 1);
+        else {
+            settings.setValue("ui/defaultVideoSetOutputFolder",
+                              QDir(onboardingSmokeRoot)
+                                  .filePath("preserved-output"));
+            settings.setValue("videoSet/recentManifests",
+                              QStringList{"preserved-recent-manifest"});
+            settings.setValue("encoding/reliabilityProfileId", 1);
+            settings.setValue("onboarding/stateSentinel",
+                              "preserve-user-state");
+        }
         if (!instantRecoveryFakeYtDlp.isEmpty())
             settings.setValue("videoSet/ytdlpPath",
                               instantRecoveryFakeYtDlp);
@@ -349,6 +369,220 @@ int main(int argc, char *argv[]) {
     // Set style to a modern look if available
     if (QStyleFactory::keys().contains("Fusion")) {
         QApplication::setStyle("Fusion");
+    }
+
+    if (!onboardingSmokeRoot.isEmpty()) {
+        auto *first = new DriveManagerUI();
+        first->resize(1280, 720);
+        first->show();
+        QTimer::singleShot(0, &app, [&, first]() {
+            const auto fail = [&](const int code, const QString &message) {
+                qCritical().noquote() << message;
+                first->close();
+                app.exit(code);
+                return false;
+            };
+            auto *page = first->findChild<QWidget *>("onboardingPage");
+            auto *stack = first->findChild<QStackedWidget *>("onboardingStack");
+            auto *title1 = first->findChild<QLabel *>("onboardingTitle1");
+            auto *title2 = first->findChild<QLabel *>("onboardingTitle2");
+            auto *illustration1 = first->findChild<QWidget *>(
+                "onboardingIllustration1");
+            auto *back = first->findChild<QPushButton *>(
+                "onboardingBackButton");
+            auto *next = first->findChild<QPushButton *>(
+                "onboardingNextButton");
+            auto *skip = first->findChild<QPushButton *>(
+                "onboardingSkipButton");
+            auto *language = first->findChild<QComboBox *>("uiLanguageCombo");
+            if (!page || !stack || !title1 || !title2 || !illustration1 ||
+                !back || !next || !skip || !language || !page->isVisible() ||
+                stack->currentIndex() != 0 || back->isVisible() ||
+                title1->text() != QString::fromUtf8(
+                    "Dosyanızı videolara dönüştürün") ||
+                illustration1->size().isEmpty()) {
+                fail(111, "Onboarding first-run page 1 invariant failed");
+                return;
+            }
+
+            const QList<QSize> sizes{{1280, 720}, {1366, 768}, {1920, 1080}};
+            for (const auto &size : sizes) {
+                first->resize(size);
+                QApplication::processEvents();
+                if (!title1->isVisible() || !illustration1->isVisible() ||
+                    !next->isVisible() ||
+                    !first->rect().contains(next->mapTo(
+                        first, next->rect().center()))) {
+                    fail(112, QStringLiteral(
+                        "Onboarding layout clipped at %1x%2")
+                        .arg(size.width()).arg(size.height()));
+                    return;
+                }
+                first->grab().save(QDir(onboardingSmokeRoot).filePath(
+                    QStringLiteral("onboarding-%1x%2.png")
+                        .arg(size.width()).arg(size.height())));
+            }
+
+            QPalette light;
+            light.setColor(QPalette::Window, QColor("#F4F1EB"));
+            light.setColor(QPalette::Base, QColor("#FFFDF8"));
+            light.setColor(QPalette::WindowText, QColor("#24211D"));
+            app.setPalette(light);
+            first->setPalette(light);
+            vidstorex_ui::applyTheme(first->QMainWindow::centralWidget());
+            QApplication::processEvents();
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("onboarding-light.png"));
+            QPalette dark;
+            dark.setColor(QPalette::Window, QColor("#20201E"));
+            dark.setColor(QPalette::Base, QColor("#181816"));
+            dark.setColor(QPalette::WindowText, QColor("#F1EEE7"));
+            app.setPalette(dark);
+            first->setPalette(dark);
+            vidstorex_ui::applyTheme(first->QMainWindow::centralWidget());
+            QApplication::processEvents();
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("onboarding-dark.png"));
+
+            next->click();
+            QApplication::processEvents();
+            if (stack->currentIndex() != 1 || !back->isVisible() ||
+                title2->text() != QString::fromUtf8("Videoları saklayın")) {
+                fail(113, "Onboarding page 2 navigation failed");
+                return;
+            }
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("onboarding-page-2.png"));
+            language->setCurrentIndex(language->findData("en"));
+            QApplication::processEvents();
+            if (stack->currentIndex() != 1 ||
+                title2->text() != "Store the videos") {
+                fail(114, "Onboarding TR to EN switch lost the active page");
+                return;
+            }
+            language->setCurrentIndex(language->findData("tr"));
+            QApplication::processEvents();
+            if (stack->currentIndex() != 1 ||
+                title2->text() != QString::fromUtf8("Videoları saklayın")) {
+                fail(115, "Onboarding EN to TR switch lost the active page");
+                return;
+            }
+            next->click();
+            QApplication::processEvents();
+            if (stack->currentIndex() != 2 ||
+                next->text() != QString::fromUtf8(
+                    "VidStoreX'i Kullanmaya Başla")) {
+                fail(116, "Onboarding page 3/start action failed");
+                return;
+            }
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("onboarding-page-3.png"));
+            back->click();
+            QApplication::processEvents();
+            if (stack->currentIndex() != 1) {
+                fail(117, "Onboarding Back failed");
+                return;
+            }
+            next->click();
+            next->click();
+            QApplication::processEvents();
+            auto *home = first->findChild<QWidget *>(
+                "videoSetAssistantWelcomePage");
+            const QSettings completed;
+            if (!home || !home->isVisible() ||
+                completed.value("ui/onboardingVersion").toInt() != 1 ||
+                completed.value("onboarding/stateSentinel").toString() !=
+                    "preserve-user-state" ||
+                completed.value("videoSet/recentManifests").toStringList() !=
+                    QStringList{"preserved-recent-manifest"}) {
+                fail(118, "Onboarding completion/state preservation failed");
+                return;
+            }
+
+            first->close();
+            delete first;
+            auto *second = new DriveManagerUI();
+            second->resize(1280, 720);
+            second->show();
+            QApplication::processEvents();
+            auto *secondOnboarding = second->findChild<QWidget *>(
+                "onboardingPage");
+            auto *secondHome = second->findChild<QWidget *>(
+                "videoSetAssistantWelcomePage");
+            if (!secondOnboarding || !secondHome ||
+                secondOnboarding->isVisible() || !secondHome->isVisible()) {
+                qCritical() << "Completed onboarding did not restart at Home";
+                second->close();
+                app.exit(119);
+                return;
+            }
+            auto *settingsNav = second->findChild<QPushButton *>(
+                "settingsNavigationButton");
+            auto *reopen = second->findChild<QPushButton *>(
+                "settingsShowGettingStartedButton");
+            settingsNav->click();
+            QApplication::processEvents();
+            if (!reopen->isEnabled()) {
+                qCritical() << "Settings onboarding action is unavailable";
+                second->close();
+                app.exit(120);
+                return;
+            }
+            reopen->click();
+            QApplication::processEvents();
+            auto *secondSkip = second->findChild<QPushButton *>(
+                "onboardingSkipButton");
+            if (!secondOnboarding->isVisible() ||
+                second->property("uiLanguage").toString() != "tr") {
+                qCritical() << "Settings did not reopen onboarding safely";
+                second->close();
+                app.exit(121);
+                return;
+            }
+            secondSkip->click();
+            QApplication::processEvents();
+            auto *helpAction = second->findChild<QAction *>(
+                "gettingStartedAction");
+            helpAction->trigger();
+            QApplication::processEvents();
+            if (!secondOnboarding->isVisible()) {
+                qCritical() << "Help menu did not reopen onboarding";
+                second->close();
+                app.exit(122);
+                return;
+            }
+            secondSkip->click();
+            second->close();
+            delete second;
+
+            QSettings().setValue("ui/onboardingVersion", 0);
+            auto *versionZero = new DriveManagerUI();
+            versionZero->show();
+            QApplication::processEvents();
+            auto *zeroPage = versionZero->findChild<QWidget *>(
+                "onboardingPage");
+            auto *zeroSkip = versionZero->findChild<QPushButton *>(
+                "onboardingSkipButton");
+            if (!zeroPage || !zeroPage->isVisible()) {
+                qCritical() << "onboardingVersion 0 did not show onboarding";
+                versionZero->close();
+                app.exit(123);
+                return;
+            }
+            zeroSkip->click();
+            QApplication::processEvents();
+            if (QSettings().value("ui/onboardingVersion").toInt() != 1) {
+                qCritical() << "Skip did not complete onboarding version 1";
+                versionZero->close();
+                app.exit(124);
+                return;
+            }
+            versionZero->close();
+            qInfo() << "Onboarding qwindows E2E complete at scale"
+                    << qApp->devicePixelRatio();
+            app.exit(0);
+        });
+        return app.exec();
     }
     
     // Create and show the main window

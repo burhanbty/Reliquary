@@ -86,7 +86,16 @@ TEST(UiLanguage, TurkishCatalogCoversCriticalUserInterface) {
          QString::fromUtf8("YouTube Senkronizasyonu (Deneysel)")},
         {"Upload all parts to YouTube.",
          QString::fromUtf8("Tüm parçaları YouTube'a yükleyin.")},
-        {"Open YouTube", QString::fromUtf8("YouTube'u Aç")}};
+        {"Open YouTube", QString::fromUtf8("YouTube'u Aç")},
+        {"Turn your file into videos",
+         QString::fromUtf8("Dosyanızı videolara dönüştürün")},
+        {"Store the videos", QString::fromUtf8("Videoları saklayın")},
+        {"Paste the playlist. Get your file back.",
+         QString::fromUtf8("Playlist bağlantısını yapıştırın, dosyanızı geri alın")},
+        {"Start Using VidStoreX",
+         QString::fromUtf8("VidStoreX'i Kullanmaya Başla")},
+        {"Show Getting Started Again",
+         QString::fromUtf8("Başlangıç Rehberini Tekrar Göster")}};
     for (auto it = critical.cbegin(); it != critical.cend(); ++it) {
         ASSERT_TRUE(messages.contains(it.key()))
             << it.key().toStdString();

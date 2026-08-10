@@ -115,6 +115,166 @@ void VidStoreXDataGlyph::paintEvent(QPaintEvent *) {
     }
 }
 
+VidStoreXFlowIllustration::VidStoreXFlowIllustration(
+    const Mode mode, QWidget *parent)
+    : QWidget(parent), mode_(mode) {
+    setObjectName(QStringLiteral("onboardingFlowIllustration"));
+    setFocusPolicy(Qt::NoFocus);
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAccessibleName({});
+    setAccessibleDescription({});
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+}
+
+void VidStoreXFlowIllustration::setMode(const Mode mode) {
+    if (mode_ == mode) return;
+    mode_ = mode;
+    update();
+}
+
+QSize VidStoreXFlowIllustration::sizeHint() const { return {680, 190}; }
+QSize VidStoreXFlowIllustration::minimumSizeHint() const { return {420, 140}; }
+
+void VidStoreXFlowIllustration::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const auto t = vidstorex_ui::themeTokens(palette());
+    constexpr qreal logicalWidth = 680.0;
+    constexpr qreal logicalHeight = 190.0;
+    const qreal scale = qMin(width() / logicalWidth,
+                             height() / logicalHeight);
+    if (scale <= 0.0) return;
+    p.translate((width() - logicalWidth * scale) / 2.0,
+                (height() - logicalHeight * scale) / 2.0);
+    p.scale(scale, scale);
+
+    const QPen border(t.borderStrong, 2.0);
+    const auto drawArrow = [&](const QPointF from, const QPointF to) {
+        p.setPen(QPen(t.accent, 3.0, Qt::SolidLine,
+                      Qt::SquareCap, Qt::MiterJoin));
+        p.drawLine(from, to);
+        const bool vertical = qAbs(to.y() - from.y()) >
+                              qAbs(to.x() - from.x());
+        if (vertical) {
+            p.drawLine(to, to + QPointF(-6, -7));
+            p.drawLine(to, to + QPointF(6, -7));
+        } else {
+            p.drawLine(to, to + QPointF(-7, -6));
+            p.drawLine(to, to + QPointF(-7, 6));
+        }
+    };
+    const auto drawFile = [&](const QRectF &rect, const bool verified) {
+        QPainterPath file;
+        const qreal fold = 15.0;
+        file.moveTo(rect.left(), rect.top());
+        file.lineTo(rect.right() - fold, rect.top());
+        file.lineTo(rect.right(), rect.top() + fold);
+        file.lineTo(rect.right(), rect.bottom());
+        file.lineTo(rect.left(), rect.bottom());
+        file.closeSubpath();
+        file.moveTo(rect.right() - fold, rect.top());
+        file.lineTo(rect.right() - fold, rect.top() + fold);
+        file.lineTo(rect.right(), rect.top() + fold);
+        p.setPen(border);
+        p.setBrush(t.surfaceRaised);
+        p.drawPath(file);
+        p.drawLine(QPointF(rect.left() + 13, rect.top() + 31),
+                   QPointF(rect.right() - 13, rect.top() + 31));
+        p.drawLine(QPointF(rect.left() + 13, rect.top() + 43),
+                   QPointF(rect.right() - 22, rect.top() + 43));
+        if (verified) {
+            p.setPen(QPen(t.success, 4.0, Qt::SolidLine,
+                          Qt::RoundCap, Qt::RoundJoin));
+            p.drawLine(QPointF(rect.left() + 17, rect.bottom() - 18),
+                       QPointF(rect.left() + 25, rect.bottom() - 10));
+            p.drawLine(QPointF(rect.left() + 25, rect.bottom() - 10),
+                       QPointF(rect.left() + 42, rect.bottom() - 29));
+        }
+    };
+    const auto drawVideo = [&](const QRectF &rect, const int seed) {
+        p.setPen(border);
+        p.setBrush(t.surfaceRaised);
+        p.drawRect(rect);
+        const qreal cell = 10.0;
+        for (int row = 0; row < 3; ++row)
+            for (int column = 0; column < 4; ++column) {
+                const QRectF block(rect.left() + 9 + column * cell,
+                                   rect.top() + 9 + row * cell, 7, 7);
+                p.fillRect(block, (row + column + seed) % 4 == 0
+                                      ? t.accent : t.borderStrong);
+            }
+        p.fillRect(QRectF(rect.left() + 9, rect.bottom() - 14,
+                          rect.width() - 18, 4), t.success);
+    };
+    const auto drawPlaylist = [&](const QRectF &rect) {
+        p.setPen(border);
+        p.setBrush(t.surfaceRaised);
+        p.drawRect(rect);
+        for (int row = 0; row < 3; ++row) {
+            p.fillRect(QRectF(rect.left() + 13, rect.top() + 14 + row * 19,
+                              12, 10), row == 1 ? t.accent : t.borderStrong);
+            p.drawLine(QPointF(rect.left() + 34,
+                               rect.top() + 19 + row * 19),
+                       QPointF(rect.right() - 13,
+                               rect.top() + 19 + row * 19));
+        }
+    };
+
+    if (mode_ == Mode::Create) {
+        drawFile({78, 55, 76, 82}, false);
+        drawArrow({182, 96}, {250, 96});
+        for (int i = 0; i < 3; ++i)
+            drawVideo({292 + i * 104.0, 58, 82, 76}, i);
+    } else if (mode_ == Mode::Store) {
+        for (int i = 0; i < 3; ++i)
+            drawVideo({84 + i * 100.0, 58, 78, 74}, i);
+        drawArrow({408, 96}, {474, 96});
+        drawPlaylist({518, 53, 92, 84});
+    } else {
+        drawPlaylist({54, 53, 92, 84});
+        drawArrow({174, 96}, {230, 96});
+        for (int i = 0; i < 3; ++i)
+            drawVideo({262 + i * 74.0, 67, 60, 58}, i);
+        drawArrow({500, 96}, {548, 96});
+        drawFile({574, 55, 66, 82}, true);
+    }
+}
+
+VidStoreXOnboardingProgress::VidStoreXOnboardingProgress(QWidget *parent)
+    : QWidget(parent) {
+    setObjectName(QStringLiteral("onboardingProgress"));
+    setFocusPolicy(Qt::NoFocus);
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAccessibleName(QStringLiteral("Getting started progress"));
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    setCurrentPage(0);
+}
+
+void VidStoreXOnboardingProgress::setCurrentPage(const int page) {
+    currentPage_ = qBound(0, page, 2);
+    setAccessibleDescription(QStringLiteral("Page %1 of 3")
+                                 .arg(currentPage_ + 1));
+    update();
+}
+
+QSize VidStoreXOnboardingProgress::sizeHint() const { return {104, 12}; }
+
+void VidStoreXOnboardingProgress::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    const auto t = vidstorex_ui::themeTokens(palette());
+    constexpr int blockWidth = 28;
+    constexpr int gap = 8;
+    const int top = qMax(0, (height() - 8) / 2);
+    for (int index = 0; index < 3; ++index) {
+        const QColor color = index < currentPage_
+            ? t.success : index == currentPage_
+            ? t.accent : t.borderStrong;
+        p.fillRect(QRect(index * (blockWidth + gap), top, blockWidth, 8),
+                   color);
+    }
+}
+
 VidStoreXRecentEntry::VidStoreXRecentEntry(
     const QString &title, const QString &metadata, const QString &status,
     const char *statusState, QWidget *parent)
