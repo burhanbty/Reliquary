@@ -1496,5 +1496,30 @@ Son açılma: Kaydedilmedi</translation>
     <message><source>Processing is taking longer than expected. The 1080p copies are not available yet; Resume later or download manually.</source><translation>İşleme beklenenden uzun sürüyor. 1080p kopyalar henüz kullanılamıyor; daha sonra devam edin veya elle indirin.</translation></message>
     <message><source>Videos are processed, but yt-dlp is unavailable. Select it or use the manual download controls.</source><translation>Videolar işlendi ancak yt-dlp kullanılamıyor. yt-dlp'yi seçin veya elle indirme denetimlerini kullanın.</translation></message>
     <message><source>yt-dlp could not check the processed 1080p copies. Manual download remains available.</source><translation>yt-dlp işlenmiş 1080p kopyaları denetleyemedi. Elle indirme kullanılabilir durumda.</translation></message>
+    <message><source>Advanced / Experimental / YouTube Sync</source><translation>Gelişmiş / Deneysel / YouTube Senkronizasyonu</translation></message>
+    <message><source>Experimental</source><translation>Deneysel</translation></message>
+    <message><source>YouTube Sync (Experimental)</source><translation>YouTube Senkronizasyonu (Deneysel)</translation></message>
+    <message><source>YouTube Sync  •  Experimental</source><translation>YouTube Senkronizasyonu  •  Deneysel</translation></message>
+    <message><source>Experimental feature
+
+YouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal VidStoreX use. Most users should upload Video Set videos manually and use the playlist link for recovery.</source><translation>Deneysel özellik
+
+YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerektirir. Normal VidStoreX kullanımı için gerekli değildir. Çoğu kullanıcı Video Set videolarını manuel yüklemeli ve kurtarma için oynatma listesi bağlantısını kullanmalıdır.</translation></message>
+    <message><source>5. Upload to YouTube</source><translation>5. YouTube'a Yükleyin</translation></message>
+    <message><source>Upload to YouTube</source><translation>YouTube'a Yükleyin</translation></message>
+    <message><source>Upload your VidStoreX videos to YouTube and add them to one playlist.</source><translation>VidStoreX videolarınızı YouTube'a yükleyin ve tek bir oynatma listesine ekleyin.</translation></message>
+    <message><source>Upload all parts to YouTube.</source><translation>Tüm parçaları YouTube'a yükleyin.</translation></message>
+    <message><source>Set them to Unlisted when possible.</source><translation>Mümkünse Liste Dışı olarak ayarlayın.</translation></message>
+    <message><source>Add the videos to one playlist.</source><translation>Videoları tek bir oynatma listesine ekleyin.</translation></message>
+    <message><source>Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.</source><translation>Videoları manuel yükleyin. Oynatma listesi bağlantısını daha sonra VidStoreX'e yapıştırarak dosyanızı kurtarabilirsiniz.</translation></message>
+    <message><source>Open YouTube</source><translation>YouTube'u Aç</translation></message>
+    <message><source>Connection:</source><translation>Bağlantı:</translation></message>
+    <message><source>Channel:</source><translation>Kanal:</translation></message>
+    <message><source>OAuth client configuration:</source><translation>OAuth istemci yapılandırması:</translation></message>
+    <message><source>Upload default:</source><translation>Varsayılan yükleme:</translation></message>
+    <message><source>Choose...</source><translation>Seç...</translation></message>
+    <message><source>Local Desktop OAuth client JSON (not stored in Git)</source><translation>Yerel Masaüstü OAuth istemci JSON'u (Git'te saklanmaz)</translation></message>
+    <message><source>Optional official API upload. Manual upload always remains available.</source><translation>İsteğe bağlı resmî API yüklemesi. Manuel yükleme her zaman kullanılabilir.</translation></message>
+    <message><source>—</source><translation>—</translation></message>
 </context>
 </TS>

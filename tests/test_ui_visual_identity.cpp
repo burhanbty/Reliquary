@@ -211,6 +211,22 @@ TEST(UiVisualIdentity, AppIconIsGeneratedFromRepositoryOwnedGeometry) {
     EXPECT_TRUE(source.contains("app.setWindowIcon"));
 }
 
+TEST(UiVisualIdentity, YouTubeSyncIsExperimentalAndConsumerFlowIsManual) {
+    QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) +
+               "/src/drive_manager_ui.cpp");
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString source = QString::fromUtf8(file.readAll());
+    EXPECT_TRUE(source.contains("experimentalYouTubeSyncPage"));
+    EXPECT_TRUE(source.contains("advancedYouTubeSyncAction"));
+    EXPECT_TRUE(source.contains("YouTube Sync (Experimental)"));
+    EXPECT_TRUE(source.contains("Upload all parts to YouTube."));
+    EXPECT_TRUE(source.contains("videoSetOpenVideosFolderButton"));
+    EXPECT_TRUE(source.contains("videoSetOpenYouTubeButton"));
+    EXPECT_TRUE(source.contains("use the playlist link for recovery"));
+    EXPECT_FALSE(source.contains(
+        "uploadLayout->addWidget(youtubeSyncOperationCard)"));
+}
+
 TEST(UiVisualIdentity, ThemeSourceAvoidsDisallowedVisualTrends) {
     QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) + "/src/ui_theme.cpp");
     ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));

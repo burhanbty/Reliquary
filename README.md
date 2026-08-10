@@ -58,8 +58,10 @@ both light and dark system palettes without changing the native title bar.
 
 The guided Home, Create, Recover, Recent, and Settings surfaces are intended
 for normal use. **Advanced** in the application header opens Storage,
-YouTube Test Lab, and Capacity Lab; the collapsed **Advanced / Classic Video
-Set Tools** section keeps the established low-level controls available.
+YouTube Test Lab, Capacity Lab, and an Experimental area; the collapsed
+**Advanced / Classic Video Set Tools** section keeps the established low-level
+controls available. OAuth-based YouTube Sync is available only under
+**Advanced → Experimental → YouTube Sync**.
 
 ## Encoding Modes
 
@@ -967,6 +969,11 @@ media_storage capacitylab run --preset onebit-verification-1080p `
 
 ## Video Sets / Large Files
 
+The standard Video Set workflow is deliberately simple: **create a Video Set
+→ upload its videos manually → place them in one playlist → paste the
+playlist link into Recover → recover the exact file**. A Google Cloud project,
+OAuth configuration, and API credentials are not required for this workflow.
+
 ### Instant Playlist Recovery
 
 The desktop Recover page can accept a YouTube playlist URL and safely run the
@@ -978,12 +985,17 @@ parts, or an existing output; the normal manual scan-and-recover controls remain
 available. Recovery jobs are resumable under the application data directory and
 the final file is written only to the selected output folder.
 
-### YouTube Sync (Beta)
+### Experimental Features
 
-Optional YouTube Sync uses an installed-app OAuth flow and the official YouTube
-Data API v3 to create a playlist, upload each part with the resumable protocol,
-track processing, and optionally download processed copies for the existing
-embedded scan. **YouTube Sync requires a configured YouTube Data API project.**
+#### Experimental YouTube Sync
+
+VidStoreX contains an experimental OAuth-based YouTube upload integration. It
+is optional, appears only under Advanced / Experimental, and is not required
+for the standard workflow. YouTube Sync uses an installed-app OAuth flow and
+the official YouTube Data API v3 to create a playlist, upload each part with
+the resumable protocol, track processing, and optionally download processed
+copies for the existing embedded scan. **It requires a configured YouTube Data
+API project.**
 API project restrictions can force requested Unlisted uploads to actual Private
 until required audit/compliance steps are completed; VidStoreX displays that
 actual state and does not attempt authenticated-cookie workarounds. The manual

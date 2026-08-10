@@ -454,6 +454,7 @@ private:
     QComboBox *languageCombo = nullptr;
     QComboBox *settingsLanguageCombo = nullptr;
     QWidget *settingsPage = nullptr;
+    QWidget *youtubeSyncPage = nullptr;
     QLabel *settingsHeadingLabel = nullptr;
     QLabel *settingsDescriptionLabel = nullptr;
     QLabel *settingsLanguageLabel = nullptr;
@@ -473,6 +474,7 @@ private:
     QComboBox *youtubeDefaultPrivacyCombo = nullptr;
     QCheckBox *youtubePrivacyTitlesCheckBox = nullptr;
     QCheckBox *youtubeAutoDownloadCheckBox = nullptr;
+    QFrame *youtubeSyncOperationCard = nullptr;
     youtube_sync::YouTubeNetworkService *youtubeNetworkService = nullptr;
     bool youtubeAwaitingChannel = false;
     bool youtubePendingSyncAfterRefresh = false;
@@ -609,6 +611,7 @@ private:
     QLabel *videoSetUploadInstructionsLabel = nullptr;
     QVector<QLabel *> videoSetUploadInstructionLabels;
     QPushButton *videoSetOpenVideosButton = nullptr;
+    QPushButton *videoSetOpenYouTubeButton = nullptr;
     QPushButton *videoSetOpenChecklistButton = nullptr;
     QPushButton *videoSetUploadedButton = nullptr;
     QPushButton *videoSetYouTubeSyncButton = nullptr;

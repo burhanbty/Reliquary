@@ -1891,8 +1891,52 @@ void DriveManagerUI::setupSettingsPage() {
     form->addWidget(rememberRecentCheckBox, 6, 0, 1, 3);
     form->addWidget(advancedSection, 7, 0, 1, 3);
     form->addWidget(showAdvancedToolsCheckBox, 8, 0, 1, 3);
-    auto *youtubeSection = section("YouTube Sync (Beta)",
-                                   "settingsYouTubeSection");
+    layout->addWidget(card);
+    layout->addStretch();
+
+    auto *youtubeScroll = new QScrollArea();
+    youtubeScroll->setObjectName("experimentalYouTubeSyncPage");
+    youtubeScroll->setWidgetResizable(true);
+    youtubeScroll->setFrameShape(QFrame::NoFrame);
+    youtubeSyncPage = youtubeScroll;
+    auto *youtubeContent = new QWidget();
+    youtubeContent->setObjectName("experimentalYouTubeSyncContent");
+    auto *youtubeLayout = new QVBoxLayout(youtubeContent);
+    youtubeLayout->setContentsMargins(24, 18, 24, 24);
+    youtubeLayout->setSpacing(14);
+    auto *youtubeHeading = new QLabel("Advanced / Experimental / YouTube Sync");
+    youtubeHeading->setObjectName("experimentalYouTubeSyncHeading");
+    youtubeHeading->setProperty("pageTitle", true);
+    youtubeHeading->setProperty("i18nSource",
+        "Advanced / Experimental / YouTube Sync");
+    youtubeLayout->addWidget(youtubeHeading);
+    auto *experimentalBadge = new QLabel("Experimental");
+    experimentalBadge->setObjectName("experimentalYouTubeSyncBadge");
+    experimentalBadge->setProperty("vsxRole", "badge");
+    experimentalBadge->setProperty("i18nSource", "Experimental");
+    youtubeLayout->addWidget(experimentalBadge, 0, Qt::AlignLeft);
+    auto *youtubeWarning = new QLabel(
+        "<b>Experimental feature</b><br>"
+        "YouTube Sync requires a Google Cloud project and OAuth configuration. "
+        "It is not required for normal VidStoreX use. Most users should upload "
+        "Video Set videos manually and use the playlist link for recovery.");
+    youtubeWarning->setObjectName("experimentalYouTubeSyncWarning");
+    youtubeWarning->setWordWrap(true);
+    youtubeWarning->setProperty("vsxSurface", "raised");
+    youtubeWarning->setProperty("i18nSource",
+        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal VidStoreX use. Most users should upload Video Set videos manually and use the playlist link for recovery.");
+    youtubeLayout->addWidget(youtubeWarning);
+
+    auto *youtubeCard = new QFrame();
+    youtubeCard->setObjectName("experimentalYouTubeSyncSettingsCard");
+    youtubeCard->setProperty("vsxSurface", "raised");
+    auto *youtubeForm = new QGridLayout(youtubeCard);
+    youtubeForm->setContentsMargins(20, 18, 20, 20);
+    youtubeForm->setHorizontalSpacing(14);
+    youtubeForm->setVerticalSpacing(10);
+    youtubeForm->setColumnStretch(1, 1);
+    auto *youtubeSection = section("YouTube Sync (Experimental)",
+                                   "experimentalYouTubeSyncSection");
     youtubeSyncConnectionLabel = new QLabel();
     youtubeSyncConnectionLabel->setObjectName("youtubeSyncConnection");
     youtubeSyncApiStatusLabel = new QLabel();
@@ -1903,6 +1947,8 @@ void DriveManagerUI::setupSettingsPage() {
     youtubeOAuthConfigEdit->setObjectName("youtubeOAuthConfigPath");
     youtubeOAuthConfigEdit->setPlaceholderText(
         tr("Local Desktop OAuth client JSON (not stored in Git)"));
+    youtubeOAuthConfigEdit->setProperty("i18nPlaceholder",
+        "Local Desktop OAuth client JSON (not stored in Git)");
     youtubeOAuthConfigBrowseButton = new QPushButton(tr("Choose..."));
     youtubeOAuthConfigBrowseButton->setObjectName("youtubeOAuthConfigBrowse");
     youtubeConnectButton = new QPushButton(tr("Connect YouTube"));
@@ -1921,28 +1967,40 @@ void DriveManagerUI::setupSettingsPage() {
     youtubeAutoDownloadCheckBox = new QCheckBox(tr(
         "Download and verify after YouTube finishes processing"));
     youtubeAutoDownloadCheckBox->setObjectName("youtubeAutoDownload");
-    form->addWidget(youtubeSection, 9, 0, 1, 3);
-    form->addWidget(new QLabel(tr("Connection:")), 10, 0);
-    form->addWidget(youtubeSyncConnectionLabel, 10, 1, 1, 2);
-    form->addWidget(new QLabel(tr("Channel:")), 11, 0);
-    form->addWidget(youtubeSyncChannelLabel, 11, 1, 1, 2);
-    form->addWidget(new QLabel(tr("API configuration:")), 12, 0);
-    form->addWidget(youtubeSyncApiStatusLabel, 12, 1, 1, 2);
-    form->addWidget(new QLabel(tr("OAuth client configuration:")), 13, 0);
-    form->addWidget(youtubeOAuthConfigEdit, 13, 1);
-    form->addWidget(youtubeOAuthConfigBrowseButton, 13, 2);
-    form->addWidget(new QLabel(tr("Upload default:")), 14, 0);
-    form->addWidget(youtubeDefaultPrivacyCombo, 14, 1, 1, 2);
-    form->addWidget(youtubePrivacyTitlesCheckBox, 15, 0, 1, 3);
-    form->addWidget(youtubeAutoDownloadCheckBox, 16, 0, 1, 3);
+    youtubeForm->addWidget(youtubeSection, 0, 0, 1, 3);
+    auto *connectionLabel = new QLabel(tr("Connection:"));
+    connectionLabel->setObjectName("experimentalYouTubeConnectionLabel");
+    auto *channelLabel = new QLabel(tr("Channel:"));
+    channelLabel->setObjectName("experimentalYouTubeChannelLabel");
+    auto *apiLabel = new QLabel(tr("API configuration:"));
+    apiLabel->setObjectName("experimentalYouTubeApiLabel");
+    auto *oauthLabel = new QLabel(tr("OAuth client configuration:"));
+    oauthLabel->setObjectName("experimentalYouTubeOAuthLabel");
+    auto *uploadDefaultLabel = new QLabel(tr("Upload default:"));
+    uploadDefaultLabel->setObjectName("experimentalYouTubePrivacyLabel");
+    youtubeForm->addWidget(connectionLabel, 1, 0);
+    youtubeForm->addWidget(youtubeSyncConnectionLabel, 1, 1, 1, 2);
+    youtubeForm->addWidget(channelLabel, 2, 0);
+    youtubeForm->addWidget(youtubeSyncChannelLabel, 2, 1, 1, 2);
+    youtubeForm->addWidget(apiLabel, 3, 0);
+    youtubeForm->addWidget(youtubeSyncApiStatusLabel, 3, 1, 1, 2);
+    youtubeForm->addWidget(oauthLabel, 4, 0);
+    youtubeForm->addWidget(youtubeOAuthConfigEdit, 4, 1);
+    youtubeForm->addWidget(youtubeOAuthConfigBrowseButton, 4, 2);
+    youtubeForm->addWidget(uploadDefaultLabel, 5, 0);
+    youtubeForm->addWidget(youtubeDefaultPrivacyCombo, 5, 1, 1, 2);
+    youtubeForm->addWidget(youtubePrivacyTitlesCheckBox, 6, 0, 1, 3);
+    youtubeForm->addWidget(youtubeAutoDownloadCheckBox, 7, 0, 1, 3);
     auto *youtubeActions = new QHBoxLayout();
     youtubeActions->addWidget(youtubeConnectButton);
     youtubeActions->addWidget(youtubeDisconnectButton);
     youtubeActions->addWidget(youtubeSetupInstructionsButton);
     youtubeActions->addStretch();
-    form->addLayout(youtubeActions, 17, 0, 1, 3);
-    layout->addWidget(card);
-    layout->addStretch();
+    youtubeForm->addLayout(youtubeActions, 8, 0, 1, 3);
+    youtubeLayout->addWidget(youtubeCard);
+    youtubeLayout->addWidget(youtubeSyncOperationCard);
+    youtubeLayout->addStretch();
+    youtubeScroll->setWidget(youtubeContent);
 
     QSettings settings;
     settingsOutputEdit->setText(settings.value(
@@ -1981,6 +2039,8 @@ void DriveManagerUI::setupSettingsPage() {
     refreshYouTubeSettings();
 
     mainTabs->addTab(settingsPage, QStringLiteral("Settings"));
+    mainTabs->addTab(youtubeSyncPage,
+                     QStringLiteral("YouTube Sync (Experimental)"));
 
     connect(settingsLanguageCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -2216,6 +2276,14 @@ void DriveManagerUI::setupApplicationNavigation() {
     auto *classicAction = advancedMenu->addAction(
         QStringLiteral("Classic Video Set Tools"));
     classicAction->setObjectName("advancedClassicVideoSetAction");
+    advancedMenu->addSeparator();
+    auto *experimentalHeading = advancedMenu->addAction(
+        QStringLiteral("Experimental"));
+    experimentalHeading->setObjectName("advancedExperimentalHeading");
+    experimentalHeading->setEnabled(false);
+    auto *youtubeSyncAction = advancedMenu->addAction(
+        QStringLiteral("YouTube Sync (Experimental)"));
+    youtubeSyncAction->setObjectName("advancedYouTubeSyncAction");
     advancedNavigationButton->setMenu(advancedMenu);
 
     navigation->addWidget(homeNavigationButton);
@@ -2268,6 +2336,8 @@ void DriveManagerUI::setupApplicationNavigation() {
             this, [this]() { mainTabs->setCurrentIndex(2); });
     connect(capacityAction, &QAction::triggered,
             this, [this]() { mainTabs->setCurrentIndex(3); });
+    connect(youtubeSyncAction, &QAction::triggered,
+            this, [this]() { mainTabs->setCurrentWidget(youtubeSyncPage); });
     connect(classicAction, &QAction::triggered, this, [this]() {
         mainTabs->setCurrentWidget(videoSetPage);
         videoSetClassicToolsGroup->setVisible(true);
@@ -2321,6 +2391,7 @@ void DriveManagerUI::applySemanticVisualRoles() {
                          videoSetAssistantOutputBrowseButton,
                          videoSetProgressOpenFolderButton,
                          videoSetOpenVideosButton,
+                         videoSetOpenYouTubeButton,
                          videoSetOpenChecklistButton,
                          videoSetSelectYtDlpButton,
                          videoSetManualReturnedButton,
@@ -2329,6 +2400,7 @@ void DriveManagerUI::applySemanticVisualRoles() {
                          videoSetRecentOpenFolderButton,
                          videoSetOpenSetFolderButton})
         role(button, "secondary");
+    role(videoSetOpenVideosButton, "primary");
     for (auto *button : {videoSetCopyShaButton,
                          videoSetReturnHomeButton,
                          videoSetRecentRemoveButton})
@@ -2367,7 +2439,8 @@ void DriveManagerUI::updateNavigationVisuals() {
     selected(advancedNavigationButton,
              mainTabs->currentIndex() == 0 ||
              mainTabs->currentIndex() == 2 ||
-             mainTabs->currentIndex() == 3);
+             mainTabs->currentIndex() == 3 ||
+             mainTabs->currentWidget() == youtubeSyncPage);
 }
 
 void DriveManagerUI::showVideoSetHome() {
@@ -2546,6 +2619,47 @@ void DriveManagerUI::retranslateUserInterface() {
     if (auto *action = applicationHeader->findChild<QAction *>(
             "advancedClassicVideoSetAction"))
         action->setText(tr("Classic Video Set Tools"));
+    if (auto *action = applicationHeader->findChild<QAction *>(
+            "advancedExperimentalHeading"))
+        action->setText(tr("Experimental"));
+    if (auto *action = applicationHeader->findChild<QAction *>(
+            "advancedYouTubeSyncAction"))
+        action->setText(tr("YouTube Sync (Experimental)"));
+    const auto setExperimentalLabel = [this](const char *name,
+                                              const char *source) {
+        if (auto *label = youtubeSyncPage->findChild<QLabel *>(name))
+            label->setText(tr(source));
+    };
+    setExperimentalLabel("experimentalYouTubeConnectionLabel", "Connection:");
+    setExperimentalLabel("experimentalYouTubeChannelLabel", "Channel:");
+    setExperimentalLabel("experimentalYouTubeApiLabel", "API configuration:");
+    setExperimentalLabel("experimentalYouTubeOAuthLabel",
+                         "OAuth client configuration:");
+    setExperimentalLabel("experimentalYouTubePrivacyLabel", "Upload default:");
+    youtubeConnectButton->setText(tr("Connect YouTube"));
+    youtubeDisconnectButton->setText(tr("Disconnect"));
+    youtubeSetupInstructionsButton->setText(tr("Open setup instructions"));
+    youtubeOAuthConfigBrowseButton->setText(tr("Choose..."));
+    youtubeDefaultPrivacyCombo->setItemText(0, tr("Unlisted"));
+    youtubeDefaultPrivacyCombo->setItemText(1, tr("Private"));
+    youtubeDefaultPrivacyCombo->setItemText(2, tr("Public"));
+    youtubePrivacyTitlesCheckBox->setText(tr("Privacy-friendly titles"));
+    youtubeAutoDownloadCheckBox->setText(tr(
+        "Download and verify after YouTube finishes processing"));
+    const QSettings youtubeSettings;
+    const bool youtubeConfigured = !youtubeOAuthConfigEdit->text().isEmpty() &&
+        QFileInfo::exists(youtubeOAuthConfigEdit->text());
+    const bool youtubeConnected = youtubeSettings.value(
+        "youtube/connected", false).toBool();
+    youtubeSyncApiStatusLabel->setText(youtubeConfigured
+        ? tr("Ready")
+        : tr("Missing — YouTube Sync is not configured for this build."));
+    youtubeSyncConnectionLabel->setText(youtubeConnected
+        ? tr("Connected") : tr("Not connected"));
+    youtubeSyncChannelLabel->setText(youtubeConnected
+        ? youtubeSettings.value("youtube/channelTitle",
+              tr("Connected account")).toString()
+        : tr("—"));
     if (auto *menu = menuBar()->findChild<QMenu *>("fileMenu"))
         menu->setTitle(tr("&File"));
     if (auto *menu = menuBar()->findChild<QMenu *>("toolsMenu"))
@@ -2571,7 +2685,7 @@ void DriveManagerUI::retranslateUserInterface() {
         tr("Choose a mode"),
         tr("Review and create videos"),
         tr("Create and verify videos"),
-        tr("Upload the videos"),
+        tr("Upload to YouTube"),
         tr("Download YouTube's processed copies"),
         tr("Check parts and recover"),
         tr("Recover and verify the file"),
@@ -2582,7 +2696,7 @@ void DriveManagerUI::retranslateUserInterface() {
         tr("Choose how you want to balance reliability and video count."),
         tr("VidStoreX calculates real packet, frame, repair, and capacity values before creating any video."),
         tr("Each completed part is decoded and checked locally before it is accepted."),
-        tr("Upload every video as Unlisted and wait for 1080p processing to finish."),
+        tr("Upload your VidStoreX videos to YouTube and add them to one playlist."),
         tr("Paste the playlist link, or choose the returned videos manually."),
         tr("Select a set, manifest, video, or returned-video folder. Recovery starts only when you choose Recover."),
         tr("VidStoreX verifies every part and the final full-file SHA-256 before publishing the recovered file."),
@@ -3290,8 +3404,8 @@ void DriveManagerUI::setupVideoSetAssistant(
 
     // 5: Upload guide
     auto *upload = makePage(
-        "5. Upload the videos",
-        "Upload every video as Unlisted and wait for 1080p processing to finish.");
+        "5. Upload to YouTube",
+        "Upload your VidStoreX videos to YouTube and add them to one playlist.");
     upload->setObjectName("videoSetAssistantUploadPage");
     auto *uploadLayout = pageLayout(upload);
     videoSetUploadInstructionsLabel = new QLabel(
@@ -3306,9 +3420,10 @@ void DriveManagerUI::setupVideoSetAssistant(
     auto *instructionRow = new QHBoxLayout();
     const QStringList instructionTexts{
         "Open the videos folder.",
-        "Upload every video as Unlisted.",
+        "Upload all parts to YouTube.",
+        "Set them to Unlisted when possible.",
         "Wait for 1080p processing to finish.",
-        "Put all videos in one playlist and copy its link."};
+        "Add the videos to one playlist."};
     for (int index = 0; index < instructionTexts.size(); ++index) {
         auto *instruction = new QFrame();
         instruction->setObjectName(
@@ -3326,19 +3441,22 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetUploadInstructionLabels.push_back(text);
     }
     uploadLayout->addLayout(instructionRow);
-    auto *syncCard = new QFrame();
-    syncCard->setObjectName("youtubeSyncCard");
-    syncCard->setProperty("vsxSurface", "raised");
-    auto *syncLayout = new QVBoxLayout(syncCard);
-    auto *syncTitle = new QLabel("YouTube Sync  •  Beta");
+    youtubeSyncOperationCard = new QFrame();
+    youtubeSyncOperationCard->setObjectName("youtubeSyncCard");
+    youtubeSyncOperationCard->setProperty("vsxSurface", "raised");
+    auto *syncLayout = new QVBoxLayout(youtubeSyncOperationCard);
+    auto *syncTitle = new QLabel("YouTube Sync  •  Experimental");
     syncTitle->setObjectName("youtubeSyncTitle");
     syncTitle->setProperty("sectionTitle", true);
-    syncTitle->setProperty("i18nSource", "YouTube Sync  •  Beta");
+    syncTitle->setProperty("i18nSource", "YouTube Sync  •  Experimental");
     syncLayout->addWidget(syncTitle);
     videoSetYouTubeSyncStatus = new QLabel(
         "Optional official API upload. Manual upload always remains available.");
     videoSetYouTubeSyncStatus->setObjectName("youtubeSyncStatus");
     videoSetYouTubeSyncStatus->setWordWrap(true);
+    videoSetYouTubeSyncStatus->setProperty(
+        "i18nSource",
+        "Optional official API upload. Manual upload always remains available.");
     syncLayout->addWidget(videoSetYouTubeSyncStatus);
     videoSetYouTubeSyncProgress = new QProgressBar();
     videoSetYouTubeSyncProgress->setObjectName("youtubeSyncProgress");
@@ -3354,18 +3472,21 @@ void DriveManagerUI::setupVideoSetAssistant(
     syncActions->addWidget(videoSetYouTubeSyncPauseButton);
     syncActions->addStretch();
     syncLayout->addLayout(syncActions);
-    uploadLayout->addWidget(syncCard);
     auto *uploadPrivacy = new QLabel(
-        "VidStoreX never signs in and never uploads automatically.");
+        "Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.");
     uploadPrivacy->setObjectName("videoSetUploadPrivacyNotice");
     uploadPrivacy->setProperty("muted", true);
     uploadPrivacy->setProperty("i18nSource",
-        "VidStoreX never signs in and never uploads automatically.");
+        "Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.");
     uploadLayout->addWidget(uploadPrivacy);
     auto *uploadActions = new QHBoxLayout();
     videoSetOpenVideosButton = new QPushButton("Open Videos Folder");
+    videoSetOpenVideosButton->setObjectName("videoSetOpenVideosFolderButton");
+    videoSetOpenYouTubeButton = new QPushButton("Open YouTube");
+    videoSetOpenYouTubeButton->setObjectName("videoSetOpenYouTubeButton");
     videoSetOpenChecklistButton = new QPushButton("Open Upload Checklist");
     uploadActions->addWidget(videoSetOpenVideosButton);
+    uploadActions->addWidget(videoSetOpenYouTubeButton);
     uploadActions->addWidget(videoSetOpenChecklistButton);
     uploadLayout->addLayout(uploadActions);
     uploadLayout->addStretch();
@@ -3836,6 +3957,10 @@ void DriveManagerUI::setupVideoSetAssistant(
         if (!videoSetCurrentSetRoot.isEmpty())
             QDesktopServices::openUrl(QUrl::fromLocalFile(
                 QDir(videoSetCurrentSetRoot).filePath("videos")));
+    });
+    connect(videoSetOpenYouTubeButton, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral(
+            "https://www.youtube.com/upload")));
     });
     connect(videoSetOpenChecklistButton, &QPushButton::clicked,
             this, [this]() {

@@ -87,6 +87,8 @@ QString applicationStyleSheet(const QPalette &palette) {
         QGroupBox[vsxRole="profileCard"] {
             background: %2; border: 1px solid %13; border-radius: 10px;
         }
+        QFrame[vsxSurface="raised"] QLabel,
+        QFrame[vsxSurface="raised"] QCheckBox { color: %5; }
         QFrame[vsxRole="actionCard"], QFrame[vsxRole="section"],
         QGroupBox[vsxRole="section"],
         QGroupBox[vsxRole="profileCard"] {
@@ -133,7 +135,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         }
         QPushButton[vsxRole="primary"]:hover { background: %9; border-color: %9; }
         QPushButton[vsxRole="primary"]:pressed { background: %10; border-color: %10; }
-        QPushButton[vsxRole="secondary"] { background: transparent; border-color: %14; }
+        QPushButton[vsxRole="secondary"] { background: %2; border-color: %14; }
         QPushButton[vsxRole="ghost"], QToolButton[vsxRole="ghost"] {
             background: transparent; border-color: transparent; color: %6;
         }

@@ -1,8 +1,10 @@
 # YouTube Sync setup
 
-YouTube Sync is an optional beta feature. Instant Playlist Recovery and the
-manual Video Set upload/download workflow do not require Google API
-configuration and continue to work when Sync is unavailable.
+YouTube Sync is an optional experimental feature available under
+**Advanced → Experimental → YouTube Sync**. It is not required for normal
+VidStoreX use. Instant Playlist Recovery and the manual Video Set
+upload/download workflow do not require Google API configuration and continue
+to work when Sync is unavailable.
 
 ## Configure a Desktop OAuth client
 
@@ -11,8 +13,8 @@ configuration and continue to work when Sync is unavailable.
 3. Configure the OAuth consent screen, its users, and the required publishing
    or verification state for your intended audience.
 4. Create an OAuth client of type **Desktop app**.
-5. Download the client JSON to a private local location. In VidStoreX Settings,
-   choose that file under **YouTube Sync (Beta)**.
+5. Download the client JSON to a private local location. In VidStoreX, open
+   **Advanced → Experimental → YouTube Sync** and choose that file there.
 6. Never commit the downloaded file, its client values, tokens, DPAPI blobs, or
    generated `youtube_sync_state.json` files. The repository contains only
    `config/youtube_oauth_client.example.json`.

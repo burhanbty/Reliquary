@@ -363,17 +363,27 @@ int main(int argc, char *argv[]) {
         auto *sync = window.findChild<QPushButton *>("youtubeSyncStartButton");
         auto *status = window.findChild<QLabel *>("youtubeSyncStatus");
         auto *progress = window.findChild<QProgressBar *>("youtubeSyncProgress");
+        auto *experimentalAction = window.findChild<QAction *>(
+            "advancedYouTubeSyncAction");
+        auto *experimentalPage = window.findChild<QWidget *>(
+            "experimentalYouTubeSyncPage");
         if (!recent || !continueButton || !sync || !status || !progress ||
-            recent->count() != 1) {
+            !experimentalAction || !experimentalPage || recent->count() != 1) {
             qCritical() << "YouTube Sync GUI controls were not found";
             return 92;
         }
         recent->setCurrentRow(0);
         continueButton->click();
         QApplication::processEvents();
+        experimentalAction->trigger();
+        QApplication::processEvents();
         if (!sync->isEnabled()) {
             qCritical() << "YouTube Sync did not open a verified recent set";
             return 93;
+        }
+        if (!experimentalPage->isVisible() || !sync->isVisible()) {
+            qCritical() << "YouTube Sync is not isolated under Experimental";
+            return 97;
         }
         sync->click();
         auto *timer = new QTimer(&window);
@@ -456,6 +466,13 @@ int main(int argc, char *argv[]) {
             !status || !success) {
             qCritical() << "Instant Recovery widgets were not found";
             return 81;
+        }
+        const QSettings instantSettings;
+        if (instantSettings.value("youtube/connected", false).toBool() ||
+            !instantSettings.value(
+                "youtube/oauthClientConfigPath").toString().isEmpty()) {
+            qCritical() << "Instant Recovery test is not OAuth-independent";
+            return 85;
         }
         const QString recovered = QDir(instantRecoverySmokeRoot)
             .filePath("recovered-instant");
@@ -584,6 +601,14 @@ int main(int argc, char *argv[]) {
         auto *recentGroup = window.findChild<QFrame *>("videoSetRecentGroup");
         auto *classicAction = window.findChild<QAction *>(
             "advancedClassicVideoSetAction");
+        auto *youtubeSyncAction = window.findChild<QAction *>(
+            "advancedYouTubeSyncAction");
+        auto *youtubeSyncPage = window.findChild<QWidget *>(
+            "experimentalYouTubeSyncPage");
+        auto *oauthConfig = window.findChild<QLineEdit *>(
+            "youtubeOAuthConfigPath");
+        auto *youtubeSyncCard = window.findChild<QFrame *>(
+            "youtubeSyncCard");
         if (!assistantStack || !assistantScroll || !createChoice ||
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
@@ -592,7 +617,9 @@ int main(int argc, char *argv[]) {
             !settingsNavigation || !language || !settingsLanguage ||
             !settingsPage || !advancedNavigation || !trustLabel ||
             !homeHeading || !createRail || !recoverRail || !stepper ||
-            !recentEmpty || !classicAction || !createCard || !recoverCard ||
+            !recentEmpty || !classicAction || !youtubeSyncAction ||
+            !youtubeSyncPage || !oauthConfig || !youtubeSyncCard ||
+            !createCard || !recoverCard ||
             !createCardTitle || !recoverCardTitle || !recentGroup) {
             qCritical() << "Video Set Assistant controls were not found";
             return 6;
@@ -620,6 +647,17 @@ int main(int argc, char *argv[]) {
              advancedNavigation->text() != QString::fromUtf8("Gelişmiş"))) {
             qCritical() << "Video Set Assistant welcome/scroll/focus invariant failed";
             return 6;
+        }
+        for (auto *label : assistantStack->currentWidget()
+                               ->findChildren<QLabel *>()) {
+            if (label->isVisible() &&
+                (label->text().contains("YouTube Sync", Qt::CaseInsensitive) ||
+                 label->text().contains("OAuth", Qt::CaseInsensitive) ||
+                 label->text().contains("Google Cloud", Qt::CaseInsensitive))) {
+                qCritical() << "Consumer Home exposes experimental setup text"
+                            << label->text();
+                return 20;
+            }
         }
         window.resize(1920, 1080);
         QApplication::processEvents();
@@ -701,9 +739,17 @@ int main(int argc, char *argv[]) {
         settingsNavigation->click();
         QApplication::processEvents();
         if (!settingsPage->isVisible() ||
-            settingsLanguage->currentData() != language->currentData()) {
+            settingsLanguage->currentData() != language->currentData() ||
+            settingsPage->isAncestorOf(oauthConfig) || oauthConfig->isVisible()) {
             qCritical() << "Settings page language selector is not synchronized";
             return 17;
+        }
+        youtubeSyncAction->trigger();
+        QApplication::processEvents();
+        if (!youtubeSyncPage->isVisible() || !oauthConfig->isVisible() ||
+            !youtubeSyncCard->isVisible()) {
+            qCritical() << "Experimental YouTube Sync page is incomplete";
+            return 21;
         }
         homeNavigation->click();
         QApplication::processEvents();
@@ -906,6 +952,23 @@ int main(int argc, char *argv[]) {
             "capacityLabPageHeading");
         auto *capacityAction = window.findChild<QAction *>(
             "advancedCapacityLabAction");
+        auto *youtubeSyncAction = window.findChild<QAction *>(
+            "advancedYouTubeSyncAction");
+        auto *youtubeSyncPage = window.findChild<QWidget *>(
+            "experimentalYouTubeSyncPage");
+        auto *youtubeSyncHeading = window.findChild<QLabel *>(
+            "experimentalYouTubeSyncHeading");
+        auto *youtubeSyncWarning = window.findChild<QLabel *>(
+            "experimentalYouTubeSyncWarning");
+        auto *oauthConfig = window.findChild<QLineEdit *>(
+            "youtubeOAuthConfigPath");
+        auto *syncCard = window.findChild<QFrame *>("youtubeSyncCard");
+        auto *openVideos = window.findChild<QPushButton *>(
+            "videoSetOpenVideosFolderButton");
+        auto *openYouTube = window.findChild<QPushButton *>(
+            "videoSetOpenYouTubeButton");
+        auto *uploadNotice = window.findChild<QLabel *>(
+            "videoSetUploadPrivacyNotice");
         if (!stack || !create || !input || !output || !sourceContinue ||
             !highCapacity || !target || !maximumSize || !calculate ||
             !planSummary || !createVideos || !progressContinue ||
@@ -917,7 +980,9 @@ int main(int argc, char *argv[]) {
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
             !advancedNavigation || !homeHeading || !trustLabel ||
             !classicTools || !successRail || !capacityHeading ||
-            !capacityAction) {
+            !capacityAction || !youtubeSyncAction || !youtubeSyncPage ||
+            !youtubeSyncHeading || !youtubeSyncWarning || !oauthConfig ||
+            !syncCard || !openVideos || !openYouTube || !uploadNotice) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
         }
@@ -942,6 +1007,16 @@ int main(int argc, char *argv[]) {
                 "Gelişmiş / Klasik Video Set Araçları")) {
             qCritical() << "Turkish visual identity home invariant failed";
             return 57;
+        }
+        for (auto *label : window.findChildren<QLabel *>()) {
+            if (label->isVisible() &&
+                (label->text().contains("YouTube Sync", Qt::CaseInsensitive) ||
+                 label->text().contains("OAuth", Qt::CaseInsensitive) ||
+                 label->text().contains("Google Cloud", Qt::CaseInsensitive))) {
+                qCritical() << "Turkish consumer Home exposes experimental text"
+                            << label->text();
+                return 67;
+            }
         }
         auto *assistantScroll = window.findChild<QScrollArea *>(
             "videoSetAssistantScrollArea");
@@ -999,12 +1074,34 @@ int main(int argc, char *argv[]) {
         auto *settingsLanguageSection = window.findChild<QLabel *>(
             "settingsLanguageSection");
         if (!settingsLanguageSection ||
-            settingsLanguageSection->text() != QString::fromUtf8("Dil")) {
+            settingsLanguageSection->text() != QString::fromUtf8("Dil") ||
+            oauthConfig->isVisible() || syncCard->isVisible()) {
             qCritical() << "Turkish Settings sections failed";
             return 60;
         }
         window.grab().save(QDir(root).filePath("e2e-settings-tr.png"));
+        youtubeSyncAction->trigger();
+        QApplication::processEvents();
+        if (!youtubeSyncPage->isVisible() || !oauthConfig->isVisible() ||
+            !syncCard->isVisible() ||
+            !youtubeSyncHeading->text().contains(
+                QString::fromUtf8("Deneysel")) ||
+            !youtubeSyncWarning->text().contains(
+                QString::fromUtf8("normal VidStoreX"), Qt::CaseInsensitive)) {
+            qCritical() << "Turkish Experimental YouTube Sync separation failed";
+            return 68;
+        }
+        window.grab().save(QDir(root).filePath(
+            "e2e-youtube-sync-experimental-tr.png"));
         language->setCurrentIndex(language->findData("en"));
+        QApplication::processEvents();
+        if (!youtubeSyncHeading->text().contains("Experimental") ||
+            !youtubeSyncWarning->text().contains(
+                "not required for normal VidStoreX use",
+                Qt::CaseInsensitive)) {
+            qCritical() << "English Experimental YouTube Sync separation failed";
+            return 69;
+        }
         homeNavigation->click();
         QApplication::processEvents();
 
@@ -1129,6 +1226,13 @@ int main(int argc, char *argv[]) {
                 }
                 progressContinue->click();
                 QApplication::processEvents();
+                if (stack->currentIndex() != 5 || !openVideos->isVisible() ||
+                    !openYouTube->isVisible() || !uploadNotice->isVisible() ||
+                    !uploadNotice->text().contains("playlist link",
+                        Qt::CaseInsensitive) || syncCard->isVisible()) {
+                    fail(70, "Normal YouTube page is not manual-upload only");
+                    return;
+                }
                 window.grab().save(QDir(root).filePath("e2e-youtube-en.png"));
                 uploaded->click();
                 recoveryInput->setText(returned);

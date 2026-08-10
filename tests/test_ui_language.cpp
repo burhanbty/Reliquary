@@ -80,7 +80,13 @@ TEST(UiLanguage, TurkishCatalogCoversCriticalUserInterface) {
         {"Copy manifest location",
          QString::fromUtf8("Manifest konumunu kopyala")},
         {"Download Processed Videos",
-         QString::fromUtf8("İşlenmiş Videoları İndir")}};
+         QString::fromUtf8("İşlenmiş Videoları İndir")},
+        {"Experimental", QString::fromUtf8("Deneysel")},
+        {"YouTube Sync (Experimental)",
+         QString::fromUtf8("YouTube Senkronizasyonu (Deneysel)")},
+        {"Upload all parts to YouTube.",
+         QString::fromUtf8("Tüm parçaları YouTube'a yükleyin.")},
+        {"Open YouTube", QString::fromUtf8("YouTube'u Aç")}};
     for (auto it = critical.cbegin(); it != critical.cend(); ++it) {
         ASSERT_TRUE(messages.contains(it.key()))
             << it.key().toStdString();
