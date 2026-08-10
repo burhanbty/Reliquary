@@ -15,6 +15,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "drive_manager_ui.h"
+#include "instant_recovery.h"
+#include "youtube_auth.h"
+#include "youtube_sync_controller.h"
+#include "youtube_upload_manager.h"
 #include "encoding_reliability.h"
 #include "media_storage.h"
 #include "video_encoder.h"
@@ -67,6 +71,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <numeric>
 #include <vector>
 
 namespace {
@@ -183,6 +188,17 @@ static QString recent_opened_setting_key(const QString &manifestPath) {
         QDir::cleanPath(manifestPath).toUtf8(),
         QCryptographicHash::Sha256).toHex();
     return "videoSet/recentOpened/" + QString::fromLatin1(digest);
+}
+
+static youtube_sync::EndpointSet youtube_endpoint_set() {
+    youtube_sync::EndpointSet endpoints;
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+    const QByteArray apiBase = qgetenv("VIDSTOREX_YOUTUBE_API_BASE");
+    const QByteArray uploadBase = qgetenv("VIDSTOREX_YOUTUBE_UPLOAD_BASE");
+    if (!apiBase.isEmpty()) endpoints.api_base = apiBase.toStdString();
+    if (!uploadBase.isEmpty()) endpoints.upload_base = uploadBase.toStdString();
+#endif
+    return endpoints;
 }
 
 void WorkerThread::run() {
@@ -1875,6 +1891,56 @@ void DriveManagerUI::setupSettingsPage() {
     form->addWidget(rememberRecentCheckBox, 6, 0, 1, 3);
     form->addWidget(advancedSection, 7, 0, 1, 3);
     form->addWidget(showAdvancedToolsCheckBox, 8, 0, 1, 3);
+    auto *youtubeSection = section("YouTube Sync (Beta)",
+                                   "settingsYouTubeSection");
+    youtubeSyncConnectionLabel = new QLabel();
+    youtubeSyncConnectionLabel->setObjectName("youtubeSyncConnection");
+    youtubeSyncApiStatusLabel = new QLabel();
+    youtubeSyncApiStatusLabel->setObjectName("youtubeSyncApiStatus");
+    youtubeSyncChannelLabel = new QLabel();
+    youtubeSyncChannelLabel->setObjectName("youtubeSyncChannel");
+    youtubeOAuthConfigEdit = new QLineEdit();
+    youtubeOAuthConfigEdit->setObjectName("youtubeOAuthConfigPath");
+    youtubeOAuthConfigEdit->setPlaceholderText(
+        tr("Local Desktop OAuth client JSON (not stored in Git)"));
+    youtubeOAuthConfigBrowseButton = new QPushButton(tr("Choose..."));
+    youtubeOAuthConfigBrowseButton->setObjectName("youtubeOAuthConfigBrowse");
+    youtubeConnectButton = new QPushButton(tr("Connect YouTube"));
+    youtubeConnectButton->setObjectName("youtubeConnectButton");
+    youtubeDisconnectButton = new QPushButton(tr("Disconnect"));
+    youtubeDisconnectButton->setObjectName("youtubeDisconnectButton");
+    youtubeSetupInstructionsButton = new QPushButton(tr("Open setup instructions"));
+    youtubeSetupInstructionsButton->setObjectName("youtubeSetupInstructions");
+    youtubeDefaultPrivacyCombo = new QComboBox();
+    youtubeDefaultPrivacyCombo->setObjectName("youtubeDefaultPrivacy");
+    youtubeDefaultPrivacyCombo->addItem(tr("Unlisted"), "unlisted");
+    youtubeDefaultPrivacyCombo->addItem(tr("Private"), "private");
+    youtubeDefaultPrivacyCombo->addItem(tr("Public"), "public");
+    youtubePrivacyTitlesCheckBox = new QCheckBox(tr("Privacy-friendly titles"));
+    youtubePrivacyTitlesCheckBox->setObjectName("youtubePrivacyFriendlyTitles");
+    youtubeAutoDownloadCheckBox = new QCheckBox(tr(
+        "Download and verify after YouTube finishes processing"));
+    youtubeAutoDownloadCheckBox->setObjectName("youtubeAutoDownload");
+    form->addWidget(youtubeSection, 9, 0, 1, 3);
+    form->addWidget(new QLabel(tr("Connection:")), 10, 0);
+    form->addWidget(youtubeSyncConnectionLabel, 10, 1, 1, 2);
+    form->addWidget(new QLabel(tr("Channel:")), 11, 0);
+    form->addWidget(youtubeSyncChannelLabel, 11, 1, 1, 2);
+    form->addWidget(new QLabel(tr("API configuration:")), 12, 0);
+    form->addWidget(youtubeSyncApiStatusLabel, 12, 1, 1, 2);
+    form->addWidget(new QLabel(tr("OAuth client configuration:")), 13, 0);
+    form->addWidget(youtubeOAuthConfigEdit, 13, 1);
+    form->addWidget(youtubeOAuthConfigBrowseButton, 13, 2);
+    form->addWidget(new QLabel(tr("Upload default:")), 14, 0);
+    form->addWidget(youtubeDefaultPrivacyCombo, 14, 1, 1, 2);
+    form->addWidget(youtubePrivacyTitlesCheckBox, 15, 0, 1, 3);
+    form->addWidget(youtubeAutoDownloadCheckBox, 16, 0, 1, 3);
+    auto *youtubeActions = new QHBoxLayout();
+    youtubeActions->addWidget(youtubeConnectButton);
+    youtubeActions->addWidget(youtubeDisconnectButton);
+    youtubeActions->addWidget(youtubeSetupInstructionsButton);
+    youtubeActions->addStretch();
+    form->addLayout(youtubeActions, 17, 0, 1, 3);
     layout->addWidget(card);
     layout->addStretch();
 
@@ -1886,6 +1952,33 @@ void DriveManagerUI::setupSettingsPage() {
         "ui/rememberRecentSets", true).toBool());
     showAdvancedToolsCheckBox->setChecked(settings.value(
         "ui/showAdvancedTools", true).toBool());
+    youtubeOAuthConfigEdit->setText(settings.value(
+        "youtube/oauthClientConfigPath").toString());
+    youtubePrivacyTitlesCheckBox->setChecked(settings.value(
+        "youtube/privacyFriendlyTitles", true).toBool());
+    youtubeAutoDownloadCheckBox->setChecked(settings.value(
+        "youtube/autoDownload", true).toBool());
+    const int privacyIndex = youtubeDefaultPrivacyCombo->findData(
+        settings.value("youtube/defaultPrivacy", "unlisted"));
+    youtubeDefaultPrivacyCombo->setCurrentIndex((std::max)(0, privacyIndex));
+    const auto refreshYouTubeSettings = [this]() {
+        const QSettings current;
+        const bool configured = !youtubeOAuthConfigEdit->text().isEmpty() &&
+            QFileInfo::exists(youtubeOAuthConfigEdit->text());
+        const bool connected = current.value(
+            "youtube/connected", false).toBool();
+        youtubeSyncApiStatusLabel->setText(configured
+            ? tr("Ready") : tr("Missing — YouTube Sync is not configured for this build."));
+        youtubeSyncConnectionLabel->setText(connected
+            ? tr("Connected") : tr("Not connected"));
+        youtubeSyncChannelLabel->setText(connected
+            ? current.value("youtube/channelTitle",
+                tr("Connected account")).toString()
+            : tr("—"));
+        youtubeConnectButton->setEnabled(configured && !connected);
+        youtubeDisconnectButton->setEnabled(connected);
+    };
+    refreshYouTubeSettings();
 
     mainTabs->addTab(settingsPage, QStringLiteral("Settings"));
 
@@ -1918,6 +2011,140 @@ void DriveManagerUI::setupSettingsPage() {
         QSettings().setValue("ui/showAdvancedTools", checked);
         if (advancedNavigationButton)
             advancedNavigationButton->setVisible(checked);
+    });
+    connect(youtubeOAuthConfigBrowseButton, &QPushButton::clicked,
+            this, [this, refreshYouTubeSettings]() {
+        const QString file = QFileDialog::getOpenFileName(
+            this, tr("Choose Desktop OAuth client configuration"),
+            QFileInfo(youtubeOAuthConfigEdit->text()).absolutePath(),
+            tr("JSON files (*.json);;All files (*)"));
+        if (file.isEmpty()) return;
+        youtubeOAuthConfigEdit->setText(file);
+        QSettings().setValue("youtube/oauthClientConfigPath", file);
+        refreshYouTubeSettings();
+    });
+    connect(youtubeOAuthConfigEdit, &QLineEdit::editingFinished,
+            this, [this, refreshYouTubeSettings]() {
+        QSettings().setValue("youtube/oauthClientConfigPath",
+                             youtubeOAuthConfigEdit->text());
+        refreshYouTubeSettings();
+    });
+    connect(youtubePrivacyTitlesCheckBox, &QCheckBox::toggled,
+            this, [](const bool checked) {
+        QSettings().setValue("youtube/privacyFriendlyTitles", checked);
+    });
+    connect(youtubeAutoDownloadCheckBox, &QCheckBox::toggled,
+            this, [](const bool checked) {
+        QSettings().setValue("youtube/autoDownload", checked);
+    });
+    connect(youtubeDefaultPrivacyCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](const int index) {
+        QSettings().setValue("youtube/defaultPrivacy",
+            youtubeDefaultPrivacyCombo->itemData(index));
+    });
+    youtubeNetworkService = new youtube_sync::YouTubeNetworkService(this);
+    connect(youtubeConnectButton, &QPushButton::clicked,
+            this, [this]() {
+        try {
+            const auto config = youtube_sync::read_oauth_client_config(
+                std::filesystem::path(youtubeOAuthConfigEdit->text().toStdWString()));
+            if (!config.configured()) {
+                youtubeSyncApiStatusLabel->setText(tr(
+                    "The selected OAuth client configuration is invalid."));
+                return;
+            }
+            youtubeSyncConnectionLabel->setText(tr(
+                "VidStoreX needs permission to upload Video Set videos and manage the playlist created for this set."));
+            if (!youtubeNetworkService->beginAuthorization(config))
+                youtubeSyncConnectionLabel->setText(tr(
+                    "The system browser or local callback listener could not be opened."));
+        } catch (const std::exception &error) {
+            youtubeSyncConnectionLabel->setText(
+                QString::fromUtf8(error.what()));
+        }
+    });
+    connect(youtubeNetworkService,
+            &youtube_sync::YouTubeNetworkService::tokenResponseReady,
+            this, [this, refreshYouTubeSettings](const QByteArray json) {
+        try {
+            auto token = youtube_sync::parse_token_record(json.toStdString());
+            auto store = youtube_sync::make_platform_credential_store();
+            if (token.refresh_token.empty()) {
+                if (const auto existing = store->load("youtube-oauth")) {
+                    try {
+                        token.refresh_token = youtube_sync::parse_token_record(
+                            *existing).refresh_token;
+                    } catch (...) {}
+                }
+            }
+            store->save("youtube-oauth", youtube_sync::serialize_token_record(token));
+            QSettings settings;
+            settings.setValue("youtube/connected", true);
+            // Tokens and authorization codes are intentionally never written
+            // to QSettings or logs.
+            youtubeAwaitingChannel = true;
+            youtube_sync::HttpRequest request{
+                "GET",
+                "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+                {{"Authorization", "Bearer " + token.access_token}}, {}};
+            youtubeNetworkService->execute(request);
+            refreshYouTubeSettings();
+            if (youtubePendingSyncAfterRefresh) {
+                youtubePendingSyncAfterRefresh = false;
+                QTimer::singleShot(0, this,
+                    &DriveManagerUI::startYouTubeSync);
+            }
+        } catch (const std::exception &error) {
+            youtubeSyncConnectionLabel->setText(tr(
+                "The OAuth token response was invalid: %1")
+                .arg(QString::fromUtf8(error.what())));
+        }
+    });
+    connect(youtubeNetworkService,
+            &youtube_sync::YouTubeNetworkService::responseReady,
+            this, [this, refreshYouTubeSettings](const int status,
+                const QByteArray body,
+                const QList<QPair<QByteArray, QByteArray>> &) {
+        if (!youtubeAwaitingChannel) return;
+        youtubeAwaitingChannel = false;
+        if (status >= 200 && status < 300) {
+            const auto document = QJsonDocument::fromJson(body);
+            const auto items = document.object().value("items").toArray();
+            if (!items.isEmpty()) {
+                const auto item = items.at(0).toObject();
+                QSettings settings;
+                settings.setValue("youtube/channelId", item.value("id").toString());
+                settings.setValue("youtube/channelTitle",
+                    item.value("snippet").toObject().value("title").toString());
+            }
+        }
+        refreshYouTubeSettings();
+    });
+    connect(youtubeNetworkService,
+            &youtube_sync::YouTubeNetworkService::responseReady,
+            this, [this](const int status, const QByteArray body,
+                const QList<QPair<QByteArray, QByteArray>> headers) {
+        if (!youtubeSyncOperation.isEmpty())
+            handleYouTubeSyncResponse(status, body, headers);
+    });
+    connect(youtubeDisconnectButton, &QPushButton::clicked,
+            this, [this, refreshYouTubeSettings]() {
+        try {
+            auto store = youtube_sync::make_platform_credential_store();
+            store->remove("youtube-oauth");
+        } catch (...) {}
+        QSettings settings;
+        settings.remove("youtube/connected");
+        settings.remove("youtube/channelId");
+        settings.remove("youtube/channelTitle");
+        refreshYouTubeSettings();
+    });
+    connect(youtubeSetupInstructionsButton, &QPushButton::clicked,
+            this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(
+            QDir(QCoreApplication::applicationDirPath())
+                .filePath("../docs/YOUTUBE_SYNC_SETUP.md")));
     });
 }
 
@@ -2801,6 +3028,8 @@ void DriveManagerUI::setupVideoSetAssistant(
     emptyLayout->addLayout(emptyTextLayout, 1);
     recentLayout->addWidget(videoSetRecentEmptyState);
     videoSetRecentContinueButton = new QPushButton("Continue");
+    videoSetRecentContinueButton->setObjectName(
+        "videoSetRecentContinueButton");
     videoSetRecentOpenFolderButton = new QPushButton("Open folder");
     videoSetRecentRemoveButton = new QPushButton(QString::fromUtf8("•••"));
     videoSetRecentRemoveButton->setObjectName("videoSetRecentOverflow");
@@ -3097,6 +3326,35 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetUploadInstructionLabels.push_back(text);
     }
     uploadLayout->addLayout(instructionRow);
+    auto *syncCard = new QFrame();
+    syncCard->setObjectName("youtubeSyncCard");
+    syncCard->setProperty("vsxSurface", "raised");
+    auto *syncLayout = new QVBoxLayout(syncCard);
+    auto *syncTitle = new QLabel("YouTube Sync  •  Beta");
+    syncTitle->setObjectName("youtubeSyncTitle");
+    syncTitle->setProperty("sectionTitle", true);
+    syncTitle->setProperty("i18nSource", "YouTube Sync  •  Beta");
+    syncLayout->addWidget(syncTitle);
+    videoSetYouTubeSyncStatus = new QLabel(
+        "Optional official API upload. Manual upload always remains available.");
+    videoSetYouTubeSyncStatus->setObjectName("youtubeSyncStatus");
+    videoSetYouTubeSyncStatus->setWordWrap(true);
+    syncLayout->addWidget(videoSetYouTubeSyncStatus);
+    videoSetYouTubeSyncProgress = new QProgressBar();
+    videoSetYouTubeSyncProgress->setObjectName("youtubeSyncProgress");
+    videoSetYouTubeSyncProgress->setRange(0, 100);
+    syncLayout->addWidget(videoSetYouTubeSyncProgress);
+    auto *syncActions = new QHBoxLayout();
+    videoSetYouTubeSyncButton = new QPushButton("Upload with YouTube Sync");
+    videoSetYouTubeSyncButton->setObjectName("youtubeSyncStartButton");
+    videoSetYouTubeSyncPauseButton = new QPushButton("Pause Upload");
+    videoSetYouTubeSyncPauseButton->setObjectName("youtubeSyncPauseButton");
+    videoSetYouTubeSyncPauseButton->setEnabled(false);
+    syncActions->addWidget(videoSetYouTubeSyncButton);
+    syncActions->addWidget(videoSetYouTubeSyncPauseButton);
+    syncActions->addStretch();
+    syncLayout->addLayout(syncActions);
+    uploadLayout->addWidget(syncCard);
     auto *uploadPrivacy = new QLabel(
         "VidStoreX never signs in and never uploads automatically.");
     uploadPrivacy->setObjectName("videoSetUploadPrivacyNotice");
@@ -3153,6 +3411,33 @@ void DriveManagerUI::setupVideoSetAssistant(
         "Select a set, manifest, or returned-video folder. Embedded metadata identifies parts even when files are renamed or shuffled.");
     scan->setObjectName("videoSetAssistantRecoverPage");
     auto *scanLayout = pageLayout(scan);
+    auto *instantCard = new QFrame();
+    instantCard->setObjectName("instantPlaylistRecoveryCard");
+    instantCard->setProperty("vsxSurface", "raised");
+    instantCard->setMaximumHeight(72);
+    auto *instantLayout = new QGridLayout(instantCard);
+    instantLayout->setContentsMargins(8, 4, 8, 4);
+    instantLayout->setVerticalSpacing(2);
+    auto *instantTitle = new QLabel("Recover from Playlist");
+    instantTitle->setObjectName("instantPlaylistRecoveryTitle");
+    instantTitle->setProperty("sectionTitle", true);
+    instantTitle->setProperty("i18nSource", "Recover from Playlist");
+    instantTitle->setVisible(false);
+    videoSetInstantPlaylistEdit = new QLineEdit();
+    videoSetInstantPlaylistEdit->setObjectName("instantPlaylistUrl");
+    videoSetInstantPlaylistEdit->setPlaceholderText(
+        "Paste a YouTube playlist link");
+    videoSetInstantRecoverButton = new QPushButton("Recover from Playlist");
+    videoSetInstantRecoverButton->setObjectName("instantPlaylistRecoverButton");
+    videoSetInstantRecoveryStatus = new QLabel(
+        "Paste a playlist link to download, scan, and recover one complete set.");
+    videoSetInstantRecoveryStatus->setObjectName("instantPlaylistRecoveryStatus");
+    videoSetInstantRecoveryStatus->setWordWrap(false);
+    instantLayout->addWidget(instantTitle, 0, 0, 1, 3);
+    instantLayout->addWidget(videoSetInstantPlaylistEdit, 1, 0, 1, 2);
+    instantLayout->addWidget(videoSetInstantRecoverButton, 1, 2);
+    instantLayout->addWidget(videoSetInstantRecoveryStatus, 2, 0, 1, 3);
+    scanLayout->addWidget(instantCard);
     auto *scanForm = new QGridLayout();
     videoSetAssistantRecoveryInputEdit = new QLineEdit();
     videoSetAssistantRecoveryInputEdit->setObjectName("videoSetAssistantReturnedPath");
@@ -3205,7 +3490,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     scanLayout->addLayout(scanMetrics);
     videoSetDetectedSetsList = new QListWidget();
     videoSetDetectedSetsList->setObjectName("videoSetDetectedSetsList");
-    videoSetDetectedSetsList->setMaximumHeight(100);
+    videoSetDetectedSetsList->setMaximumHeight(48);
     scanLayout->addWidget(videoSetDetectedSetsList);
     auto *scanActions = new QHBoxLayout();
     videoSetAssistantScanButton = new QPushButton("Check Videos");
@@ -3562,6 +3847,31 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetWorkflow.acknowledge_upload();
         updateVideoSetAssistant();
     });
+    connect(videoSetYouTubeSyncButton, &QPushButton::clicked,
+            this, &DriveManagerUI::startYouTubeSync);
+    connect(videoSetYouTubeSyncPauseButton, &QPushButton::clicked,
+            this, [this]() {
+        youtubeSyncOperation.clear();
+        youtubeProcessingStartedMs = 0;
+        youtubeProcessingPollAttempt = 0;
+        if (youtubeReadinessProcess &&
+            youtubeReadinessProcess->state() != QProcess::NotRunning)
+            youtubeReadinessProcess->terminate();
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncButton->setText(tr("Resume Upload"));
+        videoSetYouTubeSyncStatus->setText(tr(
+            "Upload paused. Already uploaded videos remain on YouTube."));
+        for (auto &part : youtubeRuntimeSyncState.parts)
+            if (part.upload_state == youtube_sync::UploadState::Uploading ||
+                part.upload_state == youtube_sync::UploadState::SessionCreated)
+                part.upload_state = youtube_sync::UploadState::Paused;
+        try {
+            youtube_sync::write_sync_state_atomic(
+                std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+                youtubeRuntimeSyncState);
+        } catch (...) {}
+    });
     connect(videoSetPlaylistUrlEdit, &QLineEdit::textChanged,
             this, [this](const QString &value) {
         const bool valid = video_set_workflow::is_youtube_playlist_url(
@@ -3623,6 +3933,49 @@ void DriveManagerUI::setupVideoSetAssistant(
     });
     connect(videoSetAssistantScanButton, &QPushButton::clicked,
             this, &DriveManagerUI::startVideoSetScan);
+    connect(videoSetInstantPlaylistEdit, &QLineEdit::textChanged,
+            this, [this](const QString &url) {
+        const bool valid = video_set_workflow::is_youtube_playlist_url(
+            url.toStdString());
+        videoSetInstantRecoverButton->setEnabled(valid);
+        videoSetInstantRecoveryStatus->setText(valid
+            ? tr("Ready. VidStoreX will download, identify one complete set, recover it, and verify the full-file SHA-256.")
+            : tr("Paste a valid YouTube playlist link containing list=."));
+    });
+    connect(videoSetInstantRecoverButton, &QPushButton::clicked,
+            this, [this]() {
+        const QString url = videoSetInstantPlaylistEdit->text().trimmed();
+        if (!video_set_workflow::is_youtube_playlist_url(url.toStdString()))
+            return;
+        const QString output = videoSetAssistantRecoveryOutputEdit->text().trimmed();
+        if (output.isEmpty() || !QDir().mkpath(output)) {
+            videoSetInstantRecoveryStatus->setText(tr(
+                "Choose a writable recovered-file folder before continuing."));
+            return;
+        }
+        try {
+            const auto root = instant_recovery::default_jobs_root() /
+                std::filesystem::u8path(instant_recovery::make_job_id());
+            instant_recovery::initialize_job_directories(root);
+            instant_recovery::JobState state;
+            state.job_id = root.filename().string();
+            state.playlist_url = url.toStdString();
+            state.output_directory = output.toStdString();
+            state.phase = instant_recovery::Phase::Downloading;
+            state.updated_at_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+            instant_recovery::write_job_state_atomic(root / "job_state.json", state);
+            videoSetInstantRecoveryJobRoot = QString::fromStdWString(root.wstring());
+            videoSetCurrentSetRoot = videoSetInstantRecoveryJobRoot;
+            videoSetPlaylistUrlEdit->setText(url);
+            videoSetInstantRecoveryActive = true;
+            videoSetInstantRecoveryStatus->setText(tr("Downloading playlist videos..."));
+            startVideoSetDownload();
+        } catch (const std::exception &error) {
+            videoSetInstantRecoveryStatus->setText(
+                tr("Recovery job could not be prepared: %1")
+                    .arg(QString::fromUtf8(error.what())));
+        }
+    });
     connect(videoSetAssistantRecoverButton, &QPushButton::clicked,
             this, [this]() { startVideoSetRecovery(true); });
     connect(videoSetOpenReturnedButton, &QPushButton::clicked,
@@ -3801,8 +4154,30 @@ void DriveManagerUI::setupVideoSetAssistant(
             videoSetAssistantStack->setCurrentIndex(7);
             videoSetWorkflow.cancel_download();
             updateVideoSetAssistant();
-            videoSetAssistantScanButton->setFocus();
+            if (videoSetInstantRecoveryActive) {
+                videoSetInstantRecoveryStatus->setText(
+                    tr("Download complete. Checking embedded Video Set information..."));
+                try {
+                    auto state = instant_recovery::read_job_state(
+                        std::filesystem::path(
+                            videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json");
+                    state.phase = instant_recovery::Phase::Scanning;
+                    state.updated_at_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+                    instant_recovery::write_job_state_atomic(
+                        std::filesystem::path(
+                            videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json", state);
+                } catch (...) {}
+                QTimer::singleShot(0, this,
+                    &DriveManagerUI::startVideoSetScan);
+            } else {
+                videoSetAssistantScanButton->setFocus();
+            }
         } else {
+            if (videoSetInstantRecoveryActive)
+                videoSetInstantRecoveryStatus->setText(tr(
+                    "Playlist download failed. Retry or continue with the manual recovery controls."));
             if (videoSetCancelRequested)
                 (void) videoSetOperationProgress.cancel(
                     videoSetOperationProgress.view().operation_id,
@@ -4499,6 +4874,53 @@ void DriveManagerUI::handleVideoSetFinished(
         }
         updateVideoSetAssistant();
         renderVideoSetActivity();
+        if (videoSetInstantRecoveryActive) {
+            if (videoSetDetectedSetsList->count() != 1 ||
+                !videoSetWorkflow.view().can_recover) {
+                videoSetInstantRecoveryStatus->setText(
+                    videoSetDetectedSetsList->count() > 1
+                    ? tr("Multiple Video Sets were found. Select a set-specific source; automatic recovery stopped safely.")
+                    : tr("The playlist does not contain one complete recoverable set. Review missing, corrupt, duplicate, and conflict details."));
+                try {
+                    auto state = instant_recovery::read_job_state(
+                        std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json");
+                    state.phase = instant_recovery::Phase::NeedsAttention;
+                    state.updated_at_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+                    instant_recovery::write_job_state_atomic(
+                        std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json", state);
+                } catch (...) {}
+                return;
+            }
+            const QRegularExpression source(
+                R"(Set\s+[0-9a-fA-F]{32}:\s+(.+),\s+available)");
+            const auto sourceMatch = source.match(videoSetProcessBuffer);
+            const QString filename = sourceMatch.hasMatch()
+                ? sourceMatch.captured(1).trimmed() : QString();
+            if (!filename.isEmpty() && QFileInfo::exists(
+                    QDir(videoSetAssistantRecoveryOutputEdit->text())
+                        .filePath(filename))) {
+                videoSetInstantRecoveryStatus->setText(tr(
+                    "The recovered file already exists. Choose a different folder or use the manual recovery controls to confirm overwrite."));
+                return;
+            }
+            videoSetInstantRecoveryStatus->setText(tr(
+                "One complete set was found. Recovering and checking the full-file SHA-256..."));
+            try {
+                auto state = instant_recovery::read_job_state(
+                    std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                    "job_state.json");
+                state.phase = instant_recovery::Phase::Recovering;
+                state.updated_at_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+                instant_recovery::write_job_state_atomic(
+                    std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                    "job_state.json", state);
+            } catch (...) {}
+            QTimer::singleShot(0, this, [this]() {
+                startVideoSetRecovery(true);
+            });
+        }
         return;
     }
 
@@ -4522,6 +4944,24 @@ void DriveManagerUI::handleVideoSetFinished(
                     ? shaMatch.captured(1).toUpper() : QString());
             videoSetWorkflow.apply_recovery_result(
                 output.toStdString(), true);
+            if (videoSetInstantRecoveryActive) {
+                videoSetInstantRecoveryStatus->setText(tr(
+                    "Your file was recovered exactly. Full-file SHA-256 matches."));
+                try {
+                    auto state = instant_recovery::read_job_state(
+                        std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json");
+                    state.phase = instant_recovery::Phase::RecoveredExact;
+                    state.final_output_path = output.toStdString();
+                    state.final_sha256 = videoSetFinalSha.toStdString();
+                    state.final_sha_exact = true;
+                    state.updated_at_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+                    instant_recovery::write_job_state_atomic(
+                        std::filesystem::path(videoSetInstantRecoveryJobRoot.toStdWString()) /
+                        "job_state.json", state);
+                } catch (...) {}
+                videoSetInstantRecoveryActive = false;
+            }
             videoSetRecoveryProgressBar->setRange(0, 100);
             videoSetRecoveryProgressBar->setValue(100);
             const QFileInfo recoveredFile(output);
@@ -4752,6 +5192,509 @@ QString DriveManagerUI::findYtDlpExecutable() const {
                 .isExecutable();
         });
     return QString::fromStdString(found);
+}
+
+void DriveManagerUI::startYouTubeSync() {
+    if (videoSetCurrentManifest.isEmpty() ||
+        !QFileInfo::exists(videoSetCurrentManifest)) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "A locally verified Video Set is required before sync."));
+        return;
+    }
+    const QSettings settings;
+    if (!settings.value("youtube/connected", false).toBool()) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "YouTube is not connected. Connect it in Settings or upload manually."));
+        return;
+    }
+    try {
+        auto store = youtube_sync::make_platform_credential_store();
+        const auto protectedToken = store->load("youtube-oauth");
+        if (!protectedToken)
+            throw std::runtime_error("secure OAuth credentials are unavailable");
+        const auto token = youtube_sync::parse_token_record(*protectedToken);
+        if (token.expires_at_epoch_seconds > 0 &&
+            token.expires_at_epoch_seconds <=
+                QDateTime::currentSecsSinceEpoch() + 30) {
+            if (token.refresh_token.empty())
+                throw std::runtime_error("OAuth refresh token is unavailable");
+            const auto config = youtube_sync::read_oauth_client_config(
+                std::filesystem::path(QSettings().value(
+                    "youtube/oauthClientConfigPath").toString().toStdWString()));
+            if (!config.configured())
+                throw std::runtime_error("OAuth client configuration is unavailable");
+            youtubePendingSyncAfterRefresh = true;
+            videoSetYouTubeSyncStatus->setText(tr(
+                "Refreshing YouTube authorization..."));
+            youtubeNetworkService->refreshAccessToken(
+                config, QString::fromStdString(token.refresh_token));
+            return;
+        }
+        if (token.access_token.empty())
+            throw std::runtime_error("OAuth access token needs refresh");
+        youtubeSyncAccessToken = QString::fromStdString(token.access_token);
+        const auto plan = video_set::read_manifest(
+            std::filesystem::path(videoSetCurrentManifest.toStdWString()));
+        const std::string setId = video_set::id_hex(plan.set_id);
+        youtubeSyncStatePath = QDir(videoSetCurrentSetRoot).filePath(
+            "youtube_sync_state.json");
+        if (QFileInfo::exists(youtubeSyncStatePath)) {
+            youtubeRuntimeSyncState = youtube_sync::read_sync_state(
+                std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+                setId);
+        } else {
+            youtubeRuntimeSyncState = {};
+            youtubeRuntimeSyncState.set_id = setId;
+            youtubeRuntimeSyncState.requested_privacy =
+                youtube_sync::parse_privacy(settings.value(
+                    "youtube/defaultPrivacy", "unlisted").toString().toStdString());
+            youtubeRuntimeSyncState.actual_privacy =
+                youtubeRuntimeSyncState.requested_privacy;
+            for (const auto &part : plan.parts) {
+                youtube_sync::PartState remote;
+                remote.part_index = part.part_index;
+                remote.part_id = video_set::id_hex(part.part_id);
+                remote.video_path = (std::filesystem::path(
+                    videoSetCurrentSetRoot.toStdWString()) / "videos" /
+                    std::filesystem::u8path(part.expected_video_filename)).string();
+                remote.requested_privacy =
+                    youtubeRuntimeSyncState.requested_privacy;
+                remote.actual_privacy = remote.requested_privacy;
+                youtubeRuntimeSyncState.parts.push_back(std::move(remote));
+            }
+            youtube_sync::write_sync_state_atomic(
+                std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+                youtubeRuntimeSyncState);
+        }
+        videoSetYouTubeSyncButton->setEnabled(false);
+        videoSetYouTubeSyncPauseButton->setEnabled(true);
+        videoSetYouTubeSyncProgress->setRange(0, 100);
+        if (!youtubeRuntimeSyncState.playlist_created) {
+            youtubeSyncOperation = "playlist_create";
+            videoSetYouTubeSyncStatus->setText(tr("Creating playlist..."));
+            youtubeNetworkService->execute(
+                youtube_sync::create_playlist_request(
+                    youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(),
+                    "VidStoreX - Set " + setId.substr(0, 8),
+                    youtubeRuntimeSyncState.requested_privacy));
+        } else {
+            continueYouTubeUpload();
+        }
+    } catch (const std::exception &error) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "YouTube Sync needs attention: %1. Manual upload remains available.")
+            .arg(QString::fromUtf8(error.what())));
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+    }
+}
+
+void DriveManagerUI::continueYouTubeUpload() {
+    const auto persist = [this]() {
+        youtubeRuntimeSyncState.last_updated =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
+        youtube_sync::write_sync_state_atomic(
+            std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+            youtubeRuntimeSyncState);
+    };
+    auto next = std::find_if(youtubeRuntimeSyncState.parts.begin(),
+        youtubeRuntimeSyncState.parts.end(), [](const youtube_sync::PartState &part) {
+            return part.upload_state != youtube_sync::UploadState::Uploaded;
+        });
+    if (next == youtubeRuntimeSyncState.parts.end()) {
+        std::vector<std::string> ids;
+        for (const auto &part : youtubeRuntimeSyncState.parts)
+            ids.push_back(part.youtube_video_id);
+        youtubeSyncOperation = "processing";
+        if (youtubeProcessingStartedMs == 0)
+            youtubeProcessingStartedMs = QDateTime::currentMSecsSinceEpoch();
+        videoSetYouTubeSyncStatus->setText(tr(
+            "All parts were uploaded. Checking YouTube processing..."));
+        youtubeNetworkService->execute(
+            youtube_sync::processing_status_request(
+                youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(), ids));
+        return;
+    }
+    youtubeSyncPartIndex = static_cast<uint32_t>(
+        std::distance(youtubeRuntimeSyncState.parts.begin(), next));
+    auto &part = *next;
+    if (part.upload_state == youtube_sync::UploadState::Paused)
+        part.upload_state = part.upload_session_uri.empty()
+            ? youtube_sync::UploadState::Pending
+            : youtube_sync::UploadState::SessionCreated;
+    const QFileInfo file(QString::fromStdString(part.video_path));
+    if (!file.exists() || !file.isFile()) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "Video Set part %1 is missing locally. Manual upload remains available.")
+            .arg(part.part_index + 1));
+        youtubeSyncOperation.clear();
+        return;
+    }
+    if (part.upload_session_uri.empty()) {
+        youtubeSyncOperation = "upload_session";
+        videoSetYouTubeSyncStatus->setText(tr("Uploading Part %1 of %2")
+            .arg(part.part_index + 1).arg(youtubeRuntimeSyncState.parts.size()));
+        youtube_sync::VideoMetadata metadata;
+        metadata.set_id = youtubeRuntimeSyncState.set_id;
+        metadata.part_index = part.part_index;
+        metadata.part_count = static_cast<uint32_t>(
+            youtubeRuntimeSyncState.parts.size());
+        metadata.privacy = part.requested_privacy;
+        metadata.privacy_friendly_titles = QSettings().value(
+            "youtube/privacyFriendlyTitles", true).toBool();
+        part.upload_state = youtube_sync::UploadState::SessionCreated;
+        persist();
+        youtubeNetworkService->execute(
+            youtube_sync::resumable_session_request(
+                youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(), metadata,
+                static_cast<uint64_t>(file.size())));
+        return;
+    }
+    QFile input(file.absoluteFilePath());
+    if (!input.open(QIODevice::ReadOnly) ||
+        !input.seek(static_cast<qint64>(part.uploaded_bytes))) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "The current upload part could not be read."));
+        youtubeSyncOperation.clear();
+        return;
+    }
+    const auto chunk = youtube_sync::next_upload_chunk(
+        part.uploaded_bytes, static_cast<uint64_t>(file.size()));
+    const QByteArray bytes = input.read(static_cast<qint64>(chunk.size()));
+    youtube_sync::HttpRequest request;
+    request.method = "PUT";
+    request.url = part.upload_session_uri;
+    request.headers = {
+        {"Authorization", "Bearer " + youtubeSyncAccessToken.toStdString()},
+        {"Content-Type", "video/*"},
+        {"Content-Length", std::to_string(bytes.size())},
+        {"Content-Range", "bytes " + std::to_string(chunk.first) + "-" +
+            std::to_string(chunk.last) + "/" + std::to_string(chunk.total)}};
+    request.body.assign(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+    part.upload_state = youtube_sync::UploadState::Uploading;
+    persist();
+    youtubeSyncOperation = "upload_chunk";
+    const uint64_t totalBytes = std::accumulate(
+        youtubeRuntimeSyncState.parts.begin(), youtubeRuntimeSyncState.parts.end(),
+        uint64_t{0}, [](const uint64_t sum, const youtube_sync::PartState &p) {
+            return sum + static_cast<uint64_t>(QFileInfo(
+                QString::fromStdString(p.video_path)).size());
+        });
+    const uint64_t doneBytes = std::accumulate(
+        youtubeRuntimeSyncState.parts.begin(), youtubeRuntimeSyncState.parts.end(),
+        uint64_t{0}, [](const uint64_t sum, const youtube_sync::PartState &p) {
+            return sum + p.uploaded_bytes;
+        });
+    videoSetYouTubeSyncProgress->setValue(totalBytes == 0 ? 0 :
+        static_cast<int>(doneBytes * 100 / totalBytes));
+    youtubeNetworkService->execute(request);
+}
+
+void DriveManagerUI::handleYouTubeSyncResponse(
+    const int status, const QByteArray &body,
+    const QList<QPair<QByteArray, QByteArray>> &headers) {
+    const auto header = [&headers](const QByteArray &name) {
+        for (const auto &item : headers)
+            if (item.first.compare(name, Qt::CaseInsensitive) == 0)
+                return item.second;
+        return QByteArray{};
+    };
+    const auto persist = [this]() {
+        youtubeRuntimeSyncState.last_updated =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
+        youtube_sync::write_sync_state_atomic(
+            std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+            youtubeRuntimeSyncState);
+    };
+    try {
+        if (youtubeSyncOperation == "playlist_create") {
+            if (status < 200 || status >= 300) throw std::runtime_error(
+                youtube_sync::classify_api_error(status, body.toStdString(),
+                    "playlist_create").user_message);
+            const auto object = QJsonDocument::fromJson(body).object();
+            youtubeRuntimeSyncState.playlist_id = object.value("id").toString().toStdString();
+            if (youtubeRuntimeSyncState.playlist_id.empty())
+                throw std::runtime_error("playlist response did not contain an ID");
+            youtubeRuntimeSyncState.playlist_url =
+                "https://www.youtube.com/playlist?list=" +
+                youtubeRuntimeSyncState.playlist_id;
+            youtubeRuntimeSyncState.playlist_created = true;
+            const auto privacy = object.value("status").toObject()
+                .value("privacyStatus").toString();
+            if (!privacy.isEmpty())
+                youtubeRuntimeSyncState.actual_privacy =
+                    youtube_sync::parse_privacy(privacy.toStdString());
+            persist();
+            youtubeSyncOperation.clear();
+            continueYouTubeUpload();
+            return;
+        }
+        auto &part = youtubeRuntimeSyncState.parts.at(youtubeSyncPartIndex);
+        if (youtubeSyncOperation == "upload_session") {
+            if (status < 200 || status >= 300 || header("Location").isEmpty())
+                throw std::runtime_error("YouTube did not create a resumable upload session");
+            part.upload_session_uri = header("Location").toStdString();
+            part.upload_state = youtube_sync::UploadState::SessionCreated;
+            persist();
+            youtubeSyncOperation.clear();
+            continueYouTubeUpload();
+            return;
+        }
+        if (youtubeSyncOperation == "upload_chunk" ||
+            youtubeSyncOperation == "upload_status") {
+            const auto decision = youtube_sync::decide_upload_response(
+                status, header("Range").toStdString(), body.toStdString());
+            if (decision.action == youtube_sync::UploadResponseDecision::Action::NextChunk) {
+                youtubeSyncRetryAttempt = 0;
+                part.uploaded_bytes = decision.next_offset;
+                persist();
+                youtubeSyncOperation.clear();
+                continueYouTubeUpload();
+                return;
+            }
+            if (decision.action == youtube_sync::UploadResponseDecision::Action::QueryStatus) {
+                youtubeSyncOperation = "upload_status";
+                uint32_t delay = youtube_sync::exponential_backoff_seconds(
+                    youtubeSyncRetryAttempt++);
+                bool ok = false;
+                const uint32_t retryAfter = header("Retry-After").toUInt(&ok);
+                if (ok) delay = retryAfter;
+                const auto request = youtube_sync::upload_status_request(
+                    part.upload_session_uri, youtubeSyncAccessToken.toStdString(),
+                    static_cast<uint64_t>(QFileInfo(
+                        QString::fromStdString(part.video_path)).size()));
+                QTimer::singleShot(static_cast<int>(delay * 1000), this,
+                    [this, request]() {
+                    if (youtubeSyncOperation == "upload_status")
+                        youtubeNetworkService->execute(request);
+                });
+                return;
+            }
+            if (decision.action == youtube_sync::UploadResponseDecision::Action::SessionExpired) {
+                part.upload_state = youtube_sync::UploadState::SessionExpired;
+                persist();
+                throw std::runtime_error(
+                    "The upload session expired. Review before retrying to avoid a duplicate.");
+            }
+            if (decision.action != youtube_sync::UploadResponseDecision::Action::Completed ||
+                decision.video_id.empty())
+                throw std::runtime_error("YouTube upload failed permanently");
+            part.youtube_video_id = decision.video_id;
+            youtubeSyncRetryAttempt = 0;
+            part.upload_state = youtube_sync::UploadState::Uploaded;
+            part.uploaded_bytes = static_cast<uint64_t>(QFileInfo(
+                QString::fromStdString(part.video_path)).size());
+            const auto object = QJsonDocument::fromJson(body).object();
+            const auto actual = object.value("status").toObject()
+                .value("privacyStatus").toString();
+            if (!actual.isEmpty()) part.actual_privacy =
+                youtube_sync::parse_privacy(actual.toStdString());
+            persist();
+            youtubeSyncOperation = "playlist_insert";
+            youtubeNetworkService->execute(
+                youtube_sync::add_playlist_item_request(
+                    youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(),
+                    youtubeRuntimeSyncState.playlist_id,
+                    part.youtube_video_id, part.part_index));
+            return;
+        }
+        if (youtubeSyncOperation == "playlist_insert") {
+            if (status < 200 || status >= 300)
+                throw std::runtime_error(
+                    youtube_sync::classify_api_error(status, body.toStdString(),
+                        "playlist_insert").user_message);
+            part.playlist_item_id = QJsonDocument::fromJson(body).object()
+                .value("id").toString().toStdString();
+            persist();
+            youtubeSyncOperation.clear();
+            continueYouTubeUpload();
+            return;
+        }
+        if (youtubeSyncOperation == "processing") {
+            if (status < 200 || status >= 300)
+                throw std::runtime_error("YouTube processing status could not be read");
+            const auto items = QJsonDocument::fromJson(body).object()
+                .value("items").toArray();
+            for (const auto &value : items) {
+                const auto object = value.toObject();
+                const std::string id = object.value("id").toString().toStdString();
+                auto found = std::find_if(youtubeRuntimeSyncState.parts.begin(),
+                    youtubeRuntimeSyncState.parts.end(), [&](const youtube_sync::PartState &p) {
+                        return p.youtube_video_id == id;
+                    });
+                if (found == youtubeRuntimeSyncState.parts.end()) continue;
+                const auto processing = object.value("processingDetails").toObject();
+                const QString processingStatus = processing.value(
+                    "processingStatus").toString();
+                found->processing_state = processingStatus == "succeeded"
+                    ? youtube_sync::ProcessingState::Succeeded
+                    : processingStatus == "failed"
+                    ? youtube_sync::ProcessingState::Failed
+                    : youtube_sync::ProcessingState::Processing;
+                const auto progress = processing.value("processingProgress").toObject();
+                found->processing_parts_done = static_cast<uint64_t>(
+                    progress.value("partsProcessed").toDouble());
+                found->processing_parts_total = static_cast<uint64_t>(
+                    progress.value("partsTotal").toDouble());
+                const auto privacy = object.value("status").toObject()
+                    .value("privacyStatus").toString();
+                if (!privacy.isEmpty()) found->actual_privacy =
+                    youtube_sync::parse_privacy(privacy.toStdString());
+            }
+            youtubeRuntimeSyncState.actual_privacy = std::any_of(
+                youtubeRuntimeSyncState.parts.begin(), youtubeRuntimeSyncState.parts.end(),
+                [](const youtube_sync::PartState &p) {
+                    return p.actual_privacy == youtube_sync::Privacy::Private;
+                }) ? youtube_sync::Privacy::Private
+                   : youtubeRuntimeSyncState.requested_privacy;
+            persist();
+            youtubeSyncOperation.clear();
+            const auto ready = std::count_if(youtubeRuntimeSyncState.parts.begin(),
+                youtubeRuntimeSyncState.parts.end(), [](const youtube_sync::PartState &p) {
+                    return p.processing_state == youtube_sync::ProcessingState::Succeeded;
+                });
+            videoSetYouTubeSyncProgress->setValue(
+                youtubeRuntimeSyncState.parts.empty() ? 0 :
+                static_cast<int>(ready * 100 / youtubeRuntimeSyncState.parts.size()));
+            if (youtubeRuntimeSyncState.actual_privacy == youtube_sync::Privacy::Private) {
+                youtubeProcessingStartedMs = 0;
+                youtubeProcessingPollAttempt = 0;
+                videoSetYouTubeSyncStatus->setText(tr(
+                    "Videos were uploaded successfully, but they are Private. Automatic download of YouTube's processed copies is unavailable in this configuration."));
+            } else if (ready == static_cast<int>(youtubeRuntimeSyncState.parts.size())) {
+                videoSetYouTubeSyncStatus->setText(tr(
+                    "All uploaded videos were processed. The playlist is ready for returned-copy verification."));
+                videoSetPlaylistUrlEdit->setText(QString::fromStdString(
+                    youtubeRuntimeSyncState.playlist_url));
+                youtubeProcessingStartedMs = 0;
+                youtubeProcessingPollAttempt = 0;
+                if (QSettings().value("youtube/autoDownload", true).toBool())
+                    QTimer::singleShot(0, this,
+                        &DriveManagerUI::startYouTubeReadinessProbe);
+            } else {
+                if (youtube_sync::processing_poll_timed_out(
+                        youtubeProcessingStartedMs,
+                        QDateTime::currentMSecsSinceEpoch())) {
+                    videoSetYouTubeSyncStatus->setText(tr(
+                        "Processing is taking longer than expected. %1 of %2 videos are ready. Resume later to check again.")
+                        .arg(ready).arg(youtubeRuntimeSyncState.parts.size()));
+                    videoSetYouTubeSyncButton->setText(tr("Resume Upload"));
+                    videoSetYouTubeSyncButton->setEnabled(true);
+                    videoSetYouTubeSyncPauseButton->setEnabled(false);
+                    return;
+                }
+                const uint32_t delay =
+                    youtube_sync::processing_poll_delay_seconds(
+                        youtubeProcessingPollAttempt++);
+                videoSetYouTubeSyncStatus->setText(tr(
+                    "%1 of %2 videos are processed. Checking again in %3 seconds.")
+                    .arg(ready).arg(youtubeRuntimeSyncState.parts.size())
+                    .arg(delay));
+                std::vector<std::string> ids;
+                for (const auto &item : youtubeRuntimeSyncState.parts)
+                    ids.push_back(item.youtube_video_id);
+                const auto request = youtube_sync::processing_status_request(
+                    youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(), ids);
+                youtubeSyncOperation = "processing";
+                QTimer::singleShot(static_cast<int>(delay * 1000), this,
+                    [this, request]() {
+                    if (youtubeSyncOperation == "processing")
+                        youtubeNetworkService->execute(request);
+                });
+                return;
+            }
+            videoSetYouTubeSyncButton->setText(tr("Resume Upload"));
+            videoSetYouTubeSyncButton->setEnabled(true);
+            videoSetYouTubeSyncPauseButton->setEnabled(false);
+        }
+    } catch (const std::exception &error) {
+        youtubeSyncOperation.clear();
+        videoSetYouTubeSyncStatus->setText(tr(
+            "YouTube Sync needs attention: %1 Manual upload remains available.")
+            .arg(QString::fromUtf8(error.what())));
+        videoSetYouTubeSyncButton->setText(tr("Resume Upload"));
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+    }
+}
+
+void DriveManagerUI::startYouTubeReadinessProbe() {
+    if (youtubeRuntimeSyncState.actual_privacy ==
+            youtube_sync::Privacy::Private)
+        return;
+    const QString executable = findYtDlpExecutable();
+    if (executable.isEmpty()) {
+        videoSetYouTubeSyncStatus->setText(tr(
+            "Videos are processed, but yt-dlp is unavailable. Select it or use the manual download controls."));
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+        return;
+    }
+    if (youtubeProcessingStartedMs == 0)
+        youtubeProcessingStartedMs = QDateTime::currentMSecsSinceEpoch();
+    if (youtube_sync::processing_poll_timed_out(
+            youtubeProcessingStartedMs, QDateTime::currentMSecsSinceEpoch())) {
+        youtubeSyncOperation.clear();
+        videoSetYouTubeSyncStatus->setText(tr(
+            "Processing is taking longer than expected. The 1080p copies are not available yet; Resume later or download manually."));
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+        return;
+    }
+    if (youtubeReadinessProcess &&
+        youtubeReadinessProcess->state() != QProcess::NotRunning)
+        return;
+    youtubeSyncOperation = "readiness";
+    videoSetYouTubeSyncStatus->setText(tr(
+        "Waiting for processed 1080p copy..."));
+    youtubeReadinessProcess = new QProcess(this);
+    youtubeReadinessProcess->setProcessChannelMode(QProcess::MergedChannels);
+    connect(youtubeReadinessProcess,
+        QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+        [this](const int code, const QProcess::ExitStatus exitStatus) {
+        auto *probe = youtubeReadinessProcess;
+        youtubeReadinessProcess = nullptr;
+        if (probe) probe->deleteLater();
+        if (youtubeSyncOperation != "readiness") return;
+        if (exitStatus == QProcess::NormalExit && code == 0) {
+            for (auto &part : youtubeRuntimeSyncState.parts)
+                part.returned_download_state = "ready";
+            try {
+                youtube_sync::write_sync_state_atomic(
+                    std::filesystem::path(youtubeSyncStatePath.toStdWString()),
+                    youtubeRuntimeSyncState);
+            } catch (...) {}
+            youtubeSyncOperation.clear();
+            startVideoSetDownload();
+            return;
+        }
+        const uint32_t delay = youtube_sync::processing_poll_delay_seconds(
+            youtubeProcessingPollAttempt++);
+        videoSetYouTubeSyncStatus->setText(tr(
+            "Waiting for processed 1080p copy. Checking again in %1 seconds.")
+            .arg(delay));
+        QTimer::singleShot(static_cast<int>(delay * 1000), this, [this]() {
+            if (youtubeSyncOperation == "readiness")
+                startYouTubeReadinessProbe();
+        });
+    });
+    connect(youtubeReadinessProcess, &QProcess::errorOccurred, this,
+        [this](const QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
+        auto *probe = youtubeReadinessProcess;
+        youtubeReadinessProcess = nullptr;
+        if (probe) probe->deleteLater();
+        youtubeSyncOperation.clear();
+        videoSetYouTubeSyncStatus->setText(tr(
+            "yt-dlp could not check the processed 1080p copies. Manual download remains available."));
+        videoSetYouTubeSyncButton->setEnabled(true);
+        videoSetYouTubeSyncPauseButton->setEnabled(false);
+    });
+    youtubeReadinessProcess->start(executable, {
+        "--simulate", "--quiet", "--no-warnings", "--format",
+        QString::fromStdString(std::string(
+            video_set_workflow::kYtDlpFormatSelector)),
+        videoSetPlaylistUrlEdit->text()});
 }
 
 void DriveManagerUI::startVideoSetDownload() {

@@ -22,7 +22,13 @@ enum class OperationType {
     Scan,
     Recover,
     FinalHash,
-    Finalize
+    Finalize,
+    OAuth,
+    PlaylistCreate,
+    Upload,
+    YouTubeProcessing,
+    ProcessedDownload,
+    InstantRecovery
 };
 
 enum class OperationPhase {

@@ -1459,5 +1459,42 @@ Son açılma: Kaydedilmedi</translation>
         <source>Needs attention</source>
         <translation>İlgilenilmesi gerekiyor</translation>
     </message>
+    <message><source>Recover from Playlist</source><translation>Oynatma Listesinden Kurtar</translation></message>
+    <message><source>Paste a YouTube playlist link</source><translation>YouTube oynatma listesi bağlantısını yapıştırın</translation></message>
+    <message><source>Paste a valid YouTube playlist link containing list=.</source><translation>list= içeren geçerli bir YouTube oynatma listesi bağlantısı yapıştırın.</translation></message>
+    <message><source>Ready. VidStoreX will download, identify one complete set, recover it, and verify the full-file SHA-256.</source><translation>Hazır. VidStoreX videoları indirecek, tek bir tam seti belirleyecek, kurtaracak ve tam dosya SHA-256 değerini doğrulayacak.</translation></message>
+    <message><source>Choose a writable recovered-file folder before continuing.</source><translation>Devam etmeden önce yazılabilir bir kurtarılan dosya klasörü seçin.</translation></message>
+    <message><source>Downloading playlist videos...</source><translation>Oynatma listesi videoları indiriliyor...</translation></message>
+    <message><source>Download complete. Checking embedded Video Set information...</source><translation>İndirme tamamlandı. Gömülü Video Set bilgileri denetleniyor...</translation></message>
+    <message><source>One complete set was found. Recovering and checking the full-file SHA-256...</source><translation>Tek bir tam set bulundu. Dosya kurtarılıyor ve tam dosya SHA-256 değeri denetleniyor...</translation></message>
+    <message><source>Your file was recovered exactly. Full-file SHA-256 matches.</source><translation>Dosyanız birebir kurtarıldı. Tam dosya SHA-256 değeri eşleşiyor.</translation></message>
+    <message><source>YouTube Sync (Beta)</source><translation>YouTube Senkronizasyonu (Beta)</translation></message>
+    <message><source>YouTube Sync  •  Beta</source><translation>YouTube Senkronizasyonu  •  Beta</translation></message>
+    <message><source>Connect YouTube</source><translation>YouTube'a Bağlan</translation></message>
+    <message><source>Disconnect</source><translation>Bağlantıyı Kes</translation></message>
+    <message><source>Connected</source><translation>Bağlı</translation></message>
+    <message><source>Not connected</source><translation>Bağlı değil</translation></message>
+    <message><source>API configuration:</source><translation>API yapılandırması:</translation></message>
+    <message><source>Missing — YouTube Sync is not configured for this build.</source><translation>Eksik — Bu derleme için YouTube Senkronizasyonu yapılandırılmadı.</translation></message>
+    <message><source>Upload with YouTube Sync</source><translation>YouTube Senkronizasyonu ile Yükle</translation></message>
+    <message><source>Upload paused. Already uploaded videos remain on YouTube.</source><translation>Yükleme durduruldu. Daha önce yüklenen videolar YouTube'da kalır.</translation></message>
+    <message><source>Resume Upload</source><translation>Yüklemeye Devam Et</translation></message>
+    <message><source>Uploading Part %1 of %2</source><translation>%1/%2. Parça Yükleniyor</translation></message>
+    <message><source>All parts were uploaded. Checking YouTube processing...</source><translation>Tüm parçalar yüklendi. YouTube işleme durumu denetleniyor...</translation></message>
+    <message><source>Videos were uploaded successfully, but they are Private. Automatic download of YouTube's processed copies is unavailable in this configuration.</source><translation>Videolar başarıyla yüklendi ancak Gizli durumda. Bu yapılandırmada YouTube'un işlenmiş kopyalarını otomatik indirme kullanılamıyor.</translation></message>
+    <message><source>Privacy-friendly titles</source><translation>Gizliliği koruyan başlıklar</translation></message>
+    <message><source>Download and verify after YouTube finishes processing</source><translation>YouTube işlemeyi bitirdikten sonra indir ve doğrula</translation></message>
+    <message><source>Open setup instructions</source><translation>Kurulum yönergelerini aç</translation></message>
+    <message><source>Upload Manually</source><translation>Elle Yükle</translation></message>
+    <message><source>Private</source><translation>Gizli</translation></message>
+    <message><source>Public</source><translation>Herkese Açık</translation></message>
+    <message><source>Unlisted</source><translation>Liste Dışı</translation></message>
+    <message><source>Processing is taking longer than expected. %1 of %2 videos are ready. Resume later to check again.</source><translation>İşleme beklenenden uzun sürüyor. %1/%2 video hazır. Daha sonra Devam Et ile yeniden denetleyin.</translation></message>
+    <message><source>%1 of %2 videos are processed. Checking again in %3 seconds.</source><translation>%1/%2 video işlendi. %3 saniye sonra yeniden denetlenecek.</translation></message>
+    <message><source>Waiting for processed 1080p copy...</source><translation>İşlenmiş 1080p kopya bekleniyor...</translation></message>
+    <message><source>Waiting for processed 1080p copy. Checking again in %1 seconds.</source><translation>İşlenmiş 1080p kopya bekleniyor. %1 saniye sonra yeniden denetlenecek.</translation></message>
+    <message><source>Processing is taking longer than expected. The 1080p copies are not available yet; Resume later or download manually.</source><translation>İşleme beklenenden uzun sürüyor. 1080p kopyalar henüz kullanılamıyor; daha sonra devam edin veya elle indirin.</translation></message>
+    <message><source>Videos are processed, but yt-dlp is unavailable. Select it or use the manual download controls.</source><translation>Videolar işlendi ancak yt-dlp kullanılamıyor. yt-dlp'yi seçin veya elle indirme denetimlerini kullanın.</translation></message>
+    <message><source>yt-dlp could not check the processed 1080p copies. Manual download remains available.</source><translation>yt-dlp işlenmiş 1080p kopyaları denetleyemedi. Elle indirme kullanılabilir durumda.</translation></message>
 </context>
 </TS>

@@ -27,7 +27,7 @@ option(BUILD_GUI "Build the Qt GUI executable" ON)
 find_package(PkgConfig REQUIRED)
 find_package(OpenMP REQUIRED)
 if (BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Core Widgets LinguistTools)
+    find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network LinguistTools)
 endif ()
 
 # Enable Qt MOC, UIC, and RCC for GUI only
@@ -88,12 +88,17 @@ if (BUILD_GUI)
             media_storage_core
             Qt6::Core
             Qt6::Widgets
+            Qt6::Network
     )
     qt_add_translations(media_storage_gui
             TS_FILES
             "${CMAKE_SOURCE_DIR}/translations/vidstorex_tr.ts"
             RESOURCE_PREFIX "/i18n"
     )
+endif ()
+
+if (WIN32)
+    target_link_libraries(media_storage_core PRIVATE Crypt32)
 endif ()
 
 if (MEDIA_STORAGE_STATIC_BINARIES)
@@ -148,6 +153,10 @@ endif ()
 if (BUILD_TESTS)
     target_compile_definitions(
             media_storage_core PRIVATE VIDSTOREX_ENABLE_TEST_HOOKS)
+    if (BUILD_GUI)
+        target_compile_definitions(
+                media_storage_gui PRIVATE VIDSTOREX_ENABLE_TEST_HOOKS)
+    endif ()
     enable_testing()
     find_package(GTest QUIET)
     if (NOT GTest_FOUND)

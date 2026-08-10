@@ -87,6 +87,13 @@ test_*
 !tests/test_cli_capacitylab.cmake
 !tests/test_video_set.cpp
 !tests/test_cli_video_set.cmake
+!tests/test_instant_recovery.cpp
+!tests/test_youtube_sync.cpp
+!tests/test_youtube_network.cpp
+!tests/test_youtube_network_main.cpp
+!tests/fake_ytdlp.cpp
+!tests/test_gui_instant_recovery.cmake
+!tests/test_gui_youtube_sync.cmake
 decoded_*
 
 # Local Capacity Lab benchmark artifacts
@@ -100,3 +107,13 @@ stress-staged/
 *.vsx-staging/
 video-set-smoke/
 vsx-set-smoke/
+
+# Local YouTube integration credentials and runtime state
+config/youtube_oauth_client.json
+**/youtube_oauth_client.json
+**/youtube_sync_state.json
+**/job_state.json
+RecoveryJobs/
+*.dpapi
+yt-dlp.exe
+yt-dlp

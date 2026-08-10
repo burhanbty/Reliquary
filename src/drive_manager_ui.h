@@ -56,6 +56,7 @@
 #include "gui_preflight_model.h"
 #include "media_storage.h"
 #include "video_set_workflow.h"
+#include "youtube_network_service.h"
 
 class VidStoreXSignalRail;
 class VidStoreXStepper;
@@ -331,6 +332,15 @@ private:
 
     void startVideoSetDownload();
 
+    void startYouTubeSync();
+    void startYouTubeReadinessProbe();
+
+    void handleYouTubeSyncResponse(
+        int status, const QByteArray &body,
+        const QList<QPair<QByteArray, QByteArray>> &headers);
+
+    void continueYouTubeUpload();
+
     [[nodiscard]] QString findYtDlpExecutable() const;
 
     void refreshRecentVideoSets();
@@ -452,6 +462,29 @@ private:
     QPushButton *settingsOutputBrowseButton = nullptr;
     QCheckBox *rememberRecentCheckBox = nullptr;
     QCheckBox *showAdvancedToolsCheckBox = nullptr;
+    QLabel *youtubeSyncConnectionLabel = nullptr;
+    QLabel *youtubeSyncApiStatusLabel = nullptr;
+    QLabel *youtubeSyncChannelLabel = nullptr;
+    QLineEdit *youtubeOAuthConfigEdit = nullptr;
+    QPushButton *youtubeOAuthConfigBrowseButton = nullptr;
+    QPushButton *youtubeConnectButton = nullptr;
+    QPushButton *youtubeDisconnectButton = nullptr;
+    QPushButton *youtubeSetupInstructionsButton = nullptr;
+    QComboBox *youtubeDefaultPrivacyCombo = nullptr;
+    QCheckBox *youtubePrivacyTitlesCheckBox = nullptr;
+    QCheckBox *youtubeAutoDownloadCheckBox = nullptr;
+    youtube_sync::YouTubeNetworkService *youtubeNetworkService = nullptr;
+    bool youtubeAwaitingChannel = false;
+    bool youtubePendingSyncAfterRefresh = false;
+    QString youtubeSyncOperation;
+    QString youtubeSyncAccessToken;
+    QString youtubeSyncStatePath;
+    youtube_sync::SyncState youtubeRuntimeSyncState;
+    uint32_t youtubeSyncPartIndex = 0;
+    uint32_t youtubeSyncRetryAttempt = 0;
+    uint32_t youtubeProcessingPollAttempt = 0;
+    qint64 youtubeProcessingStartedMs = 0;
+    QProcess *youtubeReadinessProcess = nullptr;
     QTranslator *uiTranslator = nullptr;
     QString uiLanguage = QStringLiteral("en");
     bool uiTranslationLoaded = false;
@@ -578,6 +611,10 @@ private:
     QPushButton *videoSetOpenVideosButton = nullptr;
     QPushButton *videoSetOpenChecklistButton = nullptr;
     QPushButton *videoSetUploadedButton = nullptr;
+    QPushButton *videoSetYouTubeSyncButton = nullptr;
+    QPushButton *videoSetYouTubeSyncPauseButton = nullptr;
+    QLabel *videoSetYouTubeSyncStatus = nullptr;
+    QProgressBar *videoSetYouTubeSyncProgress = nullptr;
     QLineEdit *videoSetPlaylistUrlEdit = nullptr;
     QPushButton *videoSetDownloadButton = nullptr;
     QPushButton *videoSetSelectYtDlpButton = nullptr;
@@ -595,6 +632,9 @@ private:
     QListWidget *videoSetDetectedSetsList = nullptr;
     QPushButton *videoSetAssistantScanButton = nullptr;
     QPushButton *videoSetAssistantRecoverButton = nullptr;
+    QLineEdit *videoSetInstantPlaylistEdit = nullptr;
+    QPushButton *videoSetInstantRecoverButton = nullptr;
+    QLabel *videoSetInstantRecoveryStatus = nullptr;
     QPushButton *videoSetOpenReturnedButton = nullptr;
     QLabel *videoSetRecoveryProgressLabel = nullptr;
     QProgressBar *videoSetRecoveryProgressBar = nullptr;
@@ -629,6 +669,8 @@ private:
     QString videoSetFinalSha;
     bool videoSetAssistantOperation = false;
     bool videoSetCancelRequested = false;
+    bool videoSetInstantRecoveryActive = false;
+    QString videoSetInstantRecoveryJobRoot;
 
     // YouTube Capacity Lab (experimental; never changes production defaults)
     QComboBox *capacityPresetCombo = nullptr;

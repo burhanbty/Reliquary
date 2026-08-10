@@ -32,6 +32,8 @@ add_executable(media_storage_tests
         test_youtube_capacity_lab.cpp
         test_video_set.cpp
         test_video_set_workflow.cpp
+        test_instant_recovery.cpp
+        test_youtube_sync.cpp
 )
 
 target_link_libraries(media_storage_tests PRIVATE
@@ -44,6 +46,8 @@ target_link_libraries(media_storage_tests PRIVATE
 target_include_directories(media_storage_tests PRIVATE
         "${CMAKE_SOURCE_DIR}/src"
 )
+target_compile_definitions(media_storage_tests PRIVATE
+        VIDSTOREX_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 if (WIN32)
     add_custom_command(TARGET media_storage_tests POST_BUILD
@@ -58,6 +62,25 @@ include(GoogleTest)
 gtest_discover_tests(media_storage_tests)
 
 if (TARGET media_storage_gui)
+    add_executable(media_storage_youtube_network_tests
+            test_youtube_network.cpp
+            test_youtube_network_main.cpp
+            "${CMAKE_SOURCE_DIR}/src/youtube_network_service.cpp"
+            "${CMAKE_SOURCE_DIR}/src/youtube_network_service.h"
+    )
+    set_target_properties(media_storage_youtube_network_tests
+            PROPERTIES AUTOMOC ON)
+    target_include_directories(media_storage_youtube_network_tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(media_storage_youtube_network_tests PRIVATE
+            media_storage_core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Network
+            GTest::gtest)
+    gtest_discover_tests(media_storage_youtube_network_tests
+            DISCOVERY_MODE PRE_TEST)
+
     add_executable(media_storage_ui_language_tests
             test_ui_language.cpp
             "${CMAKE_SOURCE_DIR}/src/interface_language.cpp"
@@ -107,6 +130,38 @@ add_test(
         "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli_preflight_integration"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_preflight.cmake"
 )
+
+add_executable(fake_ytdlp fake_ytdlp.cpp)
+
+if (TARGET media_storage_gui)
+    add_test(
+            NAME GUI.InstantPlaylistRecoveryE2E
+            COMMAND ${CMAKE_COMMAND}
+                    "-DGUI=$<TARGET_FILE:media_storage_gui>"
+                    "-DCLI=$<TARGET_FILE:media_storage>"
+                    "-DFAKE_YTDLP=$<TARGET_FILE:fake_ytdlp>"
+                    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/gui_instant_recovery"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_instant_recovery.cmake"
+    )
+    set_tests_properties(GUI.InstantPlaylistRecoveryE2E PROPERTIES TIMEOUT 180)
+    if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
+        set_tests_properties(GUI.InstantPlaylistRecoveryE2E PROPERTIES ENVIRONMENT
+            "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
+    endif ()
+    add_test(
+            NAME GUI.YouTubeSyncE2E
+            COMMAND ${CMAKE_COMMAND}
+                    "-DGUI=$<TARGET_FILE:media_storage_gui>"
+                    "-DCLI=$<TARGET_FILE:media_storage>"
+                    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/gui_youtube_sync"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_youtube_sync.cmake"
+    )
+    set_tests_properties(GUI.YouTubeSyncE2E PROPERTIES TIMEOUT 180)
+    if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
+        set_tests_properties(GUI.YouTubeSyncE2E PROPERTIES ENVIRONMENT
+            "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
+    endif ()
+endif ()
 
 add_test(
         NAME CLI.FastLocalIntegration

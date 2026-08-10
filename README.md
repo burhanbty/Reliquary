@@ -967,6 +967,29 @@ media_storage capacitylab run --preset onebit-verification-1080p `
 
 ## Video Sets / Large Files
 
+### Instant Playlist Recovery
+
+The desktop Recover page can accept a YouTube playlist URL and safely run the
+existing pipeline in one explicit action: **paste playlist → yt-dlp download →
+embedded metadata scan → single complete-set selection → recovery → full-file
+SHA-256 verification**. Filenames, playlist order, and a manifest are not used
+as identity. Automation stops for multiple sets, missing/corrupt/conflicting
+parts, or an existing output; the normal manual scan-and-recover controls remain
+available. Recovery jobs are resumable under the application data directory and
+the final file is written only to the selected output folder.
+
+### YouTube Sync (Beta)
+
+Optional YouTube Sync uses an installed-app OAuth flow and the official YouTube
+Data API v3 to create a playlist, upload each part with the resumable protocol,
+track processing, and optionally download processed copies for the existing
+embedded scan. **YouTube Sync requires a configured YouTube Data API project.**
+API project restrictions can force requested Unlisted uploads to actual Private
+until required audit/compliance steps are completed; VidStoreX displays that
+actual state and does not attempt authenticated-cookie workarounds. The manual
+upload, playlist paste, yt-dlp download, and recovery workflow remains supported.
+See [YouTube Sync setup](docs/YOUTUBE_SYNC_SETUP.md).
+
 Video Set is the opt-in, file-only archive layer for sources that should be
 carried by more than one video. It does not replace the single-video format.
 The source is split into byte ranges; each logical part is an explicit

@@ -16,6 +16,7 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QDateTime>
 #include <QComboBox>
 #include <QDebug>
 #include <QDoubleSpinBox>
@@ -32,6 +33,8 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSet>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QStyleFactory>
 #include <QStatusBar>
@@ -39,8 +42,11 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <memory>
 
 #include "drive_manager_ui.h"
+#include "youtube_auth.h"
+#include "youtube_sync_state.h"
 
 namespace {
 
@@ -72,6 +78,151 @@ QIcon vidStoreXApplicationIcon() {
     return icon;
 }
 
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+class FakeYouTubeApi final : public QObject {
+public:
+    explicit FakeYouTubeApi(QObject *parent = nullptr) : QObject(parent) {
+        connect(&server_, &QTcpServer::newConnection, this, [this]() {
+            while (auto *socket = server_.nextPendingConnection()) {
+                connect(socket, &QTcpSocket::readyRead, this,
+                        [this, socket]() { consume(socket); });
+            }
+        });
+    }
+
+    bool start() {
+        return server_.listen(QHostAddress::LocalHost, 0);
+    }
+
+    QString apiBase() const {
+        return QStringLiteral("http://127.0.0.1:%1/youtube/v3")
+            .arg(server_.serverPort());
+    }
+
+    QString uploadBase() const {
+        return QStringLiteral("http://127.0.0.1:%1/upload/youtube/v3")
+            .arg(server_.serverPort());
+    }
+
+    bool complete(const int expectedParts) const {
+        return playlistCreates_ == 1 && sessionCreates_ == expectedParts &&
+            completedUploads_ == expectedParts &&
+            playlistInserts_ == expectedParts && processingChecks_ == 1 &&
+            authorizationValid_ && metadataPrivate_;
+    }
+
+private:
+    void consume(QTcpSocket *socket) {
+        auto &buffer = buffers_[socket];
+        buffer += socket->readAll();
+        const int headerEnd = buffer.indexOf("\r\n\r\n");
+        if (headerEnd < 0) return;
+        const QByteArray headers = buffer.left(headerEnd + 4);
+        const QRegularExpression contentLength(
+            QStringLiteral("(?:^|\\r\\n)Content-Length:\\s*(\\d+)"),
+            QRegularExpression::CaseInsensitiveOption);
+        const auto match = contentLength.match(QString::fromLatin1(headers));
+        const qint64 bodyLength = match.hasMatch()
+            ? match.captured(1).toLongLong() : 0;
+        if (buffer.size() < headerEnd + 4 + bodyLength) return;
+        const QByteArray body = buffer.mid(headerEnd + 4, bodyLength);
+        const QList<QByteArray> requestLine = headers.left(
+            headers.indexOf("\r\n")).split(' ');
+        if (requestLine.size() < 2) {
+            respond(socket, 400, "Bad Request", "{}");
+            return;
+        }
+        const QByteArray method = requestLine.at(0);
+        const QByteArray target = requestLine.at(1);
+        authorizationValid_ = authorizationValid_ &&
+            headers.contains("Authorization: Bearer gui-e2e-access");
+        if (method == "POST" && target.startsWith(
+                "/youtube/v3/playlists?")) {
+            ++playlistCreates_;
+            respond(socket, 200, "OK",
+                R"({"id":"PL_FAKE_SYNC","status":{"privacyStatus":"unlisted"}})");
+        } else if (method == "POST" && target.startsWith(
+                       "/upload/youtube/v3/videos?")) {
+            if (body.contains("source.bin") || body.contains("\\\\") ||
+                body.contains(":/"))
+                metadataPrivate_ = false;
+            const int session = ++sessionCreates_;
+            respond(socket, 200, "OK", {}, {{"Location",
+                QStringLiteral("http://127.0.0.1:%1/session/%2")
+                    .arg(server_.serverPort()).arg(session).toLatin1()}});
+        } else if (method == "PUT" && target.startsWith("/session/")) {
+            const QRegularExpression range(
+                QStringLiteral("Content-Range:\\s*bytes\\s+(\\d+)-(\\d+)/(\\d+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            const auto rangeMatch = range.match(QString::fromLatin1(headers));
+            if (!rangeMatch.hasMatch()) {
+                respond(socket, 400, "Bad Request", "{}");
+                return;
+            }
+            const quint64 last = rangeMatch.captured(2).toULongLong();
+            const quint64 total = rangeMatch.captured(3).toULongLong();
+            if (last + 1 < total) {
+                respond(socket, 308, "Resume Incomplete", {},
+                    {{"Range", QByteArray("bytes=0-") + QByteArray::number(last)}});
+            } else {
+                const QByteArray session = target.mid(target.lastIndexOf('/') + 1);
+                const QByteArray id = "fake-video-" + session;
+                uploadedVideos_ << QString::fromLatin1(id);
+                ++completedUploads_;
+                respond(socket, 201, "Created",
+                    QByteArray("{\"id\":\"") + id +
+                    "\",\"status\":{\"privacyStatus\":\"unlisted\"}}");
+            }
+        } else if (method == "POST" && target.startsWith(
+                       "/youtube/v3/playlistItems?")) {
+            ++playlistInserts_;
+            respond(socket, 200, "OK",
+                QByteArray("{\"id\":\"playlist-item-") +
+                QByteArray::number(playlistInserts_) + "\"}");
+        } else if (method == "GET" && target.startsWith(
+                       "/youtube/v3/videos?")) {
+            ++processingChecks_;
+            QByteArray items;
+            for (const auto &id : uploadedVideos_) {
+                if (!items.isEmpty()) items += ',';
+                items += QByteArray("{\"id\":\"") + id.toLatin1() +
+                    "\",\"processingDetails\":{\"processingStatus\":\"succeeded\","
+                    "\"processingProgress\":{\"partsProcessed\":1,\"partsTotal\":1}},"
+                    "\"status\":{\"privacyStatus\":\"unlisted\"}}";
+            }
+            respond(socket, 200, "OK", QByteArray("{\"items\":[") +
+                items + "]}");
+        } else {
+            respond(socket, 404, "Not Found", "{}");
+        }
+    }
+
+    static void respond(QTcpSocket *socket, const int status,
+                        const QByteArray &reason, const QByteArray &body,
+                        const QList<QPair<QByteArray, QByteArray>> &extra = {}) {
+        QByteArray response = "HTTP/1.1 " + QByteArray::number(status) + ' ' +
+            reason + "\r\nContent-Type: application/json\r\nConnection: close\r\n";
+        for (const auto &[name, value] : extra)
+            response += name + ": " + value + "\r\n";
+        response += "Content-Length: " + QByteArray::number(body.size()) +
+            "\r\n\r\n" + body;
+        socket->write(response);
+        socket->disconnectFromHost();
+    }
+
+    QTcpServer server_;
+    QHash<QTcpSocket *, QByteArray> buffers_;
+    QStringList uploadedVideos_;
+    int playlistCreates_ = 0;
+    int sessionCreates_ = 0;
+    int completedUploads_ = 0;
+    int playlistInserts_ = 0;
+    int processingChecks_ = 0;
+    bool authorizationValid_ = true;
+    bool metadataPrivate_ = true;
+};
+#endif
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -80,6 +231,11 @@ int main(int argc, char *argv[]) {
     QString preflightSmokeInput;
     QString preflightSmokeOutput;
     QString videoSetAssistantSmokeRoot;
+    QString instantRecoverySmokeRoot;
+    QString instantRecoveryFakeYtDlp;
+    QString instantRecoveryFixtureVideos;
+    QString youtubeSyncSmokeRoot;
+    QString youtubeSyncManifest;
     for (int i = 1; i < argc; ++i) {
         const QString argument = QString::fromLocal8Bit(argv[i]);
         if (argument == "--smoke-test") {
@@ -98,9 +254,25 @@ int main(int argc, char *argv[]) {
                    i + 1 < argc) {
             videoSetAssistantSmokeRoot =
                 QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--instant-recovery-smoke-root" &&
+                   i + 1 < argc) {
+            instantRecoverySmokeRoot = QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--instant-recovery-fake-ytdlp" &&
+                   i + 1 < argc) {
+            instantRecoveryFakeYtDlp = QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--instant-recovery-fixture-videos" &&
+                   i + 1 < argc) {
+            instantRecoveryFixtureVideos = QString::fromLocal8Bit(argv[++i]);
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+        } else if (argument == "--youtube-sync-smoke-root" && i + 1 < argc) {
+            youtubeSyncSmokeRoot = QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--youtube-sync-manifest" && i + 1 < argc) {
+            youtubeSyncManifest = QString::fromLocal8Bit(argv[++i]);
+#endif
         }
     }
     const bool isolatedUiRun = !videoSetAssistantSmokeRoot.isEmpty() ||
+        !instantRecoverySmokeRoot.isEmpty() || !youtubeSyncSmokeRoot.isEmpty() ||
         smokeTest || closeDuringEstimate;
     if (isolatedUiRun) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -108,10 +280,31 @@ int main(int argc, char *argv[]) {
             QSettings::IniFormat, QSettings::UserScope,
             !videoSetAssistantSmokeRoot.isEmpty()
                 ? QDir(videoSetAssistantSmokeRoot).filePath("settings")
+                : !instantRecoverySmokeRoot.isEmpty()
+                ? QDir(instantRecoverySmokeRoot).filePath("settings")
+                : !youtubeSyncSmokeRoot.isEmpty()
+                ? QDir(youtubeSyncSmokeRoot).filePath("settings")
                 : QDir(QDir::tempPath()).filePath(
                     "vidstorex-gui-smoke-settings"));
     }
     QApplication app(argc, argv);
+
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+    std::unique_ptr<FakeYouTubeApi> fakeYouTubeApi;
+    if (!youtubeSyncSmokeRoot.isEmpty()) {
+        fakeYouTubeApi = std::make_unique<FakeYouTubeApi>(&app);
+        if (!fakeYouTubeApi->start()) {
+            qCritical() << "YouTube Sync fake API could not listen";
+            return 91;
+        }
+        qputenv("VIDSTOREX_YOUTUBE_API_BASE",
+                fakeYouTubeApi->apiBase().toUtf8());
+        qputenv("VIDSTOREX_YOUTUBE_UPLOAD_BASE",
+                fakeYouTubeApi->uploadBase().toUtf8());
+        qputenv("VIDSTOREX_CREDENTIALS_ROOT",
+                QDir(youtubeSyncSmokeRoot).filePath("credentials").toUtf8());
+    }
+#endif
     
     // Set application properties
     QApplication::setApplicationName("YouTube Media Storage");
@@ -124,6 +317,27 @@ int main(int argc, char *argv[]) {
         settings.setValue("ui/language", "en");
         settings.setValue("ui/rememberRecentSets", true);
         settings.setValue("ui/showAdvancedTools", true);
+        if (!instantRecoveryFakeYtDlp.isEmpty())
+            settings.setValue("videoSet/ytdlpPath",
+                              instantRecoveryFakeYtDlp);
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+        if (!youtubeSyncSmokeRoot.isEmpty()) {
+            settings.setValue("videoSet/recentManifests",
+                              QStringList{youtubeSyncManifest});
+            settings.setValue("youtube/connected", true);
+            settings.setValue("youtube/defaultPrivacy", "unlisted");
+            settings.setValue("youtube/privacyFriendlyTitles", true);
+            settings.setValue("youtube/autoDownload", false);
+            youtube_sync::TokenRecord token;
+            token.access_token = "gui-e2e-access";
+            token.refresh_token = "gui-e2e-refresh";
+            token.expires_at_epoch_seconds =
+                QDateTime::currentSecsSinceEpoch() + 3600;
+            auto store = youtube_sync::make_platform_credential_store();
+            store->save("youtube-oauth",
+                        youtube_sync::serialize_token_record(token));
+        }
+#endif
     }
     
     app.setWindowIcon(vidStoreXApplicationIcon());
@@ -140,6 +354,156 @@ int main(int argc, char *argv[]) {
     // Create and show the main window
     DriveManagerUI window;
     window.show();
+
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+    if (!youtubeSyncSmokeRoot.isEmpty()) {
+        auto *recent = window.findChild<QListWidget *>("videoSetRecentList");
+        auto *continueButton = window.findChild<QPushButton *>(
+            "videoSetRecentContinueButton");
+        auto *sync = window.findChild<QPushButton *>("youtubeSyncStartButton");
+        auto *status = window.findChild<QLabel *>("youtubeSyncStatus");
+        auto *progress = window.findChild<QProgressBar *>("youtubeSyncProgress");
+        if (!recent || !continueButton || !sync || !status || !progress ||
+            recent->count() != 1) {
+            qCritical() << "YouTube Sync GUI controls were not found";
+            return 92;
+        }
+        recent->setCurrentRow(0);
+        continueButton->click();
+        QApplication::processEvents();
+        if (!sync->isEnabled()) {
+            qCritical() << "YouTube Sync did not open a verified recent set";
+            return 93;
+        }
+        sync->click();
+        auto *timer = new QTimer(&window);
+        timer->setInterval(50);
+        auto *deadline = new qint64(
+            QDateTime::currentMSecsSinceEpoch() + 120000);
+        QObject::connect(timer, &QTimer::timeout, &window,
+            [&, timer, deadline, status, progress]() {
+            const QString sidecar = QDir(QFileInfo(youtubeSyncManifest)
+                .absolutePath()).filePath("youtube_sync_state.json");
+            if (status->text().contains("playlist is ready",
+                                        Qt::CaseInsensitive)) {
+                try {
+                    const auto state = youtube_sync::read_sync_state(
+                        std::filesystem::path(sidecar.toStdWString()));
+                    const bool partsReady = !state.parts.empty() &&
+                        std::all_of(state.parts.begin(), state.parts.end(),
+                            [](const youtube_sync::PartState &part) {
+                            return part.upload_state ==
+                                       youtube_sync::UploadState::Uploaded &&
+                                part.processing_state ==
+                                       youtube_sync::ProcessingState::Succeeded &&
+                                !part.youtube_video_id.empty() &&
+                                !part.playlist_item_id.empty();
+                        });
+                    if (!partsReady || !state.playlist_created ||
+                        state.actual_privacy != youtube_sync::Privacy::Unlisted ||
+                        progress->value() != 100 ||
+                        !fakeYouTubeApi->complete(
+                            static_cast<int>(state.parts.size()))) {
+                        qCritical() << "YouTube Sync GUI state invariant failed";
+                        app.exit(94);
+                    } else {
+                        window.grab().save(QDir(youtubeSyncSmokeRoot)
+                            .filePath("youtube-sync-ready.png"));
+                        qInfo() << "YouTube Sync qwindows E2E complete";
+                        app.exit(0);
+                    }
+                } catch (const std::exception &error) {
+                    qCritical() << "YouTube Sync sidecar validation failed:"
+                                << error.what();
+                    app.exit(95);
+                }
+                timer->stop();
+                window.close();
+                delete deadline;
+            } else if (QDateTime::currentMSecsSinceEpoch() > *deadline) {
+                qCritical() << "YouTube Sync GUI E2E timeout:" << status->text();
+                timer->stop();
+                window.close();
+                app.exit(96);
+                delete deadline;
+            }
+        });
+        timer->start();
+    }
+#endif
+
+    if (!instantRecoverySmokeRoot.isEmpty()) {
+        qputenv("VIDSTOREX_FAKE_YTDLP_SOURCE",
+                instantRecoveryFixtureVideos.toUtf8());
+        qputenv("VIDSTOREX_RECOVERY_JOBS_ROOT",
+                QDir(instantRecoverySmokeRoot).filePath(
+                    "RecoveryJobs").toUtf8());
+        // Ensure the deterministic adapter selected in isolated settings wins
+        // over any developer-machine yt-dlp installation.
+        qputenv("PATH", QByteArray{});
+        auto *recoverNavigation = window.findChild<QPushButton *>(
+            "recoverNavigationButton");
+        auto *playlist = window.findChild<QLineEdit *>("instantPlaylistUrl");
+        auto *output = window.findChild<QLineEdit *>(
+            "videoSetAssistantRecoveryOutput");
+        auto *start = window.findChild<QPushButton *>(
+            "instantPlaylistRecoverButton");
+        auto *status = window.findChild<QLabel *>(
+            "instantPlaylistRecoveryStatus");
+        auto *success = window.findChild<QLabel *>(
+            "videoSetAssistantExactSuccess");
+        if (!recoverNavigation || !playlist || !output || !start ||
+            !status || !success) {
+            qCritical() << "Instant Recovery widgets were not found";
+            return 81;
+        }
+        const QString recovered = QDir(instantRecoverySmokeRoot)
+            .filePath("recovered-instant");
+        QDir().mkpath(recovered);
+        recoverNavigation->click();
+        output->setText(recovered);
+        playlist->setText(
+            "https://www.youtube.com/playlist?list=PL_FAKE_E2E&feature=share");
+        QApplication::processEvents();
+        if (!start->isEnabled()) {
+            qCritical() << "Instant Recovery start button remained disabled:"
+                        << status->text();
+            return 84;
+        }
+        start->click();
+        auto *timer = new QTimer(&window);
+        timer->setInterval(100);
+        auto *elapsed = new int(0);
+        QObject::connect(timer, &QTimer::timeout, &window,
+            [&app, &window, status, success, recovered, timer, elapsed]() {
+            *elapsed += 100;
+            if (success->isVisible() && success->text().contains(
+                    "recovered exactly", Qt::CaseInsensitive)) {
+                if (!QFileInfo::exists(QDir(recovered).filePath("source.bin"))) {
+                    qCritical() << "Instant Recovery exact output is missing";
+                    app.exit(82);
+                } else {
+                    qInfo() << "Instant Recovery qwindows E2E complete:"
+                            << status->text();
+                    app.exit(0);
+                }
+                timer->stop();
+                window.close();
+                delete elapsed;
+            } else if (*elapsed > 120000) {
+                QFile diagnostics(QDir(recovered).filePath(
+                    "instant-e2e-status.txt"));
+                if (diagnostics.open(QIODevice::WriteOnly | QIODevice::Text))
+                    diagnostics.write(status->text().toUtf8());
+                qCritical() << "Instant Recovery E2E timeout:" << status->text();
+                timer->stop();
+                window.close();
+                app.exit(83);
+                delete elapsed;
+            }
+        });
+        timer->start();
+    }
 
     if (smokeTest) {
         auto *profiles = window.findChild<QComboBox *>(

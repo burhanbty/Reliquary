@@ -674,6 +674,12 @@ std::string_view operation_type_name(const OperationType type) noexcept {
         case OperationType::Recover: return "recover";
         case OperationType::FinalHash: return "final_hash";
         case OperationType::Finalize: return "finalize";
+        case OperationType::OAuth: return "oauth";
+        case OperationType::PlaylistCreate: return "playlist_create";
+        case OperationType::Upload: return "upload";
+        case OperationType::YouTubeProcessing: return "youtube_processing";
+        case OperationType::ProcessedDownload: return "processed_download";
+        case OperationType::InstantRecovery: return "instant_recovery";
     }
     return "none";
 }
@@ -708,6 +714,12 @@ OperationType parse_operation_type(const std::string_view value) noexcept {
     if (value == "recover") return OperationType::Recover;
     if (value == "final_hash") return OperationType::FinalHash;
     if (value == "finalize") return OperationType::Finalize;
+    if (value == "oauth") return OperationType::OAuth;
+    if (value == "playlist_create") return OperationType::PlaylistCreate;
+    if (value == "upload") return OperationType::Upload;
+    if (value == "youtube_processing") return OperationType::YouTubeProcessing;
+    if (value == "processed_download") return OperationType::ProcessedDownload;
+    if (value == "instant_recovery") return OperationType::InstantRecovery;
     return OperationType::None;
 }
 
