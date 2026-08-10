@@ -642,6 +642,23 @@ int do_encode(const Options &options) {
 
     for (std::size_t index = 0; index < plan.parts.size(); ++index) {
         auto &part = plan.parts[index];
+        const auto video = staging / "videos" /
+            std::filesystem::u8path(part.expected_video_filename);
+        if (options.resume && part.local_decode_state == "Exact" &&
+            std::filesystem::exists(video) && std::filesystem::file_size(video) == part.actual_output_bytes &&
+            lower(sha256_file(video).hexValue()) == lower(part.video_sha256)) {
+            std::cout << "Resume: verified part " << index + 1 << " already complete\n";
+            progress.emit({.phase = "verifying_part",
+                           .message = "Part already verified exactly",
+                           .current_item = part.expected_video_filename,
+                           .current = index + 1,
+                           .total = plan.parts.size(),
+                           .completed = index + 1,
+                           .progress_current = index + 1,
+                           .progress_total = plan.parts.size(),
+                           .determinate = true});
+            continue;
+        }
         progress.emit({.phase = "encoding_part",
                        .message = "Encoding Video Set part",
                        .current_item = part.expected_video_filename,
@@ -651,14 +668,6 @@ int do_encode(const Options &options) {
                        .progress_current = index,
                        .progress_total = plan.parts.size(),
                        .determinate = true});
-        const auto video = staging / "videos" /
-            std::filesystem::u8path(part.expected_video_filename);
-        if (options.resume && part.local_decode_state == "Exact" &&
-            std::filesystem::exists(video) && std::filesystem::file_size(video) == part.actual_output_bytes &&
-            lower(sha256_file(video).hexValue()) == lower(part.video_sha256)) {
-            std::cout << "Resume: verified part " << index + 1 << " already complete\n";
-            continue;
-        }
         const auto payload = staging / (".part-" + std::to_string(index) + ".payload");
         const auto decoded = staging / (".part-" + std::to_string(index) + ".decoded");
         part.local_encode_state = "Encoding";

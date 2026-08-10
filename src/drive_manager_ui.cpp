@@ -3095,8 +3095,10 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetActivityPanel = new QFrame();
     videoSetActivityPanel->setObjectName("videoSetActivityPanel");
     videoSetActivityPanel->setFrameShape(QFrame::StyledPanel);
+    videoSetActivityPanel->setMinimumHeight(235);
     videoSetActivityPanel->setProperty("vsxSurface", "raised");
     videoSetActivityPanel->setProperty("observedScan", false);
+    videoSetActivityPanel->setProperty("observedDownload", false);
     videoSetActivityPanel->setProperty("observedRecovery", false);
     videoSetActivityPanel->setProperty("observedFinalHash", false);
     auto *activityLayout = new QVBoxLayout(videoSetActivityPanel);
@@ -3121,8 +3123,20 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetActivityDescription->setObjectName("videoSetActivityDescription");
     videoSetActivityDescription->setWordWrap(true);
     activityLayout->addWidget(videoSetActivityDescription);
-    videoSetActivityProgress = new QProgressBar();
-    videoSetActivityProgress->setObjectName("videoSetProgressBar");
+    videoSetActivitySourceSummary = new QLabel();
+    videoSetActivitySourceSummary->setObjectName("videoSetProcessingSummary");
+    videoSetActivitySourceSummary->setWordWrap(true);
+    videoSetActivitySourceSummary->setProperty("muted", true);
+    activityLayout->addWidget(videoSetActivitySourceSummary);
+    videoSetActivityFlow = new VidStoreXProcessingFlow();
+    activityLayout->addWidget(videoSetActivityFlow);
+    videoSetActivityPartGrid = new VidStoreXPartGrid();
+    activityLayout->addWidget(videoSetActivityPartGrid);
+    videoSetActivityPartGrid->setVisible(false);
+    videoSetActivityProgressLabel = new QLabel();
+    videoSetActivityProgressLabel->setObjectName("videoSetBlockProgressLabel");
+    activityLayout->addWidget(videoSetActivityProgressLabel);
+    videoSetActivityProgress = new VidStoreXBlockProgress();
     activityLayout->addWidget(videoSetActivityProgress);
     auto *activityDetails = new QHBoxLayout();
     videoSetActivityCounter = new QLabel();
@@ -3152,7 +3166,8 @@ void DriveManagerUI::setupVideoSetAssistant(
 
     videoSetAssistantStack = new QStackedWidget();
     videoSetAssistantStack->setObjectName("videoSetAssistantStack");
-    auto *assistantScroll = new QScrollArea();
+    videoSetAssistantScrollArea = new QScrollArea();
+    auto *assistantScroll = videoSetAssistantScrollArea;
     assistantScroll->setObjectName("videoSetAssistantScrollArea");
     assistantScroll->setWidgetResizable(true);
     assistantScroll->setFrameShape(QFrame::NoFrame);
@@ -3609,6 +3624,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetAssistantProgress->setObjectName("videoSetAssistantProgress");
     videoSetAssistantProgress->setRange(0, 100);
     progressLayout->addWidget(videoSetAssistantProgress);
+    videoSetAssistantProgress->setVisible(false);
     videoSetProgressPhaseLabel = new QLabel("Reading source file");
     videoSetProgressPhaseLabel->setObjectName("videoSetAssistantPhase");
     videoSetProgressPartLabel = new QLabel("Waiting to start");
@@ -3754,6 +3770,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetDownloadProgress = new QProgressBar();
     videoSetDownloadProgress->setRange(0, 100);
     downloadLayout->addWidget(videoSetDownloadProgress);
+    videoSetDownloadProgress->setVisible(false);
     downloadLayout->addStretch();
 
     // 7: Scan and recovery setup
@@ -3871,6 +3888,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetRecoveryProgressBar = new QProgressBar();
     videoSetRecoveryProgressBar->setRange(0, 0);
     recoveryLayout->addWidget(videoSetRecoveryProgressBar);
+    videoSetRecoveryProgressBar->setVisible(false);
     videoSetRecoveryProgressLabel = new QLabel("Reading returned video");
     videoSetRecoveryProgressLabel->setObjectName("videoSetAssistantRecoveryPhase");
     recoveryLayout->addWidget(videoSetRecoveryProgressLabel);
@@ -4754,8 +4772,13 @@ void DriveManagerUI::renderVideoSetActivity() {
         videoSetWorkflow.view().state !=
             video_set_workflow::State::RecoveredExact;
     videoSetActivityPanel->setVisible(visible);
+    if (videoSetAssistantScrollArea)
+        videoSetAssistantScrollArea->setMinimumHeight(visible ? 150 : 330);
     if (!hasOperation) return;
+    if (operation.operation_type == video_set_workflow::OperationType::Download)
+        videoSetActivityPanel->setProperty("observedDownload", true);
 
+    const auto &workflow = videoSetWorkflow.view();
     QString title;
     QString description = translatedWorkflowText(
         operation.secondary_message);
@@ -4764,10 +4787,25 @@ void DriveManagerUI::renderVideoSetActivity() {
             title = tr("Calculating the Video Set plan");
             break;
         case video_set_workflow::OperationType::Encode:
-            title = tr("Creating and verifying videos");
+            if (operation.phase == video_set_workflow::OperationPhase::EncodingPart &&
+                operation.total_items != 0)
+                title = tr("Video %1 / %2 is being created")
+                    .arg(operation.current_index).arg(operation.total_items);
+            else if (operation.phase == video_set_workflow::OperationPhase::VerifyingPart &&
+                     operation.total_items != 0)
+                title = tr("Video %1 / %2 is being verified locally")
+                    .arg(operation.current_index).arg(operation.total_items);
+            else if (operation.phase == video_set_workflow::OperationPhase::Completed)
+                title = tr("Video Set is ready");
+            else
+                title = tr("Creating and verifying videos");
+            description = tr("Completed videos are decoded and verified locally before they are marked complete.");
             break;
         case video_set_workflow::OperationType::Download:
-            title = tr("Downloading processed videos");
+            title = operation.total_items != 0 && operation.current_index != 0
+                ? tr("Downloading video %1 / %2")
+                    .arg(operation.current_index).arg(operation.total_items)
+                : tr("Discovering and downloading videos");
             break;
         case video_set_workflow::OperationType::Scan:
             title = tr("Scanning downloaded videos");
@@ -4776,11 +4814,13 @@ void DriveManagerUI::renderVideoSetActivity() {
         case video_set_workflow::OperationType::Recover:
         case video_set_workflow::OperationType::FinalHash:
         case video_set_workflow::OperationType::Finalize:
-            title = tr("Recovering the original file");
-            description = operation.phase ==
-                video_set_workflow::OperationPhase::CheckingFullFile
-                ? tr("VidStoreX is checking the final full-file SHA-256. Recovery succeeds only if it matches.")
-                : tr("Verified parts are being decoded and written back into the original file.");
+            if (operation.phase == video_set_workflow::OperationPhase::CheckingFullFile) {
+                title = tr("Final verification is in progress");
+                description = tr("VidStoreX is checking that the recovered file is exactly identical to the original file.");
+            } else {
+                title = tr("Your file is being rebuilt");
+                description = tr("Verified parts are being decoded and written back into the original file.");
+            }
             break;
         default:
             title = translatedWorkflowText(operation.primary_message);
@@ -4796,25 +4836,139 @@ void DriveManagerUI::renderVideoSetActivity() {
             ? QStringLiteral("!") : operation.state == video_set_workflow::OperationState::Cancelled
             ? QString::fromUtf8("■") : QString::fromUtf8("●"));
 
-    if (operation.progress_is_determinate && operation.progress_total != 0) {
-        videoSetActivityProgress->setRange(0, 1000);
-        videoSetActivityProgress->setValue(static_cast<int>((std::min)(
-            1000.0, static_cast<double>(operation.progress_current) *
-                1000.0 / static_cast<double>(operation.progress_total))));
-        videoSetActivityProgress->setFormat("%p%");
-    } else if (operation.is_busy) {
-        videoSetActivityProgress->setRange(0, 0);
-        videoSetActivityProgress->setFormat(QString());
-    } else {
-        videoSetActivityProgress->setRange(0, 100);
-        videoSetActivityProgress->setValue(
-            operation.state == video_set_workflow::OperationState::Completed
-                ? 100 : 0);
-        videoSetActivityProgress->setFormat(
-            operation.state == video_set_workflow::OperationState::Completed
-                ? tr("Completed") : tr("Inactive"));
+    uint64_t totalParts = operation.total_items != 0
+        ? operation.total_items : workflow.part_count;
+    if (operation.operation_type == video_set_workflow::OperationType::Scan)
+        totalParts = (std::max)({totalParts,
+            static_cast<uint64_t>(operation.scan.expected_parts),
+            static_cast<uint64_t>(workflow.scan.expected_parts),
+            static_cast<uint64_t>(workflow.part_count)});
+    uint64_t completedParts = operation.completed_items;
+    if (operation.operation_type == video_set_workflow::OperationType::Encode)
+        completedParts = (std::max)(completedParts,
+                                    static_cast<uint64_t>(workflow.local_verified_count));
+    if (operation.operation_type == video_set_workflow::OperationType::Scan)
+        completedParts = (std::max)(operation.scan.exact_parts,
+                                    workflow.scan.exact_parts);
+
+    QVector<VidStoreXPartState> partStates(
+        static_cast<qsizetype>((std::min)(totalParts, uint64_t{5000})),
+        VidStoreXPartState::Pending);
+    for (uint64_t index = 0; index < (std::min)(completedParts, totalParts); ++index)
+        partStates[static_cast<qsizetype>(index)] =
+            operation.operation_type == video_set_workflow::OperationType::Scan ||
+            operation.operation_type == video_set_workflow::OperationType::Recover
+                ? VidStoreXPartState::Verified : VidStoreXPartState::Complete;
+    const bool currentMapsToPart = operation.operation_type !=
+        video_set_workflow::OperationType::Scan;
+    if (currentMapsToPart && operation.current_index > 0 &&
+        operation.current_index <= static_cast<uint64_t>(partStates.size()) &&
+        operation.is_busy)
+        partStates[static_cast<qsizetype>(operation.current_index - 1)] =
+            operation.state == video_set_workflow::OperationState::Cancelling
+                ? VidStoreXPartState::Cancelled : VidStoreXPartState::Active;
+    const auto markIndices = [&partStates](const std::vector<uint32_t> &indices,
+                                           const VidStoreXPartState state) {
+        for (const auto index : indices)
+            if (index < static_cast<uint32_t>(partStates.size()))
+                partStates[static_cast<qsizetype>(index)] = state;
+    };
+    markIndices(operation.scan.missing_parts, VidStoreXPartState::Missing);
+    markIndices(operation.scan.corrupt_parts, VidStoreXPartState::Corrupt);
+    markIndices(workflow.scan.missing_parts, VidStoreXPartState::Missing);
+    markIndices(workflow.scan.corrupt_parts, VidStoreXPartState::Corrupt);
+    if (operation.scan.conflict_count != 0 && !partStates.isEmpty()) {
+        qsizetype index = partStates.size() - 1;
+        while (index > 0 && partStates[index] != VidStoreXPartState::Pending) --index;
+        partStates[index] = VidStoreXPartState::Conflict;
     }
-    videoSetActivityProgress->setEnabled(operation.is_busy);
+    if (operation.state == video_set_workflow::OperationState::Failed &&
+        operation.current_index > 0 &&
+        operation.current_index <= static_cast<uint64_t>(partStates.size()))
+        partStates[static_cast<qsizetype>(operation.current_index - 1)] =
+            VidStoreXPartState::Failed;
+    videoSetActivityPartGrid->setParts(partStates);
+    videoSetActivityPartGrid->setVisible(false);
+
+    VidStoreXProcessingFlow::Mode flowMode =
+        VidStoreXProcessingFlow::Mode::Create;
+    if (operation.operation_type == video_set_workflow::OperationType::Download)
+        flowMode = VidStoreXProcessingFlow::Mode::Download;
+    else if (operation.operation_type == video_set_workflow::OperationType::Scan)
+        flowMode = VidStoreXProcessingFlow::Mode::Scan;
+    else if (operation.operation_type == video_set_workflow::OperationType::Recover)
+        flowMode = operation.phase == video_set_workflow::OperationPhase::CheckingFullFile
+            ? VidStoreXProcessingFlow::Mode::Verify
+            : VidStoreXProcessingFlow::Mode::Recover;
+    videoSetActivityFlow->setMode(flowMode);
+    videoSetActivityFlow->setParts(partStates);
+    const bool realFileProgress = operation.operation_type ==
+            video_set_workflow::OperationType::Recover &&
+        operation.progress_is_determinate && operation.progress_total != 0;
+    videoSetActivityFlow->setFileProgress(operation.progress_current,
+        operation.progress_total, realFileProgress);
+    videoSetActivityFlow->setAccessibleDescription(
+        flowMode == VidStoreXProcessingFlow::Mode::Create
+            ? tr("Live Data Path: file to parts to videos.")
+            : flowMode == VidStoreXProcessingFlow::Mode::Scan
+            ? tr("Live Data Path: videos are being checked; the original file is not being rebuilt yet.")
+            : tr("Live Data Path: videos to verified parts to the original file."));
+
+    QString sourceSummary;
+    if (!workflow.source_filename.empty()) {
+        const QString sourceName = QFileInfo(QString::fromStdString(
+            workflow.source_filename)).fileName();
+        QStringList summaryParts{sourceName};
+        if (workflow.source_size != 0)
+            summaryParts << QLocale().formattedDataSize(
+                static_cast<qint64>(workflow.source_size));
+        if (!workflow.selected_profile.empty()) {
+            const QString profile = QString::fromStdString(
+                workflow.selected_profile);
+            summaryParts << (profile.contains("high", Qt::CaseInsensitive)
+                ? tr("High Capacity") : tr("Resilient"));
+        }
+        if (totalParts != 0)
+            summaryParts << tr("%1 videos").arg(totalParts);
+        sourceSummary = summaryParts.join(QStringLiteral("   •   "));
+    } else if (operation.operation_type == video_set_workflow::OperationType::Download) {
+        sourceSummary = totalParts == 0 ? tr("Playlist count is not known yet")
+                                       : tr("%1 playlist videos").arg(totalParts);
+    } else if (operation.operation_type == video_set_workflow::OperationType::Scan ||
+               operation.operation_type == video_set_workflow::OperationType::Recover) {
+        const auto *selectedSet = videoSetDetectedSetsList
+            ? videoSetDetectedSetsList->currentItem() : nullptr;
+        if (!selectedSet && videoSetDetectedSetsList &&
+            videoSetDetectedSetsList->count() > 0)
+            selectedSet = videoSetDetectedSetsList->item(0);
+        if (selectedSet) {
+            const QRegularExpression filenamePattern(
+                R"(^[0-9a-fA-F]{8}\s+\S+\s+(.+),\s+available)");
+            const auto match = filenamePattern.match(selectedSet->text());
+            if (match.hasMatch()) {
+                sourceSummary = QFileInfo(match.captured(1).trimmed()).fileName();
+                if (totalParts != 0)
+                    sourceSummary += QStringLiteral("   â€¢   ") +
+                        tr("%1 videos").arg(totalParts);
+            }
+        }
+    }
+    videoSetActivitySourceSummary->setText(sourceSummary);
+    videoSetActivitySourceSummary->setVisible(!sourceSummary.isEmpty());
+
+    if (operation.state == video_set_workflow::OperationState::Completed)
+        videoSetActivityProgress->setState(VidStoreXBlockProgress::State::Success);
+    else if (operation.state == video_set_workflow::OperationState::Failed)
+        videoSetActivityProgress->setState(VidStoreXBlockProgress::State::Error);
+    else if (operation.state == video_set_workflow::OperationState::Cancelled ||
+             operation.state == video_set_workflow::OperationState::Cancelling)
+        videoSetActivityProgress->setState(VidStoreXBlockProgress::State::Paused);
+    else if (operation.progress_is_determinate && operation.progress_total != 0)
+        videoSetActivityProgress->setState(VidStoreXBlockProgress::State::Determinate);
+    else
+        videoSetActivityProgress->setState(VidStoreXBlockProgress::State::Indeterminate);
+    videoSetActivityProgress->setProgress(operation.progress_current,
+                                           operation.progress_total);
 
     QString counter;
     if (operation.operation_type == video_set_workflow::OperationType::Scan) {
@@ -4823,15 +4977,18 @@ void DriveManagerUI::renderVideoSetActivity() {
             operation.total_items == 0) {
             counter = tr("Discovering videos...");
         } else {
-            counter = tr(
-                "Candidates: %1   Checked: %2/%1   Verified: %3   Missing: %4   Corrupt: %5   Duplicates: %6   Conflicts: %7")
-                .arg(operation.total_items)
-                .arg(operation.current_index)
-                .arg(operation.scan.exact_parts)
-                .arg(operation.scan.missing_parts.size())
-                .arg(operation.scan.corrupt_parts.size())
-                .arg(operation.scan.duplicate_count)
-                .arg(operation.scan.conflict_count);
+            counter = operation.scan.expected_parts != 0
+                ? tr("%1 / %2 parts verified")
+                    .arg(operation.scan.exact_parts)
+                    .arg(operation.scan.expected_parts)
+                : tr("%1 videos checked; %2 verified")
+                    .arg(operation.current_index)
+                    .arg(operation.scan.exact_parts);
+            const uint64_t issueCount = operation.scan.missing_parts.size() +
+                operation.scan.corrupt_parts.size() +
+                operation.scan.conflict_count;
+            if (issueCount != 0)
+                counter += tr("   %1 need attention").arg(issueCount);
         }
     } else if (operation.total_items != 0) {
         counter = tr("Part/item %1 of %2   Completed: %3")
@@ -4841,13 +4998,36 @@ void DriveManagerUI::renderVideoSetActivity() {
     } else {
         counter = translatedWorkflowText(operation.primary_message);
     }
-    videoSetActivityCounter->setText(counter);
+    if (operation.operation_type == video_set_workflow::OperationType::Recover &&
+        operation.progress_is_determinate && operation.progress_total != 0)
+        counter = tr("%1 of %2 written")
+            .arg(QLocale().formattedDataSize(
+                static_cast<qint64>(operation.progress_current)))
+            .arg(QLocale().formattedDataSize(
+                static_cast<qint64>(operation.progress_total)));
+    else if (operation.operation_type == video_set_workflow::OperationType::Encode &&
+             totalParts != 0)
+        counter = tr("%1 / %2 videos complete")
+            .arg(completedParts).arg(totalParts);
+    else if (operation.operation_type == video_set_workflow::OperationType::Download &&
+             operation.progress_percent.has_value())
+        counter = tr("Current download: %1%").arg(
+            QString::number(*operation.progress_percent, 'f', 0));
+    videoSetActivityProgressLabel->setText(counter);
+    videoSetActivityProgressLabel->setAccessibleName(counter);
+    videoSetActivityProgress->setAccessibleName(title);
+    videoSetActivityProgress->setAccessibleDescription(counter);
+    videoSetActivityPartGrid->setAccessibleName(title);
+    videoSetActivityPartGrid->setAccessibleDescription(counter);
+    videoSetActivityCounter->clear();
     const QString fullItem = QString::fromStdString(
         operation.current_item_name);
+    const QString itemBaseName = QFileInfo(fullItem).fileName();
     videoSetActivityCurrentItem->setText(
         QFontMetrics(videoSetActivityCurrentItem->font()).elidedText(
-            fullItem, Qt::ElideMiddle, 360));
+            itemBaseName, Qt::ElideMiddle, 360));
     videoSetActivityCurrentItem->setToolTip(fullItem);
+    videoSetActivityCurrentItem->setAccessibleName(itemBaseName);
     const auto formatDuration = [](const double seconds) {
         const auto rounded = static_cast<qint64>((std::max)(0.0, seconds));
         return QString("%1:%2").arg(rounded / 60)

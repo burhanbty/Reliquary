@@ -62,6 +62,9 @@ class VidStoreXSignalRail;
 class VidStoreXStepper;
 class VidStoreXFlowIllustration;
 class VidStoreXOnboardingProgress;
+class VidStoreXBlockProgress;
+class VidStoreXPartGrid;
+class VidStoreXProcessingFlow;
 class QAction;
 
 class WorkerThread : public QThread {
@@ -554,6 +557,7 @@ private:
     QLabel *videoSetIntroLabel = nullptr;
     QLabel *videoSetValidationLabel = nullptr;
     QStackedWidget *videoSetAssistantStack = nullptr;
+    QScrollArea *videoSetAssistantScrollArea = nullptr;
     QVector<QLabel *> videoSetAssistantPageHeadings;
     QVector<QLabel *> videoSetAssistantPageSubtitles;
     VidStoreXStepper *videoSetStepIndicator = nullptr;
@@ -626,7 +630,11 @@ private:
     QLabel *videoSetActivityIcon = nullptr;
     QLabel *videoSetActivityTitle = nullptr;
     QLabel *videoSetActivityDescription = nullptr;
-    QProgressBar *videoSetActivityProgress = nullptr;
+    QLabel *videoSetActivitySourceSummary = nullptr;
+    VidStoreXProcessingFlow *videoSetActivityFlow = nullptr;
+    VidStoreXPartGrid *videoSetActivityPartGrid = nullptr;
+    QLabel *videoSetActivityProgressLabel = nullptr;
+    VidStoreXBlockProgress *videoSetActivityProgress = nullptr;
     QLabel *videoSetActivityCounter = nullptr;
     QLabel *videoSetActivityCurrentItem = nullptr;
     QLabel *videoSetActivityElapsed = nullptr;

@@ -10,6 +10,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QSet>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -176,6 +177,92 @@ TEST(UiVisualIdentity, OnboardingProgressUsesThreePaintedStates) {
         EXPECT_GE(unique_opaque_colors(image), 2);
         EXPECT_FALSE(progress.accessibleDescription().isEmpty());
     }
+}
+
+TEST(UiVisualIdentity, ProcessingPartGridUsesAdaptivePainterModes) {
+    VidStoreXPartGrid grid;
+    for (const auto &[count, expected] : {
+             std::pair{0, VidStoreXPartGrid::DisplayMode::Individual},
+             std::pair{1, VidStoreXPartGrid::DisplayMode::Individual},
+             std::pair{12, VidStoreXPartGrid::DisplayMode::Individual},
+             std::pair{13, VidStoreXPartGrid::DisplayMode::Compact},
+             std::pair{40, VidStoreXPartGrid::DisplayMode::Compact},
+             std::pair{41, VidStoreXPartGrid::DisplayMode::Aggregated},
+             std::pair{100, VidStoreXPartGrid::DisplayMode::Aggregated},
+             std::pair{500, VidStoreXPartGrid::DisplayMode::Aggregated}}) {
+        grid.setParts(QVector<VidStoreXPartState>(count,
+                                                  VidStoreXPartState::Pending));
+        EXPECT_EQ(grid.displayMode(), expected);
+        EXPECT_FALSE(render(grid, {640, 50}).isNull());
+        EXPECT_TRUE(grid.findChildren<QWidget *>().isEmpty());
+        EXPECT_TRUE(grid.findChildren<QTimer *>().isEmpty());
+    }
+}
+
+TEST(UiVisualIdentity, ProcessingPartGridRendersEverySemanticState) {
+    VidStoreXPartGrid grid;
+    grid.setParts({VidStoreXPartState::Pending, VidStoreXPartState::Active,
+                   VidStoreXPartState::Complete, VidStoreXPartState::Verified,
+                   VidStoreXPartState::Missing, VidStoreXPartState::Corrupt,
+                   VidStoreXPartState::Conflict, VidStoreXPartState::Failed,
+                   VidStoreXPartState::Cancelled});
+    const QImage image = render(grid, {640, 52});
+    EXPECT_GT(unique_opaque_colors(image), 5);
+    EXPECT_TRUE(grid.accessibleDescription().contains("need attention"));
+}
+
+TEST(UiVisualIdentity, BlockProgressSupportsHonestTerminalAndUnknownStates) {
+    VidStoreXBlockProgress progress;
+    for (const auto state : {VidStoreXBlockProgress::State::Determinate,
+                             VidStoreXBlockProgress::State::Indeterminate,
+                             VidStoreXBlockProgress::State::Success,
+                             VidStoreXBlockProgress::State::Error,
+                             VidStoreXBlockProgress::State::Paused}) {
+        progress.setState(state);
+        for (const quint64 value : {quint64{0}, quint64{1}, quint64{50},
+                                    quint64{99}, quint64{100}}) {
+            progress.setProgress(value, 100);
+            EXPECT_FALSE(render(progress, {500, 20}).isNull());
+        }
+    }
+    progress.setState(VidStoreXBlockProgress::State::Indeterminate);
+    progress.setProgress(0, 0);
+    EXPECT_TRUE(progress.findChildren<QTimer *>().isEmpty());
+    EXPECT_FALSE(progress.accessibleDescription().isEmpty());
+}
+
+TEST(UiVisualIdentity, LiveDataPathCoversCreateDownloadScanRecoverAndVerify) {
+    VidStoreXProcessingFlow flow;
+    const QVector<VidStoreXPartState> parts{
+        VidStoreXPartState::Verified, VidStoreXPartState::Active,
+        VidStoreXPartState::Pending, VidStoreXPartState::Missing};
+    flow.setParts(parts);
+    for (const bool dark : {false, true}) {
+        QPalette palette;
+        palette.setColor(QPalette::Window,
+                         dark ? QColor("#20201E") : QColor("#F4F1EB"));
+        palette.setColor(QPalette::Base,
+                         dark ? QColor("#181816") : QColor("#FFFDF8"));
+        palette.setColor(QPalette::WindowText,
+                         dark ? QColor("#F1EEE7") : QColor("#24211D"));
+        flow.setPalette(palette);
+        for (const auto mode : {VidStoreXProcessingFlow::Mode::Create,
+                                VidStoreXProcessingFlow::Mode::Download,
+                                VidStoreXProcessingFlow::Mode::Scan,
+                                VidStoreXProcessingFlow::Mode::Recover,
+                                VidStoreXProcessingFlow::Mode::Verify}) {
+            flow.setMode(mode);
+            flow.setFileProgress(50, 100,
+                mode == VidStoreXProcessingFlow::Mode::Recover);
+            for (const QSize size : {QSize(420, 78), QSize(620, 92),
+                                     QSize(930, 138)}) {
+                const QImage image = render(flow, size);
+                EXPECT_GT(unique_opaque_colors(image), 4);
+            }
+        }
+    }
+    EXPECT_TRUE(flow.findChildren<QTimer *>().isEmpty());
+    EXPECT_EQ(flow.mode(), VidStoreXProcessingFlow::Mode::Verify);
 }
 
 TEST(UiVisualIdentity, RecentEntryLayoutKeepsTextAndStatusSeparate) {

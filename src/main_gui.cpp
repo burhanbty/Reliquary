@@ -46,6 +46,7 @@
 
 #include "drive_manager_ui.h"
 #include "ui_theme.h"
+#include "visual_components.h"
 #include "youtube_auth.h"
 #include "youtube_sync_state.h"
 
@@ -696,8 +697,17 @@ int main(int argc, char *argv[]) {
             "instantPlaylistRecoveryStatus");
         auto *success = window.findChild<QLabel *>(
             "videoSetAssistantExactSuccess");
+        auto *activityPanel = window.findChild<QFrame *>(
+            "videoSetActivityPanel");
+        auto *activityTitle = window.findChild<QLabel *>(
+            "videoSetActivityTitle");
+        auto *activityDescription = window.findChild<QLabel *>(
+            "videoSetActivityDescription");
+        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
+            window.findChild<QWidget *>("videoSetLiveDataPath"));
         if (!recoverNavigation || !playlist || !output || !start ||
-            !status || !success) {
+            !status || !success || !activityPanel || !activityTitle ||
+            !activityDescription || !activityFlow) {
             qCritical() << "Instant Recovery widgets were not found";
             return 81;
         }
@@ -725,12 +735,45 @@ int main(int argc, char *argv[]) {
         auto *timer = new QTimer(&window);
         timer->setInterval(100);
         auto *elapsed = new int(0);
+        auto *observedPhases = new QSet<QString>();
         QObject::connect(timer, &QTimer::timeout, &window,
-            [&app, &window, status, success, recovered, timer, elapsed]() {
+            [&app, &window, status, success, recovered, timer, elapsed,
+             observedPhases, activityPanel, activityTitle,
+             activityDescription, activityFlow, instantRecoverySmokeRoot]() {
             *elapsed += 100;
+            const auto savePhase = [&](const QString &phase,
+                                       const QString &filename) {
+                if (observedPhases->contains(phase)) return;
+                observedPhases->insert(phase);
+                window.grab().save(QDir(instantRecoverySmokeRoot)
+                    .filePath(filename));
+            };
+            if (activityPanel->property("observedDownload").toBool())
+                savePhase("download", "instant-download.png");
+            if (activityPanel->property("observedScan").toBool() &&
+                activityFlow->mode() == VidStoreXProcessingFlow::Mode::Scan) {
+                if (!activityDescription->text().contains(
+                        "not being rebuilt yet", Qt::CaseInsensitive)) {
+                    qCritical() << "Instant scan implied file rebuilding";
+                    app.exit(86); timer->stop(); return;
+                }
+                savePhase("scan", "instant-scan.png");
+            }
+            if (activityPanel->property("observedRecovery").toBool() &&
+                activityFlow->mode() == VidStoreXProcessingFlow::Mode::Recover)
+                savePhase("recover", "instant-recover.png");
+            if (activityPanel->property("observedFinalHash").toBool() &&
+                (activityFlow->mode() == VidStoreXProcessingFlow::Mode::Verify ||
+                 activityTitle->text().contains("verification",
+                                                Qt::CaseInsensitive)))
+                savePhase("verify", "instant-verify.png");
             if (success->isVisible() && success->text().contains(
                     "recovered exactly", Qt::CaseInsensitive)) {
-                if (!QFileInfo::exists(QDir(recovered).filePath("source.bin"))) {
+                if (!QFileInfo::exists(QDir(recovered).filePath("source.bin")) ||
+                    !observedPhases->contains("download") ||
+                    !observedPhases->contains("scan") ||
+                    !observedPhases->contains("recover") ||
+                    !activityPanel->property("observedFinalHash").toBool()) {
                     qCritical() << "Instant Recovery exact output is missing";
                     app.exit(82);
                 } else {
@@ -741,6 +784,7 @@ int main(int argc, char *argv[]) {
                 timer->stop();
                 window.close();
                 delete elapsed;
+                delete observedPhases;
             } else if (*elapsed > 120000) {
                 QFile diagnostics(QDir(recovered).filePath(
                     "instant-e2e-status.txt"));
@@ -751,6 +795,7 @@ int main(int argc, char *argv[]) {
                 window.close();
                 app.exit(83);
                 delete elapsed;
+                delete observedPhases;
             }
         });
         timer->start();
@@ -797,8 +842,12 @@ int main(int argc, char *argv[]) {
             "videoSetActivityPanel");
         auto *activityTitle = window.findChild<QLabel *>(
             "videoSetActivityTitle");
-        auto *activityProgress = window.findChild<QProgressBar *>(
-            "videoSetProgressBar");
+        auto *activityProgress = static_cast<VidStoreXBlockProgress *>(
+            window.findChild<QWidget *>("videoSetBlockProgress"));
+        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
+            window.findChild<QWidget *>("videoSetLiveDataPath"));
+        auto *activityParts = static_cast<VidStoreXPartGrid *>(
+            window.findChild<QWidget *>("videoSetPartGrid"));
         auto *technicalToggle = window.findChild<QToolButton *>(
             "videoSetTechnicalLogToggle");
         auto *technicalLog = window.findChild<QTextEdit *>(
@@ -847,6 +896,7 @@ int main(int argc, char *argv[]) {
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
             !activityPanel || !activityTitle || !activityProgress ||
+            !activityFlow || !activityParts ||
             !technicalToggle || !technicalLog || !homeNavigation ||
             !settingsNavigation || !language || !settingsLanguage ||
             !settingsPage || !advancedNavigation || !trustLabel ||
@@ -1158,8 +1208,14 @@ int main(int argc, char *argv[]) {
             "videoSetActivityTitle");
         auto *activityDescription = window.findChild<QLabel *>(
             "videoSetActivityDescription");
-        auto *activityProgress = window.findChild<QProgressBar *>(
-            "videoSetProgressBar");
+        auto *activityProgress = static_cast<VidStoreXBlockProgress *>(
+            window.findChild<QWidget *>("videoSetBlockProgress"));
+        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
+            window.findChild<QWidget *>("videoSetLiveDataPath"));
+        auto *activityParts = static_cast<VidStoreXPartGrid *>(
+            window.findChild<QWidget *>("videoSetPartGrid"));
+        auto *activitySource = window.findChild<QLabel *>(
+            "videoSetProcessingSummary");
         auto *language = window.findChild<QComboBox *>(
             "uiLanguageCombo");
         auto *homeNavigation = window.findChild<QPushButton *>(
@@ -1209,7 +1265,8 @@ int main(int argc, char *argv[]) {
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
             !success || !recent || !activityPanel || !activityTitle ||
-            !activityDescription || !activityProgress || !language ||
+            !activityDescription || !activityProgress || !activityFlow ||
+            !activityParts || !activitySource || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
             !advancedNavigation || !homeHeading || !trustLabel ||
@@ -1485,6 +1542,17 @@ int main(int argc, char *argv[]) {
                 !state->testedActiveLanguageSwitch &&
                 stack->currentIndex() == 4 &&
                 !progressContinue->isEnabled()) {
+                if (activityPanel->isHidden() || activityFlow->isHidden() ||
+                    activityFlow->mode() != VidStoreXProcessingFlow::Mode::Create ||
+                    activitySource->text().contains(source,
+                        Qt::CaseInsensitive) ||
+                    activitySource->text().isEmpty() ||
+                    activityProgress->accessibleDescription().isEmpty()) {
+                    fail(71, "Create Live Data Path or consumer source summary is invalid");
+                    return;
+                }
+                window.grab().save(QDir(root).filePath(
+                    "e2e-create-processing-en.png"));
                 const QString savedInput = input->text();
                 const QString savedOutput = output->text();
                 language->setCurrentIndex(language->findData("tr"));
@@ -1512,14 +1580,18 @@ int main(int argc, char *argv[]) {
                         return;
                     }
                 }
-                if (activityProgress->maximum() == 0 &&
-                    activityProgress->minimum() != 0) {
-                    fail(46, "Scan progress range is invalid");
+                if (activityFlow->mode() !=
+                        VidStoreXProcessingFlow::Mode::Scan ||
+                    activityProgress->state() ==
+                        VidStoreXBlockProgress::State::Success &&
+                    !recover->isEnabled()) {
+                    fail(46, "Scan processing visualization state is invalid");
                     return;
                 }
             }
             if (state->stage == 5 && !activityPanel->isHidden() &&
-                activityTitle->text() == "Recovering the original file")
+                (activityTitle->text() == "Your file is being rebuilt" ||
+                 activityTitle->text() == "Final verification is in progress"))
                 state->sawRecovery = true;
             if (state->stage == 4 && recover->isEnabled()) {
                 if (!state->sawScan) {
@@ -1637,8 +1709,8 @@ int main(int argc, char *argv[]) {
                     brandSubtitle->text() != QString::fromUtf8(
                         "DOSYA → VİDEO → DOSYA · DİJİTAL ARŞİV") ||
                     create->text() != QString::fromUtf8("Dosya Seç") ||
-                    !activityTitle->text().contains(
-                        QString::fromUtf8("Orijinal dosya")) ||
+                    activityTitle->text() != QCoreApplication::translate(
+                        "DriveManagerUI", "Your file is being rebuilt") ||
                     success->text() != QString::fromUtf8(
                         "Dosyanız birebir kurtarıldı.")) {
                     fail(52, QString(
@@ -1694,6 +1766,20 @@ int main(int argc, char *argv[]) {
                     fail(43, "Recover remained enabled with a missing part");
                     return;
                 }
+                if (!activityParts->parts().contains(
+                        VidStoreXPartState::Missing) ||
+                    activityFlow->mode() !=
+                        VidStoreXProcessingFlow::Mode::Scan ||
+                    !window.grab().save(QDir(root).filePath(
+                        "e2e-missing-part-tr.png"))) {
+                    fail(72, QString(
+                        "Missing part was not represented in the processing grid "
+                        "(parts=%1 mode=%2 summary=%3)")
+                        .arg(activityParts->parts().size())
+                        .arg(static_cast<int>(activityFlow->mode()))
+                        .arg(scanSummary->text()));
+                    return;
+                }
                 if (state->sourceVideoFiles.isEmpty() ||
                     !QFile::copy(state->sourceVideoFiles.front(),
                                  state->returnedFiles.front())) {
@@ -1720,6 +1806,13 @@ int main(int argc, char *argv[]) {
                      Qt::CaseInsensitive))) {
                 if (recover->isEnabled()) {
                     fail(51, "Recover remained enabled with a corrupt part");
+                    return;
+                }
+                if (!activityParts->parts().contains(
+                        VidStoreXPartState::Corrupt) ||
+                    !window.grab().save(QDir(root).filePath(
+                        "e2e-corrupt-part-tr.png"))) {
+                    fail(73, "Corrupt part was not represented in the processing grid");
                     return;
                 }
                 if (QSettings().value("ui/language").toString() != "tr") {
