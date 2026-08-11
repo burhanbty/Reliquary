@@ -196,6 +196,12 @@ bool OperationProgressModel::apply(const OperationEvent &event,
         progress_.operation_type = event.operation_type;
     progress_.phase = event.phase;
     progress_.state = event.state;
+    if (event.state == OperationState::Completed ||
+        event.state == OperationState::Failed ||
+        event.state == OperationState::Cancelled) {
+        if (progress_.finished_at_ms == 0)
+            progress_.finished_at_ms = now_ms;
+    }
     if (!event.primary_message.empty())
         progress_.primary_message = event.primary_message;
     if (!event.secondary_message.empty())
@@ -241,7 +247,9 @@ bool OperationProgressModel::apply(const OperationEvent &event,
 }
 
 bool OperationProgressModel::tick(const int64_t now_ms) {
-    if (progress_.state == OperationState::Idle) return false;
+    if (progress_.state != OperationState::Running &&
+        progress_.state != OperationState::Cancelling)
+        return false;
     refresh_derived(now_ms);
     return true;
 }
@@ -266,6 +274,8 @@ bool OperationProgressModel::complete(const uint64_t operation_id,
         return false;
     progress_.state = OperationState::Completed;
     progress_.phase = OperationPhase::Completed;
+    if (progress_.finished_at_ms == 0)
+        progress_.finished_at_ms = now_ms;
     if (!message.empty()) progress_.primary_message = std::move(message);
     progress_.can_cancel = false;
     progress_.can_continue = true;
@@ -282,6 +292,8 @@ bool OperationProgressModel::cancel(const uint64_t operation_id,
         return false;
     progress_.state = OperationState::Cancelled;
     progress_.phase = OperationPhase::Cancelled;
+    if (progress_.finished_at_ms == 0)
+        progress_.finished_at_ms = now_ms;
     progress_.primary_message = message.empty()
         ? "Operation cancelled. You can continue later."
         : std::move(message);
@@ -302,6 +314,8 @@ bool OperationProgressModel::fail(const uint64_t operation_id,
         return false;
     progress_.state = OperationState::Failed;
     progress_.phase = OperationPhase::Failed;
+    if (progress_.finished_at_ms == 0)
+        progress_.finished_at_ms = now_ms;
     progress_.primary_message = std::move(message);
     progress_.suggested_action = std::move(suggested_action);
     progress_.backend_exit_code = exit_code;
@@ -319,15 +333,21 @@ void OperationProgressModel::reset() {
 }
 
 void OperationProgressModel::refresh_derived(const int64_t now_ms) {
-    if (progress_.started_at_ms > 0 && now_ms >= progress_.started_at_ms)
+    const int64_t elapsed_at_ms = progress_.finished_at_ms > 0
+        ? progress_.finished_at_ms : now_ms;
+    if (progress_.started_at_ms > 0 &&
+        elapsed_at_ms >= progress_.started_at_ms)
         progress_.elapsed_seconds =
-            static_cast<double>(now_ms - progress_.started_at_ms) / 1000.0;
+            static_cast<double>(elapsed_at_ms - progress_.started_at_ms) /
+            1000.0;
     progress_.is_busy = progress_.state == OperationState::Running ||
         progress_.state == OperationState::Cancelling;
     progress_.can_cancel = progress_.state == OperationState::Running;
     progress_.taking_longer_than_usual = progress_.is_busy &&
         progress_.last_progress_at_ms > 0 &&
         now_ms - progress_.last_progress_at_ms >= 30000;
+    if (!progress_.is_busy)
+        progress_.estimated_remaining_seconds.reset();
 
     if (progress_.progress_is_determinate &&
         progress_.progress_total != 0) {

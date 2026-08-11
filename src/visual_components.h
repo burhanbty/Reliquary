@@ -5,6 +5,9 @@
 #include <QWidget>
 #include <QStringList>
 
+class QBoxLayout;
+class QResizeEvent;
+
 enum class VidStoreXPartState {
     Pending,
     Active,
@@ -175,4 +178,21 @@ private:
     QStringList steps_;
     int active_ = 0;
     int error_ = -1;
+};
+
+class VidStoreXResponsiveColumns final : public QWidget {
+public:
+    explicit VidStoreXResponsiveColumns(QWidget *parent = nullptr);
+    void addWidget(QWidget *widget, int stretch = 1);
+    void setBreakpoint(int logicalPixels);
+    [[nodiscard]] bool isStacked() const noexcept { return stacked_; }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
+private:
+    void updateDirection(int availableWidth);
+    QBoxLayout *layout_ = nullptr;
+    int breakpoint_ = 1040;
+    bool stacked_ = true;
 };

@@ -278,6 +278,42 @@ TEST(VideoSetWorkflow, OperationProgressWatchdogCancelAndTerminalStatesAreSafe) 
     EXPECT_FALSE(model.apply(OperationEvent{.operation_id = id}, 35000));
 }
 
+TEST(VideoSetWorkflow, OperationDurationsFreezeAndRetriesStartFromZero) {
+    using namespace video_set_workflow;
+    OperationProgressModel model;
+
+    const auto plan = model.begin(OperationType::Plan,
+        OperationPhase::HashingSource, 1000, "Planning");
+    EXPECT_TRUE(model.tick(11000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 10.0);
+    EXPECT_TRUE(model.complete(plan, 13000, "Plan ready"));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 12.0);
+    EXPECT_EQ(model.view().finished_at_ms, 13000);
+    EXPECT_FALSE(model.tick(101000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 12.0);
+
+    const auto encode = model.begin(OperationType::Encode,
+        OperationPhase::Preparing, 101000, "Encoding");
+    EXPECT_NE(encode, plan);
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 0.0);
+    EXPECT_EQ(model.view().finished_at_ms, 0);
+    EXPECT_TRUE(model.tick(106000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 5.0);
+    EXPECT_TRUE(model.fail(encode, 107000, 5, "failed"));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 6.0);
+    EXPECT_FALSE(model.tick(200000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 6.0);
+
+    const auto retry = model.begin(OperationType::Encode,
+        OperationPhase::Preparing, 200000, "Retrying");
+    EXPECT_GT(retry, encode);
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 0.0);
+    EXPECT_TRUE(model.cancel(retry, 203000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 3.0);
+    EXPECT_FALSE(model.tick(300000));
+    EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 3.0);
+}
+
 TEST(VideoSetWorkflow, StructuredProgressParsingIsSafeAndForwardCompatible) {
     using namespace video_set_workflow;
     const auto parsed = parse_progress_jsonl(

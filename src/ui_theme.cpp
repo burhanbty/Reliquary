@@ -102,8 +102,9 @@ QString applicationStyleSheet(const QPalette &palette) {
         QGroupBox[vsxRole="actionCard"]::title,
         QGroupBox[vsxRole="section"]::title,
         QGroupBox[vsxRole="profileCard"]::title {
-            subcontrol-origin: margin; left: 16px; padding: 0 4px;
+            subcontrol-origin: margin; left: 16px; padding: 0 4px; color: %5;
         }
+        QGroupBox[vsxRole="profileCard"] QRadioButton { color: %5; }
         QGroupBox[vsxRole="profileCard"][selected="true"] {
             background: %4; border: 2px solid %8;
         }

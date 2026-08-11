@@ -194,6 +194,7 @@ struct OperationProgress {
     bool is_busy = false;
     bool taking_longer_than_usual = false;
     int64_t started_at_ms = 0;
+    int64_t finished_at_ms = 0;
     int64_t last_progress_at_ms = 0;
     std::string technical_detail;
     int backend_exit_code = 0;

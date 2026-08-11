@@ -4,8 +4,11 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QBoxLayout>
+#include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QResizeEvent>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -298,14 +301,17 @@ void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
                            : Qt::AlignCenter,
                    label);
     };
-    const QString leftLabel = reverse ? QStringLiteral("VIDEOS")
-                                      : QStringLiteral("FILE");
+    const auto translatedLabel = [](const char *source) {
+        return QCoreApplication::translate("DriveManagerUI", source);
+    };
+    const QString leftLabel = reverse ? translatedLabel("VIDEOS")
+                                      : translatedLabel("FILE");
     const QString midLabel = mode_ == Mode::Scan
-        ? QStringLiteral("CHECKED PARTS")
-        : reverse ? QStringLiteral("VERIFIED PARTS")
-                  : QStringLiteral("PARTS");
-    const QString rightLabel = reverse ? QStringLiteral("ORIGINAL FILE")
-                                       : QStringLiteral("VIDEOS");
+        ? translatedLabel("CHECKED PARTS")
+        : reverse ? translatedLabel("VERIFIED PARTS")
+                  : translatedLabel("PARTS");
+    const QString rightLabel = reverse ? translatedLabel("ORIGINAL FILE")
+                                       : translatedLabel("VIDEOS");
     box(left, leftLabel, false);
     box(middle, midLabel, false, true);
     box(right, rightLabel, reverse);
@@ -725,4 +731,42 @@ void VidStoreXStepper::paintEvent(QPaintEvent *) {
                    p.fontMetrics().elidedText(steps_[i], Qt::ElideRight,
                                               segment - 8));
     }
+}
+
+VidStoreXResponsiveColumns::VidStoreXResponsiveColumns(QWidget *parent)
+    : QWidget(parent) {
+    setObjectName(QStringLiteral("advancedResponsiveColumns"));
+    layout_ = new QBoxLayout(QBoxLayout::TopToBottom, this);
+    layout_->setContentsMargins(0, 0, 0, 0);
+    layout_->setSpacing(vidstorex_ui::Spacing::Md);
+    setProperty("layoutMode", QStringLiteral("stacked"));
+}
+
+void VidStoreXResponsiveColumns::addWidget(QWidget *widget,
+                                           const int stretch) {
+    layout_->addWidget(widget, stretch);
+}
+
+void VidStoreXResponsiveColumns::setBreakpoint(const int logicalPixels) {
+    breakpoint_ = qMax(480, logicalPixels);
+    updateDirection(width());
+}
+
+void VidStoreXResponsiveColumns::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    updateDirection(event->size().width());
+}
+
+void VidStoreXResponsiveColumns::updateDirection(const int availableWidth) {
+    const bool shouldStack = availableWidth < breakpoint_;
+    if (shouldStack == stacked_ &&
+        layout_->direction() == (shouldStack
+            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight))
+        return;
+    stacked_ = shouldStack;
+    layout_->setDirection(stacked_
+        ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+    setProperty("layoutMode", stacked_
+        ? QStringLiteral("stacked") : QStringLiteral("columns"));
+    updateGeometry();
 }

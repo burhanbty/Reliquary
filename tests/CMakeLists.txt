@@ -103,6 +103,8 @@ if (TARGET media_storage_gui)
             "${CMAKE_SOURCE_DIR}/src/ui_theme.h"
             "${CMAKE_SOURCE_DIR}/src/visual_components.cpp"
             "${CMAKE_SOURCE_DIR}/src/visual_components.h"
+            "${CMAKE_SOURCE_DIR}/src/app_branding.cpp"
+            "${CMAKE_SOURCE_DIR}/src/app_branding.h"
     )
     target_include_directories(media_storage_ui_visual_identity_tests PRIVATE
             "${CMAKE_SOURCE_DIR}/src")

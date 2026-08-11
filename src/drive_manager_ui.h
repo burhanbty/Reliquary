@@ -326,6 +326,7 @@ private:
     void showVideoSetRecover();
 
     void updateProfileCardVisuals();
+    void updateVideoSetPlanSummaryText();
 
     void updateVideoSetAssistant();
 
@@ -483,6 +484,10 @@ private:
     QComboBox *languageCombo = nullptr;
     QComboBox *settingsLanguageCombo = nullptr;
     QWidget *settingsPage = nullptr;
+    QWidget *advancedLandingPage = nullptr;
+    QWidget *classicToolsPage = nullptr;
+    QWidget *testLabPage = nullptr;
+    QWidget *capacityLabPage = nullptr;
     QWidget *youtubeSyncPage = nullptr;
     QWidget *onboardingPage = nullptr;
     QStackedWidget *onboardingStack = nullptr;
@@ -496,6 +501,12 @@ private:
     QPushButton *onboardingNextButton = nullptr;
     QPushButton *settingsShowOnboardingButton = nullptr;
     QLabel *settingsOnboardingDescription = nullptr;
+    QLabel *settingsAboutHeading = nullptr;
+    QLabel *settingsAboutVersion = nullptr;
+    QLabel *settingsAboutAuthor = nullptr;
+    QPushButton *settingsLinkedInButton = nullptr;
+    QLabel *onboardingAuthorLabel = nullptr;
+    QPushButton *onboardingLinkedInButton = nullptr;
     QAction *gettingStartedAction = nullptr;
     QLabel *settingsHeadingLabel = nullptr;
     QLabel *settingsDescriptionLabel = nullptr;
@@ -625,6 +636,7 @@ private:
     QLabel *videoSetHighCapacityDescription = nullptr;
     QLabel *videoSetPlanSummaryLabel = nullptr;
     QLabel *videoSetPlanMetricsLabel = nullptr;
+    QLabel *videoSetPlanSafetyLabel = nullptr;
     QToolButton *videoSetPartDetailsButton = nullptr;
     QTableWidget *videoSetAssistantPlanTable = nullptr;
     QTableWidget *videoSetPlanTable = nullptr;

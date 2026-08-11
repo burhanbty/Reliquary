@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "drive_manager_ui.h"
+#include "app_branding.h"
 #include "instant_recovery.h"
 #include "youtube_auth.h"
 #include "youtube_sync_controller.h"
@@ -59,6 +60,7 @@
 #include <QUrl>
 #include <QRegularExpression>
 #include <QResizeEvent>
+#include <QScrollBar>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QCloseEvent>
@@ -86,7 +88,44 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI", "Advanced / YouTube Test Lab"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Advanced / Capacity Lab"),
     QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Advanced / Classic Video Set Tools"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Advanced Tools"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Classic Video Set Tools"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "YouTube Sync"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Experimental"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Advanced / Experimental / YouTube Sync"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal VidStoreX use. Most users should upload Video Set videos manually and use the playlist link for recovery."),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Open"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Technical tools and experiments are kept separate from the normal Create and Recover workflow."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Manual encoding, planning and recovery controls for expert workflows."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Generate, analyze and report controlled YouTube roundtrip experiments."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Explore geometry, modulation, repair and returned-video evidence."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Optional OAuth-assisted upload and verification workflow."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Low-level tools for creating, inspecting and recovering Video Sets."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
         "Technical tools, experiments and low-level controls."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "VidStoreX is reading the source and calculating real part capacity."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Reading and hashing the source file"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Video Set plan is ready"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Plan completed"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Review the estimate, then create the videos."),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "FILE"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "PARTS"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "VIDEOS"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "CHECKED PARTS"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "VERIFIED PARTS"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "ORIGINAL FILE"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Open the videos folder."),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Upload every video as Unlisted."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
@@ -96,7 +135,54 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "VidStoreX never signs in and never uploads automatically."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "VERIFIED BLOCKS → FULL-FILE SHA-256 → EXACT OUTPUT")};
+        "VERIFIED BLOCKS → FULL-FILE SHA-256 → EXACT OUTPUT"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Turn your file into videos"),
+    QT_TRANSLATE_NOOP("DriveManagerUI", "Store the videos"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Paste the playlist. Get your file back."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Choose a file and let VidStoreX turn it into a resilient Video Set."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Upload the videos created by VidStoreX and place them in a single YouTube playlist."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Large files can be split across multiple videos automatically."),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Upload the videos\nUse Unlisted when possible\nWait for 1080p processing\nPlace all parts in one playlist"),
+    QT_TRANSLATE_NOOP("DriveManagerUI",
+        "Recovery is marked successful only after the reconstructed file is verified.")};
+
+QScrollArea *advancedScrollPage(QWidget *content, const QString &name) {
+    auto *scroll = new QScrollArea();
+    scroll->setObjectName(name);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(content);
+    return scroll;
+}
+
+void configureAdvancedControl(QWidget *widget) {
+    if (!widget) return;
+    widget->setProperty("advancedControl", true);
+    widget->setMinimumHeight((std::max)(34,
+        widget->fontMetrics().height() + 14));
+    if (auto *button = qobject_cast<QAbstractButton *>(widget))
+        button->setMinimumWidth(button->sizeHint().width());
+}
+
+void configureWideTable(QTableWidget *table, const int minimumHeight) {
+    if (!table) return;
+    table->setMinimumHeight(minimumHeight);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    table->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    table->horizontalHeader()->setSectionsMovable(false);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    table->horizontalHeader()->setMinimumSectionSize(64);
+    table->verticalHeader()->setVisible(false);
+}
 
 } // namespace
 
@@ -1109,10 +1195,53 @@ void DriveManagerUI::setupUI() {
 
     setupVideoSetAssistant(videoSetEncodeGroup, videoSetRecoveryGroup);
 
-    auto *testLabPage = new QWidget();
-    testLabPage->setObjectName("testLabPage");
-    auto *testLabLayout = new QVBoxLayout(testLabPage);
+    if (auto *assistantRoot = qobject_cast<QVBoxLayout *>(
+            videoSetPage->layout()))
+        assistantRoot->removeWidget(videoSetClassicToolsGroup);
+    auto *classicContent = new QWidget();
+    classicContent->setObjectName("classicToolsContent");
+    auto *classicPageLayout = new QVBoxLayout(classicContent);
+    classicPageLayout->setContentsMargins(24, 20, 24, 24);
+    classicPageLayout->setSpacing(14);
+    auto *classicHeading = new QLabel("Advanced / Classic Video Set Tools");
+    classicHeading->setObjectName("classicToolsPageHeading");
+    classicHeading->setProperty("pageTitle", true);
+    classicHeading->setProperty("i18nSource",
+                                "Advanced / Classic Video Set Tools");
+    auto *classicDescription = new QLabel(
+        "Low-level tools for creating, inspecting and recovering Video Sets.");
+    classicDescription->setObjectName("classicToolsPageDescription");
+    classicDescription->setProperty("muted", true);
+    classicDescription->setProperty("i18nSource",
+        "Low-level tools for creating, inspecting and recovering Video Sets.");
+    classicDescription->setWordWrap(true);
+    classicPageLayout->addWidget(classicHeading);
+    classicPageLayout->addWidget(classicDescription);
+    videoSetClassicToolsGroup->setCheckable(false);
+    videoSetClassicToolsGroup->setTitle(QStringLiteral("Classic Video Set Tools"));
+    videoSetClassicToolsGroup->setProperty("vsxRole", "section");
+    videoSetClassicToolsGroup->setVisible(true);
+    videoSetPlanTable->setVisible(true);
+    videoSetProgress->setVisible(true);
+    videoSetEncodeGroup->setVisible(true);
+    videoSetRecoveryGroup->setVisible(true);
+    videoSetPlanTable->setObjectName("classicVideoSetPlanTable");
+    configureWideTable(videoSetPlanTable, 190);
+    videoSetPlanTable->horizontalHeader()->setSectionResizeMode(
+        0, QHeaderView::ResizeToContents);
+    videoSetPlanTable->horizontalHeader()->setSectionResizeMode(
+        5, QHeaderView::Stretch);
+    classicPageLayout->addWidget(videoSetClassicToolsGroup);
+    classicPageLayout->addStretch();
+    classicToolsPage = advancedScrollPage(
+        classicContent, QStringLiteral("classicToolsPage"));
+    mainTabs->addTab(classicToolsPage, "Classic Video Set Tools");
+
+    auto *testLabContent = new QWidget();
+    testLabContent->setObjectName("testLabContent");
+    auto *testLabLayout = new QVBoxLayout(testLabContent);
     testLabLayout->setContentsMargins(24, 20, 24, 24);
+    testLabLayout->setSpacing(14);
     auto *testLabHeading = new QLabel("Advanced / YouTube Test Lab");
     testLabHeading->setObjectName("testLabPageHeading");
     testLabHeading->setProperty("pageTitle", true);
@@ -1140,6 +1269,8 @@ void DriveManagerUI::setupUI() {
 
     auto *testLabGenerateGroup =
         new QGroupBox("A. Generate Test Suite");
+    testLabGenerateGroup->setObjectName("testLabGenerateSection");
+    testLabGenerateGroup->setProperty("vsxRole", "section");
     auto *testLabGenerateLayout =
         new QGridLayout(testLabGenerateGroup);
     testLabPresetCombo = new QComboBox();
@@ -1167,6 +1298,8 @@ void DriveManagerUI::setupUI() {
 
     auto *testLabRoundtripGroup =
         new QGroupBox("B. Local Simulation / C. Real YouTube Analysis");
+    testLabRoundtripGroup->setObjectName("testLabAnalysisSection");
+    testLabRoundtripGroup->setProperty("vsxRole", "section");
     auto *testLabRoundtripLayout =
         new QGridLayout(testLabRoundtripGroup);
     testLabManifestEdit = new QLineEdit();
@@ -1254,7 +1387,9 @@ void DriveManagerUI::setupUI() {
         "Size", "Status", "Duplicate", "User mapping"});
     testLabBatchPreview->horizontalHeader()->setSectionResizeMode(
         QHeaderView::ResizeToContents);
-    testLabBatchPreview->horizontalHeader()->setStretchLastSection(true);
+    configureWideTable(testLabBatchPreview, 190);
+    testLabBatchPreview->horizontalHeader()->setSectionResizeMode(
+        7, QHeaderView::Stretch);
     testLabLayout->addWidget(new QLabel("<b>Batch mapping preview</b>"));
     testLabLayout->addWidget(testLabBatchPreview);
 
@@ -1275,13 +1410,29 @@ void DriveManagerUI::setupUI() {
         "Upload", "Returned", "Packets", "SHA-256 / Status"});
     testLabResults->horizontalHeader()->setSectionResizeMode(
         QHeaderView::ResizeToContents);
-    testLabResults->horizontalHeader()->setStretchLastSection(true);
-    testLabLayout->addWidget(testLabResults, 1);
+    configureWideTable(testLabResults, 240);
+    testLabResults->horizontalHeader()->setSectionResizeMode(
+        14, QHeaderView::Stretch);
+    testLabLayout->addWidget(testLabResults);
+    const QList<QWidget *> testLabControls{
+        testLabPresetCombo, testLabOutputEdit, testLabOutputBrowse,
+        testLabGenerateButton, testLabResumeButton, testLabManifestEdit,
+        testLabManifestBrowse, testLabSimulationCombo,
+        testLabSimulateButton, testLabVideoEdit, testLabVideoBrowse,
+        testLabCaseEdit, testLabFolderEdit, testLabFolderBrowse,
+        testLabMappingsEdit, testLabSessionLabelEdit,
+        testLabNewSessionButton, testLabRecordNewCheck,
+        testLabAnalyzeButton, testLabPreviewFolderButton,
+        testLabAnalyzeFolderButton, testLabDeduplicateButton,
+        testLabReportButton, testLabCancelButton};
+    for (auto *control : testLabControls) configureAdvancedControl(control);
+    testLabPage = advancedScrollPage(
+        testLabContent, QStringLiteral("testLabPage"));
     mainTabs->addTab(testLabPage, "YouTube Test Lab");
 
-    auto *capacityPage = new QWidget();
-    capacityPage->setObjectName("capacityLabPage");
-    auto *capacityLayout = new QVBoxLayout(capacityPage);
+    auto *capacityContent = new QWidget();
+    capacityContent->setObjectName("capacityLabContent");
+    auto *capacityLayout = new QVBoxLayout(capacityContent);
     capacityLayout->setContentsMargins(24, 20, 24, 24);
     auto *capacityHeading = new QLabel("Advanced / Capacity Lab");
     capacityHeading->setObjectName("capacityLabPageHeading");
@@ -1299,14 +1450,17 @@ void DriveManagerUI::setupUI() {
         "<b>YouTube Capacity Lab (experimental)</b><br>"
         "Searches 4x4/6x6/8x8 geometry, 1/2-bit modulation, signal "
         "strength and repair levels behind local lossless and H.264 "
-        "gates. These controls never change the production Resilient "
-        "profile. Shortlisted videos still require a manual real "
+        "gates. These controls never change the normal Create profile. "
+        "Shortlisted videos still require a manual real "
         "YouTube roundtrip before they can be considered proven.");
     capacityNotice->setWordWrap(true);
     capacityLayout->addWidget(capacityNotice);
     auto *capacityControls =
         new QGroupBox("Experiment controls");
-    auto *capacityGrid = new QGridLayout(capacityControls);
+    capacityControls->setObjectName("capacityExperimentSection");
+    capacityControls->setProperty("vsxRole", "section");
+    auto *capacityControlsLayout = new QVBoxLayout(capacityControls);
+    auto *capacityPaths = new QGridLayout();
     capacityPresetCombo = new QComboBox();
     capacityPresetCombo->addItems(
         {"Smoke", "Staged Sweep", "YouTube Boundary 1080p",
@@ -1361,43 +1515,68 @@ void DriveManagerUI::setupUI() {
     capacityResumeButton = new QPushButton("Resume");
     capacityCancelButton = new QPushButton("Cancel");
     capacityCancelButton->setEnabled(false);
-    capacityGrid->addWidget(new QLabel("Preset:"), 0, 0);
-    capacityGrid->addWidget(capacityPresetCombo, 0, 1);
-    capacityGrid->addWidget(new QLabel("Output:"), 0, 2);
-    capacityGrid->addWidget(capacityOutputEdit, 0, 3);
-    capacityGrid->addWidget(capacityOutputBrowse, 0, 4);
-    capacityGrid->addWidget(new QLabel("Manifest:"), 1, 0);
-    capacityGrid->addWidget(capacityManifestEdit, 1, 1, 1, 3);
-    capacityGrid->addWidget(capacityManifestBrowse, 1, 4);
-    capacityGrid->addWidget(new QLabel("Source Boundary Manifest:"), 2, 0);
-    capacityGrid->addWidget(capacitySourceManifestEdit, 2, 1, 1, 3);
-    capacityGrid->addWidget(capacitySourceBrowse, 2, 4);
-    capacityGrid->addWidget(new QLabel("Block sizes:"), 2, 0);
-    capacityGrid->addWidget(capacityBlocksEdit, 2, 1);
-    capacityGrid->addWidget(new QLabel("Bits/block:"), 2, 2);
-    capacityGrid->addWidget(capacityBitsEdit, 2, 3);
-    capacityGrid->addWidget(new QLabel("Signals:"), 3, 0);
-    capacityGrid->addWidget(capacitySignalsEdit, 3, 1);
-    capacityGrid->addWidget(new QLabel("Repair %:"), 3, 2);
-    capacityGrid->addWidget(capacityRepairsEdit, 3, 3);
-    capacityGrid->addWidget(new QLabel("Resolution:"), 4, 0);
-    capacityGrid->addWidget(capacityResolutionCombo, 4, 1);
-    capacityGrid->addWidget(new QLabel("Simulation:"), 4, 2);
-    capacityGrid->addWidget(capacitySimulationCombo, 4, 3);
-    capacityGrid->addWidget(new QLabel("Max cases:"), 5, 0);
-    capacityGrid->addWidget(capacityMaximumCasesSpin, 5, 1);
-    capacityGrid->addWidget(new QLabel("Max disk:"), 5, 2);
-    capacityGrid->addWidget(capacityMaximumDiskSpin, 5, 3);
-    capacityGrid->addWidget(new QLabel("Shortlist limit:"), 6, 0);
-    capacityGrid->addWidget(capacityShortlistSpin, 6, 1);
-    capacityGrid->addWidget(capacityEstimateOnlyCheck, 6, 2, 1, 2);
-    capacityGrid->addWidget(
-        capacityIncludeSimulationFailuresCheck, 7, 2, 1, 2);
-    capacityGrid->addWidget(capacityEstimateLabel, 8, 0, 1, 5);
-    capacityGrid->addWidget(capacityEstimateButton, 9, 0);
-    capacityGrid->addWidget(capacityStartButton, 9, 1);
-    capacityGrid->addWidget(capacityResumeButton, 9, 2);
-    capacityGrid->addWidget(capacityCancelButton, 9, 3);
+    capacityPaths->addWidget(new QLabel("Output:"), 0, 0);
+    capacityPaths->addWidget(capacityOutputEdit, 0, 1);
+    capacityPaths->addWidget(capacityOutputBrowse, 0, 2);
+    capacityPaths->addWidget(new QLabel("Manifest:"), 1, 0);
+    capacityPaths->addWidget(capacityManifestEdit, 1, 1);
+    capacityPaths->addWidget(capacityManifestBrowse, 1, 2);
+    capacityPaths->addWidget(new QLabel("Source Boundary Manifest:"), 2, 0);
+    capacityPaths->addWidget(capacitySourceManifestEdit, 2, 1);
+    capacityPaths->addWidget(capacitySourceBrowse, 2, 2);
+    capacityPaths->setColumnStretch(1, 1);
+    capacityControlsLayout->addLayout(capacityPaths);
+
+    auto *capacityColumns = new VidStoreXResponsiveColumns();
+    capacityColumns->setObjectName("capacityResponsiveColumns");
+    capacityColumns->setBreakpoint(1050);
+    auto *searchSpace = new QGroupBox("Search space");
+    searchSpace->setObjectName("capacitySearchSpaceSection");
+    searchSpace->setProperty("vsxRole", "section");
+    auto *searchGrid = new QGridLayout(searchSpace);
+    searchGrid->addWidget(new QLabel("Preset:"), 0, 0);
+    searchGrid->addWidget(capacityPresetCombo, 0, 1);
+    searchGrid->addWidget(new QLabel("Block sizes:"), 1, 0);
+    searchGrid->addWidget(capacityBlocksEdit, 1, 1);
+    searchGrid->addWidget(new QLabel("Signals:"), 2, 0);
+    searchGrid->addWidget(capacitySignalsEdit, 2, 1);
+    searchGrid->addWidget(new QLabel("Resolution:"), 3, 0);
+    searchGrid->addWidget(capacityResolutionCombo, 3, 1);
+    searchGrid->addWidget(new QLabel("Max cases:"), 4, 0);
+    searchGrid->addWidget(capacityMaximumCasesSpin, 4, 1);
+    searchGrid->addWidget(new QLabel("Shortlist limit:"), 5, 0);
+    searchGrid->addWidget(capacityShortlistSpin, 5, 1);
+    searchGrid->setColumnStretch(1, 1);
+
+    auto *simulation = new QGroupBox("Encoding and simulation");
+    simulation->setObjectName("capacitySimulationSection");
+    simulation->setProperty("vsxRole", "section");
+    auto *simulationGrid = new QGridLayout(simulation);
+    simulationGrid->addWidget(new QLabel("Bits/block:"), 0, 0);
+    simulationGrid->addWidget(capacityBitsEdit, 0, 1);
+    simulationGrid->addWidget(new QLabel("Repair %:"), 1, 0);
+    simulationGrid->addWidget(capacityRepairsEdit, 1, 1);
+    simulationGrid->addWidget(new QLabel("Simulation:"), 2, 0);
+    simulationGrid->addWidget(capacitySimulationCombo, 2, 1);
+    simulationGrid->addWidget(new QLabel("Max disk:"), 3, 0);
+    simulationGrid->addWidget(capacityMaximumDiskSpin, 3, 1);
+    simulationGrid->addWidget(capacityEstimateOnlyCheck, 4, 0, 1, 2);
+    simulationGrid->addWidget(
+        capacityIncludeSimulationFailuresCheck, 5, 0, 1, 2);
+    simulationGrid->setColumnStretch(1, 1);
+    capacityColumns->addWidget(searchSpace);
+    capacityColumns->addWidget(simulation);
+    capacityControlsLayout->addWidget(capacityColumns);
+    capacityControlsLayout->addWidget(capacityEstimateLabel);
+    auto *capacityButtons = new QHBoxLayout();
+    capacityButtons->addWidget(capacityEstimateButton);
+    capacityButtons->addWidget(capacityStartButton);
+    capacityButtons->addWidget(capacityResumeButton);
+    capacityButtons->addStretch();
+    capacityButtons->addWidget(capacityCancelButton);
+    capacityControlsLayout->addLayout(capacityButtons);
+    for (auto *control : capacityControls->findChildren<QWidget *>())
+        configureAdvancedControl(control);
     capacityLayout->addWidget(capacityControls);
 
     auto *capacityActions = new QGroupBox(
@@ -1421,12 +1600,17 @@ void DriveManagerUI::setupUI() {
     capacityActionsGrid->addWidget(
         capacityReturnedFolderEdit, 0, 1, 1, 3);
     capacityActionsGrid->addWidget(capacityReturnedBrowse, 0, 4);
-    capacityActionsGrid->addWidget(capacityShortlistButton, 1, 0);
+    capacityActionsGrid->setColumnStretch(1, 1);
+    capacityActionsGrid->addWidget(capacityShortlistButton, 1, 0, 1, 2);
     capacityActionsGrid->addWidget(
-        capacityAnalyzeFolderButton, 1, 1);
-    capacityActionsGrid->addWidget(capacityReportButton, 1, 2);
-    capacityActionsGrid->addWidget(capacityOpenFolderButton, 1, 3);
-    capacityActionsGrid->addWidget(capacityCopyDownloadButton, 1, 4);
+        capacityAnalyzeFolderButton, 1, 2, 1, 2);
+    capacityActionsGrid->addWidget(capacityReportButton, 1, 4);
+    capacityActionsGrid->addWidget(capacityOpenFolderButton, 2, 0, 1, 2);
+    capacityActionsGrid->addWidget(capacityCopyDownloadButton, 2, 2, 1, 3);
+    capacityActions->setObjectName("capacityReturnedAnalysisSection");
+    capacityActions->setProperty("vsxRole", "section");
+    for (auto *control : capacityActions->findChildren<QWidget *>())
+        configureAdvancedControl(control);
     capacityLayout->addWidget(capacityActions);
     capacityProgress = new QProgressBar();
     capacityProgress->setRange(0, 100);
@@ -1438,11 +1622,16 @@ void DriveManagerUI::setupUI() {
         "Resolution", "Useful KiB/s", "Gain", "Candidate",
         "Recovery", "Margin", "BER/SER", "SHA", "Pareto",
         "Local evidence", "Real YouTube", "Overall / Boundary"});
+    capacityResults->setObjectName("capacityResultsTable");
+    configureWideTable(capacityResults, 250);
+    for (const int column : {0, 5, 6, 7, 8, 9, 10, 13, 14, 18})
+        capacityResults->horizontalHeader()->setSectionResizeMode(
+            column, QHeaderView::ResizeToContents);
     capacityResults->horizontalHeader()->setSectionResizeMode(
-        QHeaderView::ResizeToContents);
-    capacityResults->horizontalHeader()->setStretchLastSection(true);
+        21, QHeaderView::Stretch);
     capacityLayout->addWidget(capacityResults, 1);
-    mainTabs->addTab(capacityPage, "Capacity Lab");
+    capacityLabPage = advancedScrollPage(capacityContent, "capacityLabPage");
+    mainTabs->addTab(capacityLabPage, "Capacity Lab");
 
     connect(capacityPresetCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -1908,6 +2097,30 @@ void DriveManagerUI::setupSettingsPage() {
     form->addWidget(advancedSection, 9, 0, 1, 3);
     form->addWidget(showAdvancedToolsCheckBox, 10, 0, 1, 3);
     layout->addWidget(card);
+
+    auto *aboutCard = new QFrame();
+    aboutCard->setObjectName("settingsAboutCard");
+    aboutCard->setProperty("vsxSurface", "raised");
+    auto *aboutLayout = new QGridLayout(aboutCard);
+    aboutLayout->setContentsMargins(20, 18, 20, 20);
+    aboutLayout->setColumnStretch(1, 1);
+    settingsAboutHeading = new QLabel();
+    settingsAboutHeading->setObjectName("settingsAboutHeading");
+    settingsAboutHeading->setProperty("sectionTitle", true);
+    settingsAboutVersion = new QLabel();
+    settingsAboutVersion->setObjectName("settingsAboutVersion");
+    settingsAboutAuthor = new QLabel();
+    settingsAboutAuthor->setObjectName("settingsAboutAuthor");
+    settingsLinkedInButton = new QPushButton();
+    settingsLinkedInButton->setObjectName("settingsLinkedInButton");
+    settingsLinkedInButton->setProperty(
+        "externalUrl", vidstorex::branding::linkedInUrl().toString());
+    settingsLinkedInButton->setProperty("vsxRole", "secondary");
+    aboutLayout->addWidget(settingsAboutHeading, 0, 0, 1, 2);
+    aboutLayout->addWidget(settingsAboutVersion, 1, 0, 1, 2);
+    aboutLayout->addWidget(settingsAboutAuthor, 2, 0);
+    aboutLayout->addWidget(settingsLinkedInButton, 2, 1, Qt::AlignRight);
+    layout->addWidget(aboutCard);
     layout->addStretch();
 
     auto *youtubeScroll = new QScrollArea();
@@ -2058,6 +2271,83 @@ void DriveManagerUI::setupSettingsPage() {
     mainTabs->addTab(youtubeSyncPage,
                      QStringLiteral("YouTube Sync (Experimental)"));
 
+    auto *advancedContent = new QWidget();
+    advancedContent->setObjectName("advancedLandingContent");
+    auto *advancedLayout = new QVBoxLayout(advancedContent);
+    advancedLayout->setContentsMargins(24, 20, 24, 24);
+    advancedLayout->setSpacing(14);
+    auto *advancedHeading = new QLabel("Advanced Tools");
+    advancedHeading->setObjectName("advancedLandingHeading");
+    advancedHeading->setProperty("pageTitle", true);
+    advancedHeading->setProperty("i18nSource", "Advanced Tools");
+    auto *advancedDescription = new QLabel(
+        "Technical tools, experiments and low-level controls.");
+    advancedDescription->setObjectName("advancedLandingDescription");
+    advancedDescription->setWordWrap(true);
+    advancedDescription->setProperty("muted", true);
+    advancedDescription->setProperty("i18nSource",
+        "Technical tools, experiments and low-level controls.");
+    advancedLayout->addWidget(advancedHeading);
+    advancedLayout->addWidget(advancedDescription);
+    auto *toolGrid = new QGridLayout();
+    toolGrid->setSpacing(14);
+    const auto addToolCard = [this, toolGrid](
+        const QString &objectPrefix, const QString &title,
+        const QString &description, QWidget *target, const int row,
+        const int column, const bool experimental = false) {
+        auto *frame = new QFrame();
+        frame->setObjectName(objectPrefix + "Card");
+        frame->setProperty("vsxSurface", "raised");
+        auto *cardLayout = new QVBoxLayout(frame);
+        cardLayout->setContentsMargins(18, 18, 18, 18);
+        auto *heading = new QLabel(title);
+        heading->setProperty("sectionTitle", true);
+        heading->setProperty("i18nSource", title);
+        auto *copy = new QLabel(description);
+        copy->setWordWrap(true);
+        copy->setProperty("muted", true);
+        copy->setProperty("i18nSource", description);
+        cardLayout->addWidget(heading);
+        if (experimental) {
+            auto *badge = new QLabel("Experimental");
+            badge->setProperty("vsxRole", "badge");
+            badge->setProperty("i18nSource", "Experimental");
+            cardLayout->addWidget(badge, 0, Qt::AlignLeft);
+        }
+        cardLayout->addWidget(copy);
+        cardLayout->addStretch();
+        auto *open = new QPushButton("Open");
+        open->setObjectName(objectPrefix + "Button");
+        open->setProperty("vsxRole", "primary");
+        open->setProperty("i18nSource", "Open");
+        cardLayout->addWidget(open, 0, Qt::AlignRight);
+        connect(open, &QPushButton::clicked, this, [this, target]() {
+            mainTabs->setCurrentWidget(target);
+            if (auto *scroll = qobject_cast<QScrollArea *>(target))
+                scroll->verticalScrollBar()->setValue(0);
+        });
+        toolGrid->addWidget(frame, row, column);
+    };
+    addToolCard("advancedClassic", "Classic Video Set Tools",
+        "Manual encoding, planning and recovery controls for expert workflows.",
+        classicToolsPage, 0, 0);
+    addToolCard("advancedTestLab", "YouTube Test Lab",
+        "Generate, analyze and report controlled YouTube roundtrip experiments.",
+        testLabPage, 0, 1);
+    addToolCard("advancedCapacityLab", "Capacity Lab",
+        "Explore geometry, modulation, repair and returned-video evidence.",
+        capacityLabPage, 1, 0);
+    addToolCard("advancedYouTubeSync", "YouTube Sync",
+        "Optional OAuth-assisted upload and verification workflow.",
+        youtubeSyncPage, 1, 1, true);
+    toolGrid->setColumnStretch(0, 1);
+    toolGrid->setColumnStretch(1, 1);
+    advancedLayout->addLayout(toolGrid);
+    advancedLayout->addStretch();
+    advancedLandingPage = advancedScrollPage(
+        advancedContent, "advancedLandingPage");
+    mainTabs->addTab(advancedLandingPage, QStringLiteral("Advanced"));
+
     connect(settingsLanguageCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](const int index) {
@@ -2072,6 +2362,11 @@ void DriveManagerUI::setupSettingsPage() {
     });
     connect(settingsShowOnboardingButton, &QPushButton::clicked,
             this, &DriveManagerUI::showOnboarding);
+    connect(settingsLinkedInButton, &QPushButton::clicked, this, [this]() {
+        if (!vidstorex::branding::openLinkedInProfile())
+            QMessageBox::warning(this, tr("Open link"),
+                tr("The LinkedIn profile could not be opened safely."));
+    });
     connect(settingsOutputEdit, &QLineEdit::textChanged,
             this, [this](const QString &folder) {
         QSettings().setValue("ui/defaultVideoSetOutputFolder", folder);
@@ -2326,6 +2621,19 @@ void DriveManagerUI::setupOnboardingPage() {
     navigation->addStretch();
     navigation->addWidget(onboardingNextButton);
     cardLayout->addLayout(navigation);
+    auto *authorRow = new QHBoxLayout();
+    onboardingAuthorLabel = new QLabel();
+    onboardingAuthorLabel->setObjectName("onboardingAuthorLabel");
+    onboardingAuthorLabel->setProperty("muted", true);
+    onboardingLinkedInButton = new QPushButton();
+    onboardingLinkedInButton->setObjectName("onboardingLinkedInButton");
+    onboardingLinkedInButton->setProperty("vsxRole", "ghost");
+    onboardingLinkedInButton->setProperty(
+        "externalUrl", vidstorex::branding::linkedInUrl().toString());
+    authorRow->addWidget(onboardingAuthorLabel);
+    authorRow->addStretch();
+    authorRow->addWidget(onboardingLinkedInButton);
+    cardLayout->addLayout(authorRow);
 
     centerRow->addWidget(card, 1);
     centerRow->addStretch(1);
@@ -2343,6 +2651,11 @@ void DriveManagerUI::setupOnboardingPage() {
             completeOnboarding();
         else
             setOnboardingPage(onboardingStack->currentIndex() + 1);
+    });
+    connect(onboardingLinkedInButton, &QPushButton::clicked, this, [this]() {
+        if (!vidstorex::branding::openLinkedInProfile())
+            QMessageBox::warning(this, tr("Open link"),
+                tr("The LinkedIn profile could not be opened safely."));
     });
     setOnboardingPage(0);
 }
@@ -2438,7 +2751,7 @@ void DriveManagerUI::setupApplicationNavigation() {
     recentNavigationButton->setObjectName("recentNavigationButton");
     advancedNavigationButton = new QToolButton();
     advancedNavigationButton->setObjectName("advancedNavigationButton");
-    advancedNavigationButton->setPopupMode(QToolButton::InstantPopup);
+    advancedNavigationButton->setPopupMode(QToolButton::MenuButtonPopup);
     settingsNavigationButton = new QPushButton();
     settingsNavigationButton->setObjectName("settingsNavigationButton");
     languageCombo = new QComboBox();
@@ -2458,8 +2771,10 @@ void DriveManagerUI::setupApplicationNavigation() {
         style()->standardIcon(QStyle::SP_FileDialogInfoView));
 
     auto *advancedMenu = new QMenu(advancedNavigationButton);
-    auto *storageAction = advancedMenu->addAction(QStringLiteral("Storage"));
-    storageAction->setObjectName("advancedStorageAction");
+    auto *advancedLandingAction = advancedMenu->addAction(
+        QStringLiteral("Advanced Tools"));
+    advancedLandingAction->setObjectName("advancedLandingAction");
+    advancedMenu->addSeparator();
     auto *testLabAction = advancedMenu->addAction(
         QStringLiteral("YouTube Test Lab"));
     testLabAction->setObjectName("advancedTestLabAction");
@@ -2526,20 +2841,36 @@ void DriveManagerUI::setupApplicationNavigation() {
             this, [this](const int index) {
         setUiLanguage(languageCombo->itemData(index).toString());
     });
-    connect(storageAction, &QAction::triggered,
-            this, [this]() { mainTabs->setCurrentIndex(0); });
-    connect(testLabAction, &QAction::triggered,
-            this, [this]() { mainTabs->setCurrentIndex(2); });
-    connect(capacityAction, &QAction::triggered,
-            this, [this]() { mainTabs->setCurrentIndex(3); });
-    connect(youtubeSyncAction, &QAction::triggered,
-            this, [this]() { mainTabs->setCurrentWidget(youtubeSyncPage); });
-    connect(classicAction, &QAction::triggered, this, [this]() {
-        mainTabs->setCurrentWidget(videoSetPage);
-        videoSetClassicToolsGroup->setVisible(true);
-        videoSetClassicToolsGroup->setChecked(true);
-        videoSetClassicToolsGroup->setFocus();
+    const auto showAdvancedPage = [this](QWidget *page) {
+        mainTabs->setCurrentWidget(page);
+        if (auto *scroll = qobject_cast<QScrollArea *>(page))
+            scroll->verticalScrollBar()->setValue(0);
         updateNavigationVisuals();
+    };
+    connect(advancedNavigationButton, &QToolButton::clicked,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(advancedLandingPage);
+    });
+    connect(advancedLandingAction, &QAction::triggered,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(advancedLandingPage);
+    });
+    connect(testLabAction, &QAction::triggered,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(testLabPage);
+    });
+    connect(capacityAction, &QAction::triggered,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(capacityLabPage);
+    });
+    connect(youtubeSyncAction, &QAction::triggered,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(youtubeSyncPage);
+    });
+    connect(classicAction, &QAction::triggered,
+            this, [this, showAdvancedPage]() {
+        showAdvancedPage(classicToolsPage);
+        videoSetClassicToolsGroup->setFocus();
     });
 
     advancedNavigationButton->setVisible(
@@ -2643,9 +2974,10 @@ void DriveManagerUI::updateNavigationVisuals() {
     selected(settingsNavigationButton,
              mainTabs->currentWidget() == settingsPage);
     selected(advancedNavigationButton,
-             mainTabs->currentIndex() == 0 ||
-             mainTabs->currentIndex() == 2 ||
-             mainTabs->currentIndex() == 3 ||
+             mainTabs->currentWidget() == advancedLandingPage ||
+             mainTabs->currentWidget() == classicToolsPage ||
+             mainTabs->currentWidget() == testLabPage ||
+             mainTabs->currentWidget() == capacityLabPage ||
              mainTabs->currentWidget() == youtubeSyncPage);
     for (auto *button : {homeNavigationButton, createNavigationButton,
                          recoverNavigationButton, recentNavigationButton,
@@ -2657,8 +2989,6 @@ void DriveManagerUI::updateNavigationVisuals() {
 void DriveManagerUI::showVideoSetHome() {
     mainTabs->setCurrentWidget(videoSetPage);
     videoSetAssistantStack->setCurrentIndex(0);
-    if (videoSetClassicToolsGroup)
-        videoSetClassicToolsGroup->setVisible(false);
     refreshRecentVideoSets();
     videoSetStepIndicator->setVisible(false);
     videoSetPrimaryMessage->setVisible(false);
@@ -2675,9 +3005,8 @@ void DriveManagerUI::showVideoSetCreate() {
     videoSetWorkflow.reset();
     videoSetWorkflow.choose_create();
     videoSetCreateCompletedAt = {};
-    if (videoSetClassicToolsGroup)
-        videoSetClassicToolsGroup->setVisible(false);
-    videoSetResilientRadio->setChecked(true);
+    videoSetHighCapacityRadio->setChecked(true);
+    videoSetWorkflow.select_profile("high-capacity", "538F2B009FAB");
     videoSetAssistantStack->setCurrentIndex(1);
     mainTabs->setCurrentWidget(videoSetPage);
     updateVideoSetAssistant();
@@ -2694,8 +3023,6 @@ void DriveManagerUI::showVideoSetRecover() {
     videoSetRecoveryCompletedAt = {};
     videoSetRecoveredProfileName.clear();
     videoSetRecoveryFromYouTube = false;
-    if (videoSetClassicToolsGroup)
-        videoSetClassicToolsGroup->setVisible(false);
     videoSetAssistantStack->setCurrentIndex(7);
     mainTabs->setCurrentWidget(videoSetPage);
     updateVideoSetAssistant();
@@ -2826,8 +3153,23 @@ void DriveManagerUI::retranslateUserInterface() {
     settingsShowOnboardingButton->setText(tr(
         "Show Getting Started Again"));
     showAdvancedToolsCheckBox->setText(tr("Show Advanced tools"));
+    settingsAboutHeading->setText(tr("About VidStoreX"));
+    settingsAboutVersion->setText(tr("Version %1").arg(
+        QString::fromLatin1(ms_version())));
+    settingsAboutAuthor->setText(tr("Created by %1 (%2)")
+        .arg(QString::fromUtf8(vidstorex::branding::kAuthorName),
+             QString::fromLatin1(vidstorex::branding::kAuthorAlias)));
+    settingsLinkedInButton->setText(tr("LinkedIn profile"));
+    settingsLinkedInButton->setAccessibleName(tr(
+        "Open Burhan Talha Yazıcı's LinkedIn profile"));
     onboardingSkipButton->setText(tr("Skip"));
     onboardingBackButton->setText(tr("Back"));
+    onboardingAuthorLabel->setText(tr("Created by %1 (%2)")
+        .arg(QString::fromUtf8(vidstorex::branding::kAuthorName),
+             QString::fromLatin1(vidstorex::branding::kAuthorAlias)));
+    onboardingLinkedInButton->setText(tr("LinkedIn"));
+    onboardingLinkedInButton->setAccessibleName(tr(
+        "Open Burhan Talha Yazıcı's LinkedIn profile"));
     onboardingSkipButton->setAccessibleDescription(tr(
         "Complete Getting Started and open Home."));
     onboardingBackButton->setAccessibleDescription(tr(
@@ -2843,8 +3185,8 @@ void DriveManagerUI::retranslateUserInterface() {
             onboardingDescriptions.at(index)->text());
     }
     if (auto *action = applicationHeader->findChild<QAction *>(
-            "advancedStorageAction"))
-        action->setText(tr("Storage"));
+            "advancedLandingAction"))
+        action->setText(tr("Advanced Tools"));
     if (auto *action = applicationHeader->findChild<QAction *>(
             "advancedTestLabAction"))
         action->setText(tr("YouTube Test Lab"));
@@ -2984,10 +3326,10 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetHighCapacityCard->setTitle(tr("Fewer & Shorter Videos"));
     if (auto *badge = videoSetResilientCard->findChild<QLabel *>(
             "videoSetResilientBadge"))
-        badge->setText(tr("Recommended"));
+        badge->setText(tr("More redundancy"));
     if (auto *badge = videoSetHighCapacityCard->findChild<QLabel *>(
             "videoSetHighCapacityBadge"))
-        badge->setText(tr("Real YouTube tested"));
+        badge->setText(tr("Default · Real YouTube tested"));
     videoSetResilientDescription->setText(tr(
         "Uses more video time for the most conservative storage mode.\nTechnical: 8x8, 1-bit, signal 1.0, repair 5%."));
     videoSetHighCapacityDescription->setText(tr(
@@ -3014,8 +3356,13 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetOpenSetFolderButton->setText(tr("Open Set Folder"));
     videoSetCopyShaButton->setText(tr("Copy SHA-256"));
     videoSetReturnHomeButton->setText(tr("Return Home"));
-    videoSetClassicToolsGroup->setTitle(tr(
-        "Advanced / Classic Video Set Tools"));
+    videoSetAssistantCancelButton->setText(tr("Cancel safely"));
+    videoSetAssistantCancelButton->setAccessibleName(tr(
+        "Cancel current Video Set operation safely"));
+    videoSetActivityRetryButton->setText(tr("Retry"));
+    videoSetPlanSafetyLabel->setText(tr(
+        "Estimates may differ from actual encoded sizes. The source file will not be modified. Final recovery is accepted only after SHA-256 verification."));
+    videoSetClassicToolsGroup->setTitle(tr("Classic Video Set Tools"));
     if (auto *action = videoSetPage->findChild<QAction *>(
             "videoSetTrustEvidenceAction"))
         action->setText(tr(
@@ -3062,7 +3409,46 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetAssistantPlanTable->setHorizontalHeaderLabels({
         tr("Part"), tr("Payload bytes"), tr("Frames"),
         tr("Duration"), tr("Estimated size"), tr("Status")});
+    updateVideoSetPlanSummaryText();
     updateProfileCardVisuals();
+}
+
+void DriveManagerUI::updateVideoSetPlanSummaryText() {
+    if (!videoSetPlanSummaryLabel || !videoSetPlanMetricsLabel ||
+        !videoSetCreateVideosButton)
+        return;
+    const int partCount = videoSetPlanSummaryLabel->property(
+        "plannedPartCount").toInt();
+    if (partCount <= 0 || !videoSetPlanMetricsLabel->property(
+            "planMaximumMinutes").isValid())
+        return;
+    const QStringList metrics{
+        QString::number(videoSetPlanMetricsLabel->property(
+            "planMaximumMinutes").toDouble(), 'f', 1) + tr(" minutes"),
+        QString::number(videoSetPlanMetricsLabel->property(
+            "planTotalMinutes").toDouble(), 'f', 1) + tr(" minutes"),
+        QLocale().formattedDataSize(static_cast<qint64>(
+            videoSetPlanMetricsLabel->property(
+                "planTotalOutputBytes").toULongLong())),
+        QLocale().formattedDataSize(static_cast<qint64>(
+            videoSetPlanMetricsLabel->property(
+                "planTemporaryBytes").toULongLong())),
+        QLocale().formattedDataSize(static_cast<qint64>(
+            videoSetPlanMetricsLabel->property(
+                "planRecoveryBytes").toULongLong())),
+        videoSetPlanMetricsLabel->property("planHighCapacity").toBool()
+            ? tr("Fewer & Shorter Videos (High Capacity)")
+            : tr("Most Reliable (Resilient)")};
+    videoSetPlanSummaryLabel->setText(
+        tr("Your file will be turned into %1 video(s).").arg(partCount));
+    videoSetCreateVideosButton->setText(
+        tr("Create %1 Videos").arg(partCount));
+    videoSetPlanMetricsLabel->setText(
+        tr("About %1 per video\nEstimated total duration: %2\n"
+           "Estimated total output: %3\nTemporary disk estimate: %4\n"
+           "Recovery disk requirement: %5\nSelected mode: %6")
+            .arg(metrics.at(0), metrics.at(1), metrics.at(2),
+                 metrics.at(3), metrics.at(4), metrics.at(5)));
 }
 
 void DriveManagerUI::updateProfileCardVisuals() {
@@ -3073,7 +3459,7 @@ void DriveManagerUI::updateProfileCardVisuals() {
     videoSetResilientRadio->setText(resilient
         ? tr("✓ Selected — Resilient") : tr("Resilient"));
     videoSetHighCapacityRadio->setText(!resilient
-        ? tr("✓ Selected — High Capacity") : tr("High Capacity (opt-in)"));
+        ? tr("✓ Selected — High Capacity") : tr("High Capacity (default)"));
     for (auto *card : {videoSetResilientCard, videoSetHighCapacityCard}) {
         card->style()->unpolish(card);
         card->style()->polish(card);
@@ -3487,11 +3873,10 @@ void DriveManagerUI::setupVideoSetAssistant(
         VidStoreXDataGlyph::Mode::Verified);
     resilientGlyph->setObjectName("videoSetResilientGlyph");
     resilientLayout->addWidget(resilientGlyph, 0, Qt::AlignLeft);
-    videoSetResilientRadio = new QRadioButton("Resilient (recommended default)");
+    videoSetResilientRadio = new QRadioButton("Resilient");
     videoSetResilientRadio->setObjectName("videoSetResilientChoice");
-    videoSetResilientRadio->setChecked(true);
     resilientLayout->addWidget(videoSetResilientRadio);
-    auto *resilientBadge = new QLabel("Recommended");
+    auto *resilientBadge = new QLabel("More redundancy");
     resilientBadge->setObjectName("videoSetResilientBadge");
     resilientBadge->setProperty("badge", true);
     resilientBadge->setProperty("vsxRole", "badge");
@@ -3515,10 +3900,11 @@ void DriveManagerUI::setupVideoSetAssistant(
         VidStoreXDataGlyph::Mode::FileToBlocks);
     capacityGlyph->setObjectName("videoSetHighCapacityGlyph");
     capacityLayout->addWidget(capacityGlyph, 0, Qt::AlignLeft);
-    videoSetHighCapacityRadio = new QRadioButton("High Capacity (opt-in)");
+    videoSetHighCapacityRadio = new QRadioButton("High Capacity (default)");
     videoSetHighCapacityRadio->setObjectName("videoSetHighCapacityChoice");
+    videoSetHighCapacityRadio->setChecked(true);
     capacityLayout->addWidget(videoSetHighCapacityRadio);
-    auto *capacityBadge = new QLabel("Real YouTube tested");
+    auto *capacityBadge = new QLabel("Default · Real YouTube tested");
     capacityBadge->setObjectName("videoSetHighCapacityBadge");
     capacityBadge->setProperty("badge", true);
     capacityBadge->setProperty("vsxRole", "badge");
@@ -3535,8 +3921,8 @@ void DriveManagerUI::setupVideoSetAssistant(
     capacityLayout->addWidget(capacityRail);
     videoSetProfileCards->addButton(videoSetResilientRadio, 0);
     videoSetProfileCards->addButton(videoSetHighCapacityRadio, 1);
-    profileCardsLayout->addWidget(videoSetResilientCard);
     profileCardsLayout->addWidget(videoSetHighCapacityCard);
+    profileCardsLayout->addWidget(videoSetResilientCard);
     modeLayout->addLayout(profileCardsLayout);
     videoSetAdvancedSettingsButton = new QToolButton();
     videoSetAdvancedSettingsButton->setObjectName("videoSetAdvancedSettingsToggle");
@@ -3563,7 +3949,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetAssistantReserveSpin->setValue(10.0);
     videoSetAssistantReserveSpin->setSuffix("%");
     videoSetAdvancedProfileLabel = new QLabel(
-        "Resilient: 8x8, 1-bit, signal 1.0, repair 5%, 1920x1080 at 30 FPS");
+        "High Capacity: 4x4, 1-bit, signal 1.0, repair 5%, 1920x1080 at 30 FPS; config 538F2B009FAB");
     videoSetAdvancedProfileLabel->setObjectName("videoSetAdvancedProfileDetails");
     videoSetAdvancedProfileLabel->setWordWrap(true);
     advancedLayout->addWidget(new QLabel("Target duration:"), 0, 0);
@@ -3598,11 +3984,11 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetPlanMetricsLabel = new QLabel();
     videoSetPlanMetricsLabel->setWordWrap(true);
     planLayout->addWidget(videoSetPlanMetricsLabel);
-    auto *planSafety = new QLabel(
+    videoSetPlanSafetyLabel = new QLabel(
         "Estimates may differ from actual encoded sizes. The source file will not be modified. "
         "Final recovery is accepted only after SHA-256 verification.");
-    planSafety->setWordWrap(true);
-    planLayout->addWidget(planSafety);
+    videoSetPlanSafetyLabel->setWordWrap(true);
+    planLayout->addWidget(videoSetPlanSafetyLabel);
     videoSetPartDetailsButton = new QToolButton();
     videoSetPartDetailsButton->setObjectName("videoSetPartDetailsToggle");
     videoSetPartDetailsButton->setText("Show part details");
@@ -3977,14 +4363,14 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetLog->document()->setMaximumBlockCount(5000);
     activityLayout->addWidget(videoSetLog);
 
-    // Keep every established manual control in a collapsed Classic area.
+    // Keep every established manual control together on its own Advanced page.
     root->removeWidget(classicEncodeGroup);
     root->removeWidget(videoSetPlanTable);
     root->removeWidget(videoSetProgress);
     root->removeWidget(classicRecoveryGroup);
-    videoSetClassicToolsGroup = new QGroupBox("Advanced / Classic Video Set Tools");
+    videoSetClassicToolsGroup = new QGroupBox("Classic Video Set Tools");
     videoSetClassicToolsGroup->setObjectName("videoSetClassicTools");
-    videoSetClassicToolsGroup->setCheckable(true);
+    videoSetClassicToolsGroup->setCheckable(false);
     auto *classicLayout = new QVBoxLayout(videoSetClassicToolsGroup);
     classicLayout->addWidget(classicEncodeGroup);
     classicLayout->addWidget(videoSetPlanTable);
@@ -3999,14 +4385,11 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetAdvancedSettingsWidget->setVisible(advancedVisible);
     videoSetAdvancedSettingsButton->setArrowType(
         advancedVisible ? Qt::DownArrow : Qt::RightArrow);
-    const bool classicVisible = settings.value(
-        "videoSet/classicVisible", false).toBool();
-    videoSetClassicToolsGroup->setChecked(classicVisible);
-    videoSetClassicToolsGroup->setVisible(false);
-    classicEncodeGroup->setVisible(classicVisible);
-    videoSetPlanTable->setVisible(classicVisible);
-    videoSetProgress->setVisible(classicVisible);
-    classicRecoveryGroup->setVisible(classicVisible);
+    videoSetClassicToolsGroup->setVisible(true);
+    classicEncodeGroup->setVisible(true);
+    videoSetPlanTable->setVisible(true);
+    videoSetProgress->setVisible(true);
+    classicRecoveryGroup->setVisible(true);
     videoSetAssistantOutputEdit->setText(settings.value(
         "ui/defaultVideoSetOutputFolder",
         settings.value("videoSet/lastOutputRoot",
@@ -4027,9 +4410,9 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetOperationTimer = new QTimer(this);
     videoSetOperationTimer->setInterval(1000);
     connect(videoSetOperationTimer, &QTimer::timeout, this, [this]() {
-        (void) videoSetOperationProgress.tick(
-            QDateTime::currentMSecsSinceEpoch());
-        renderVideoSetActivity();
+        if (videoSetOperationProgress.tick(
+                QDateTime::currentMSecsSinceEpoch()))
+            renderVideoSetActivity();
     });
     videoSetOperationTimer->start();
 
@@ -4413,13 +4796,6 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetTechnicalLogButton->setArrowType(
             checked ? Qt::DownArrow : Qt::RightArrow);
     });
-    connect(videoSetClassicToolsGroup, &QGroupBox::toggled,
-            this, [=](const bool checked) {
-        classicEncodeGroup->setVisible(checked);
-        videoSetPlanTable->setVisible(checked);
-        videoSetProgress->setVisible(checked);
-        classicRecoveryGroup->setVisible(checked);
-    });
     connect(videoSetRecentContinueButton, &QPushButton::clicked,
             this, [this]() {
         if (auto *item = videoSetRecentList->currentItem())
@@ -4792,7 +5168,9 @@ void DriveManagerUI::renderVideoSetActivity() {
     const auto &operation = videoSetOperationProgress.view();
     const bool hasOperation = operation.state !=
         video_set_workflow::OperationState::Idle;
-    const bool visible = hasOperation &&
+    const bool onWorkflowPage = mainTabs->currentWidget() == videoSetPage &&
+        videoSetAssistantStack->currentIndex() != 0;
+    const bool visible = hasOperation && onWorkflowPage &&
         videoSetWorkflow.view().state !=
             video_set_workflow::State::RecoveredExact;
     videoSetActivityPanel->setVisible(visible);
@@ -4808,7 +5186,16 @@ void DriveManagerUI::renderVideoSetActivity() {
         operation.secondary_message);
     switch (operation.operation_type) {
         case video_set_workflow::OperationType::Plan:
-            title = tr("Calculating the Video Set plan");
+            if (operation.state ==
+                video_set_workflow::OperationState::Completed) {
+                title = tr("Video Set plan is ready");
+                description = tr(
+                    "VidStoreX read the source and calculated the real part capacity.");
+            } else {
+                title = tr("Calculating the Video Set plan");
+                description = tr(
+                    "VidStoreX is reading the source and calculating real part capacity.");
+            }
             break;
         case video_set_workflow::OperationType::Encode:
             if (operation.phase == video_set_workflow::OperationPhase::EncodingPart &&
@@ -4852,6 +5239,10 @@ void DriveManagerUI::renderVideoSetActivity() {
     }
     if (operation.state == video_set_workflow::OperationState::Cancelling)
         title = tr("Cancelling...");
+    else if (operation.state == video_set_workflow::OperationState::Failed)
+        title = tr("Operation failed");
+    else if (operation.state == video_set_workflow::OperationState::Cancelled)
+        title = tr("Operation cancelled");
     videoSetActivityTitle->setText(title);
     videoSetActivityDescription->setText(description);
     videoSetActivityIcon->setText(
@@ -4995,7 +5386,14 @@ void DriveManagerUI::renderVideoSetActivity() {
                                            operation.progress_total);
 
     QString counter;
-    if (operation.operation_type == video_set_workflow::OperationType::Scan) {
+    if (operation.operation_type == video_set_workflow::OperationType::Plan &&
+        operation.state == video_set_workflow::OperationState::Completed) {
+        counter = tr("Plan completed");
+    } else if (operation.operation_type ==
+                   video_set_workflow::OperationType::Plan &&
+               operation.state == video_set_workflow::OperationState::Running) {
+        counter = tr("Reading and hashing the source file");
+    } else if (operation.operation_type == video_set_workflow::OperationType::Scan) {
         if (operation.phase ==
             video_set_workflow::OperationPhase::DiscoveringFiles ||
             operation.total_items == 0) {
@@ -5057,16 +5455,22 @@ void DriveManagerUI::renderVideoSetActivity() {
         return QString("%1:%2").arg(rounded / 60)
             .arg(rounded % 60, 2, 10, QLatin1Char('0'));
     };
-    videoSetActivityElapsed->setText(
-        tr("Elapsed: %1").arg(formatDuration(operation.elapsed_seconds)));
+    const bool terminal = operation.state ==
+            video_set_workflow::OperationState::Completed ||
+        operation.state == video_set_workflow::OperationState::Failed ||
+        operation.state == video_set_workflow::OperationState::Cancelled;
+    videoSetActivityElapsed->setText(terminal
+        ? tr("Duration: %1").arg(formatDuration(operation.elapsed_seconds))
+        : tr("Elapsed: %1").arg(formatDuration(operation.elapsed_seconds)));
     videoSetActivityRemaining->setText(
-        operation.estimated_remaining_seconds.has_value()
+        !terminal && operation.estimated_remaining_seconds.has_value()
             ? tr("Remaining: %1").arg(formatDuration(
                 *operation.estimated_remaining_seconds))
             : QString());
     videoSetActivityWatchdog->setVisible(
         operation.taking_longer_than_usual);
     videoSetAssistantCancelButton->setEnabled(operation.can_cancel);
+    videoSetAssistantCancelButton->setVisible(!terminal);
     videoSetActivityRetryButton->setVisible(operation.can_retry);
     videoSetActivityRetryButton->setEnabled(operation.can_retry);
     videoSetAssistantScanButton->setEnabled(!operation.is_busy);
@@ -5326,30 +5730,22 @@ void DriveManagerUI::handleVideoSetFinished(
         }
         videoSetWorkflow.apply_plan(plan);
         const auto summary = video_set_workflow::summarize_plan(plan);
-        videoSetPlanSummaryLabel->setText(
-            tr("Your file will be turned into %1 video(s).")
-                .arg(summary.part_count));
-        videoSetCreateVideosButton->setText(
-            tr("Create %1 Videos").arg(summary.part_count));
-        videoSetPlanMetricsLabel->setText(
-            tr("About %1 per video\nEstimated total duration: %2\n"
-                    "Estimated total output: %3\nTemporary disk estimate: %4\n"
-                    "Recovery disk requirement: %5\nSelected mode: %6")
-                .arg(QString::number(
-                    summary.maximum_part_duration_seconds / 60.0,
-                    'f', 1) + tr(" minutes"))
-                .arg(QString::number(
-                    summary.total_duration_seconds / 60.0,
-                    'f', 1) + tr(" minutes"))
-                .arg(QLocale().formattedDataSize(
-                    static_cast<qint64>(summary.total_estimated_output_bytes)))
-                .arg(QLocale().formattedDataSize(
-                    static_cast<qint64>(summary.temporary_disk_bytes)))
-                .arg(QLocale().formattedDataSize(
-                    static_cast<qint64>(summary.recovery_disk_bytes)))
-                .arg(videoSetHighCapacityRadio->isChecked()
-                    ? tr("Fewer & Shorter Videos (High Capacity)")
-                    : tr("Most Reliable (Resilient)")));
+        videoSetPlanSummaryLabel->setProperty(
+            "plannedPartCount", static_cast<int>(summary.part_count));
+        videoSetPlanMetricsLabel->setProperty("planMaximumMinutes",
+            summary.maximum_part_duration_seconds / 60.0);
+        videoSetPlanMetricsLabel->setProperty("planTotalMinutes",
+            summary.total_duration_seconds / 60.0);
+        videoSetPlanMetricsLabel->setProperty("planTotalOutputBytes",
+            QVariant::fromValue<qulonglong>(
+                summary.total_estimated_output_bytes));
+        videoSetPlanMetricsLabel->setProperty("planTemporaryBytes",
+            QVariant::fromValue<qulonglong>(summary.temporary_disk_bytes));
+        videoSetPlanMetricsLabel->setProperty("planRecoveryBytes",
+            QVariant::fromValue<qulonglong>(summary.recovery_disk_bytes));
+        videoSetPlanMetricsLabel->setProperty("planHighCapacity",
+            videoSetHighCapacityRadio->isChecked());
+        updateVideoSetPlanSummaryText();
         videoSetAssistantProgress->setRange(0, 100);
         videoSetAssistantProgress->setValue(100);
         updateVideoSetAssistant();
@@ -6562,6 +6958,17 @@ void DriveManagerUI::openRecentVideoSet(const QString &manifestPath) {
         videoSetCurrentManifest = manifestPath;
         videoSetCurrentSetRoot = QFileInfo(manifestPath).absolutePath();
         videoSetWorkflow.resume_from_manifest(plan);
+        const bool highCapacity = QString::fromStdString(
+            plan.profile_name).contains("high", Qt::CaseInsensitive) ||
+            QString::fromStdString(plan.config_id) ==
+                QStringLiteral("538F2B009FAB");
+        {
+            const QSignalBlocker resilientBlocker(videoSetResilientRadio);
+            const QSignalBlocker capacityBlocker(videoSetHighCapacityRadio);
+            videoSetHighCapacityRadio->setChecked(highCapacity);
+            videoSetResilientRadio->setChecked(!highCapacity);
+        }
+        updateProfileCardVisuals();
         {
             const QSignalBlocker blocker(videoSetAssistantInputEdit);
             videoSetAssistantInputEdit->setText(
@@ -6675,8 +7082,8 @@ void DriveManagerUI::setupMenuBar() {
     gettingStartedAction->setObjectName("gettingStartedAction");
     helpMenu->addSeparator();
     auto *aboutAction = helpMenu->addAction("&About", [this]() {
-        QMessageBox::about(this, tr("About VidStoreX"),
-                           tr("VidStoreX\n\nTurn files into resilient videos and recover them later.\nVersion 1.4"));
+        mainTabs->setCurrentWidget(settingsPage);
+        settingsLinkedInButton->setFocus(Qt::OtherFocusReason);
     });
     aboutAction->setObjectName("aboutAction");
 }
@@ -8338,10 +8745,6 @@ void DriveManagerUI::saveSettings() const {
         settings.setValue(
             "videoSet/advancedVisible",
             videoSetAdvancedSettingsButton->isChecked());
-    if (videoSetClassicToolsGroup)
-        settings.setValue(
-            "videoSet/classicVisible",
-            videoSetClassicToolsGroup->isChecked());
     if (settingsOutputEdit)
         settings.setValue(
             "ui/defaultVideoSetOutputFolder",

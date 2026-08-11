@@ -1,5 +1,6 @@
 #include "ui_theme.h"
 #include "visual_components.h"
+#include "app_branding.h"
 
 #include <gtest/gtest.h>
 
@@ -306,6 +307,46 @@ TEST(UiVisualIdentity, LayoutTokensKeepHomeAndRecentBounded) {
     EXPECT_LE(vidstorex_ui::Layout::ContentMaxWidth, 1500);
     EXPECT_EQ(vidstorex_ui::Layout::RecentVisibleRows, 4);
     EXPECT_GE(vidstorex_ui::Layout::HeroPadding, 18);
+}
+
+TEST(UiVisualIdentity, AdvancedColumnsStackWithoutOverlapping) {
+    VidStoreXResponsiveColumns columns;
+    auto *first = new QLabel("Search space");
+    auto *second = new QLabel("Encoding and simulation");
+    first->setMinimumHeight(80);
+    second->setMinimumHeight(80);
+    columns.addWidget(first);
+    columns.addWidget(second);
+    columns.setBreakpoint(900);
+
+    render(columns, {720, 220});
+    EXPECT_TRUE(columns.isStacked());
+    EXPECT_EQ(columns.property("layoutMode").toString(), "stacked");
+    EXPECT_FALSE(first->geometry().intersects(second->geometry()));
+
+    render(columns, {1200, 180});
+    EXPECT_FALSE(columns.isStacked());
+    EXPECT_EQ(columns.property("layoutMode").toString(), "columns");
+    EXPECT_FALSE(first->geometry().intersects(second->geometry()));
+}
+
+TEST(UiVisualIdentity, BrandingUsesCanonicalSafeLinkedInUrl) {
+    using namespace vidstorex::branding;
+    EXPECT_EQ(QString::fromUtf8(kAuthorName),
+              QString::fromUtf8("Burhan Talha Yazıcı"));
+    EXPECT_STREQ(kAuthorAlias, "BTY");
+    EXPECT_EQ(QString::fromLatin1(kLinkedInUrl),
+              QStringLiteral("https://www.linkedin.com/in/burhanbty"));
+    const QUrl url = linkedInUrl();
+    EXPECT_TRUE(url.isValid());
+    EXPECT_EQ(url.scheme(), QStringLiteral("https"));
+    EXPECT_EQ(url.host(), QStringLiteral("www.linkedin.com"));
+    bool invoked = false;
+    EXPECT_TRUE(openLinkedInProfile([&](const QUrl &opened) {
+        invoked = true;
+        return opened == url;
+    }));
+    EXPECT_TRUE(invoked);
 }
 
 TEST(UiVisualIdentity, GuiSourceDeclaresIdentityAndRecentPrivacyContract) {

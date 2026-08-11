@@ -482,6 +482,10 @@ int main(int argc, char *argv[]) {
         QTimer::singleShot(0, &app, [&, first]() {
             const auto fail = [&](const int code, const QString &message) {
                 qCritical().noquote() << message;
+                QFile diagnostic(QDir(onboardingSmokeRoot).filePath(
+                    "onboarding-failure.txt"));
+                if (diagnostic.open(QIODevice::WriteOnly | QIODevice::Text))
+                    diagnostic.write(message.toUtf8());
                 first->close();
                 app.exit(code);
                 return false;
@@ -498,23 +502,49 @@ int main(int argc, char *argv[]) {
                 "onboardingNextButton");
             auto *skip = first->findChild<QPushButton *>(
                 "onboardingSkipButton");
+            auto *author = first->findChild<QLabel *>(
+                "onboardingAuthorLabel");
+            auto *linkedIn = first->findChild<QPushButton *>(
+                "onboardingLinkedInButton");
             auto *language = first->findChild<QComboBox *>("uiLanguageCombo");
             if (!page || !stack || !title1 || !title2 || !illustration1 ||
-                !back || !next || !skip || !language || !page->isVisible() ||
+                !back || !next || !skip || !author || !linkedIn ||
+                !language || !page->isVisible() ||
                 stack->currentIndex() != 0 || back->isVisible() ||
                 title1->text() != QString::fromUtf8(
                     "Dosyanızı videolara dönüştürün") ||
-                illustration1->size().isEmpty()) {
-                fail(111, "Onboarding first-run page 1 invariant failed");
+                illustration1->size().isEmpty() ||
+                !author->text().contains(
+                    QString::fromUtf8("Burhan Talha Yazıcı")) ||
+                linkedIn->property("externalUrl").toString() !=
+                    QStringLiteral("https://www.linkedin.com/in/burhanbty")) {
+                fail(111, QStringLiteral(
+                    "Onboarding first-run page 1 invariant failed: "
+                    "page=%1 index=%2 back=%3 title=%4 illustration=%5 "
+                    "author=%6 url=%7")
+                    .arg(page && page->isVisible())
+                    .arg(stack ? stack->currentIndex() : -1)
+                    .arg(back && back->isVisible())
+                    .arg(title1 ? title1->text() : QStringLiteral("<missing>"))
+                    .arg(illustration1
+                        ? QStringLiteral("%1x%2")
+                              .arg(illustration1->width())
+                              .arg(illustration1->height())
+                        : QStringLiteral("<missing>"))
+                    .arg(author ? author->text() : QStringLiteral("<missing>"))
+                    .arg(linkedIn ? linkedIn->property(
+                        "externalUrl").toString() : QStringLiteral("<missing>")));
                 return;
             }
 
-            const QList<QSize> sizes{{1280, 720}, {1366, 768}, {1920, 1080}};
+            const QList<QSize> sizes{{1280, 720}, {1366, 768},
+                                     {1600, 900}, {1920, 1080}};
             for (const auto &size : sizes) {
                 first->resize(size);
                 QApplication::processEvents();
                 if (!title1->isVisible() || !illustration1->isVisible() ||
-                    !next->isVisible() ||
+                    !next->isVisible() || !author->isVisible() ||
+                    !linkedIn->isVisible() ||
                     !first->rect().contains(next->mapTo(
                         first, next->rect().center()))) {
                     fail(112, QStringLiteral(
@@ -998,6 +1028,10 @@ int main(int argc, char *argv[]) {
             "homeNavigationButton");
         auto *settingsNavigation = window.findChild<QPushButton *>(
             "settingsNavigationButton");
+        auto *settingsAuthor = window.findChild<QLabel *>(
+            "settingsAboutAuthor");
+        auto *settingsLinkedIn = window.findChild<QPushButton *>(
+            "settingsLinkedInButton");
         auto *language = window.findChild<QComboBox *>(
             "uiLanguageCombo");
         auto *settingsLanguage = window.findChild<QComboBox *>(
@@ -1182,8 +1216,8 @@ int main(int argc, char *argv[]) {
         createChoice->click();
         QApplication::processEvents();
         if (assistantStack->currentIndex() != 1 ||
-            !resilientChoice->isChecked() || highCapacityChoice->isChecked()) {
-            qCritical() << "Create flow or Resilient default invariant failed";
+            resilientChoice->isChecked() || !highCapacityChoice->isChecked()) {
+            qCritical() << "Create flow or High Capacity default invariant failed";
             return 7;
         }
         advancedToggle->setChecked(false);
@@ -1213,11 +1247,10 @@ int main(int argc, char *argv[]) {
         advancedToggle->setChecked(false);
         classicAction->trigger();
         QApplication::processEvents();
-        if (classicTools->isHidden() || !classicTools->isChecked()) {
+        if (classicTools->isHidden() || classicTools->isCheckable()) {
             qCritical() << "Classic Video Set tools are inaccessible";
             return 11;
         }
-        classicTools->setChecked(false);
         recoverChoice->click();
         QApplication::processEvents();
         if (assistantStack->currentIndex() != 7) {
@@ -1314,6 +1347,8 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantSourceContinue");
         auto *highCapacity = window.findChild<QRadioButton *>(
             "videoSetHighCapacityChoice");
+        auto *resilient = window.findChild<QRadioButton *>(
+            "videoSetResilientChoice");
         auto *target = window.findChild<QSpinBox *>(
             "videoSetAssistantTargetDuration");
         auto *maximumSize = window.findChild<QSpinBox *>(
@@ -1354,6 +1389,10 @@ int main(int argc, char *argv[]) {
             "videoSetActivityTitle");
         auto *activityDescription = window.findChild<QLabel *>(
             "videoSetActivityDescription");
+        auto *activityElapsed = window.findChild<QLabel *>(
+            "videoSetElapsedTime");
+        auto *activityProgressLabel = window.findChild<QLabel *>(
+            "videoSetBlockProgressLabel");
         auto *activityProgress = static_cast<VidStoreXBlockProgress *>(
             window.findChild<QWidget *>("videoSetBlockProgress"));
         auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
@@ -1368,6 +1407,10 @@ int main(int argc, char *argv[]) {
             "homeNavigationButton");
         auto *settingsNavigation = window.findChild<QPushButton *>(
             "settingsNavigationButton");
+        auto *settingsAuthor = window.findChild<QLabel *>(
+            "settingsAboutAuthor");
+        auto *settingsLinkedIn = window.findChild<QPushButton *>(
+            "settingsLinkedInButton");
         auto *advancedNavigation = window.findChild<QToolButton *>(
             "advancedNavigationButton");
         auto *brandSubtitle = window.findChild<QLabel *>(
@@ -1388,6 +1431,20 @@ int main(int argc, char *argv[]) {
             "capacityLabPageHeading");
         auto *capacityAction = window.findChild<QAction *>(
             "advancedCapacityLabAction");
+        auto *landingAction = window.findChild<QAction *>(
+            "advancedLandingAction");
+        auto *testLabAction = window.findChild<QAction *>(
+            "advancedTestLabAction");
+        auto *classicAction = window.findChild<QAction *>(
+            "advancedClassicVideoSetAction");
+        auto *capacitySearch = window.findChild<QGroupBox *>(
+            "capacitySearchSpaceSection");
+        auto *capacitySimulation = window.findChild<QGroupBox *>(
+            "capacitySimulationSection");
+        auto *testLabGenerate = window.findChild<QGroupBox *>(
+            "testLabGenerateSection");
+        auto *testLabAnalysis = window.findChild<QGroupBox *>(
+            "testLabAnalysisSection");
         auto *youtubeSyncAction = window.findChild<QAction *>(
             "advancedYouTubeSyncAction");
         auto *youtubeSyncPage = window.findChild<QWidget *>(
@@ -1406,19 +1463,26 @@ int main(int argc, char *argv[]) {
         auto *uploadNotice = window.findChild<QLabel *>(
             "videoSetUploadPrivacyNotice");
         if (!stack || !create || !input || !output || !sourceContinue ||
-            !highCapacity || !target || !maximumSize || !calculate ||
+            !highCapacity || !resilient || !target || !maximumSize ||
+            !calculate ||
             !planSummary || !createVideos || !progressContinue ||
             !createResultCard || !recoveryResultCard ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
             !success || !recent || !activityPanel || !activityTitle ||
-            !activityDescription || !activityProgress || !activityFlow ||
+            !activityDescription || !activityElapsed ||
+            !activityProgressLabel || !activityProgress ||
+            !activityFlow ||
             !activityParts || !activitySource || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
+            !settingsAuthor || !settingsLinkedIn ||
             !advancedNavigation || !homeHeading || !trustLabel ||
             !classicTools || !successRail || !capacityHeading ||
-            !capacityAction || !youtubeSyncAction || !youtubeSyncPage ||
+            !capacityAction || !landingAction || !testLabAction ||
+            !classicAction || !capacitySearch || !capacitySimulation ||
+            !testLabGenerate || !testLabAnalysis ||
+            !youtubeSyncAction || !youtubeSyncPage ||
             !youtubeSyncHeading || !youtubeSyncWarning || !oauthConfig ||
             !syncCard || !openVideos || !openYouTube || !uploadNotice) {
             qCritical() << "Assistant E2E smoke controls were not found";
@@ -1442,7 +1506,7 @@ int main(int argc, char *argv[]) {
             recoverChoice->property("vsxRole").toString() != "primary" ||
             advancedNavigation->text() != QString::fromUtf8("Gelişmiş") ||
             classicTools->title() != QString::fromUtf8(
-                "Gelişmiş / Klasik Video Set Araçları")) {
+                "Klasik Video Set Araçları")) {
             qCritical() << "Turkish visual identity home invariant failed";
             return 57;
         }
@@ -1475,7 +1539,44 @@ int main(int argc, char *argv[]) {
                 return 62;
             }
         }
-        const QPalette originalPalette = window.palette();
+        if (stack->isAncestorOf(classicTools)) {
+            qCritical() << "Classic tools leaked into consumer Home";
+            return 68;
+        }
+        const auto auditAdvancedPage = [&](QAction *action,
+                                            const QString &prefix,
+                                            QWidget *first,
+                                            QWidget *second) {
+            action->trigger();
+            QApplication::processEvents();
+            for (const auto &[size, suffix] : homeSizes) {
+                window.resize(size);
+                QApplication::processEvents();
+                if (!window.grab().save(QDir(root).filePath(
+                        prefix + "-" + suffix + ".png")))
+                    return false;
+                if (first && second && first->isVisible() && second->isVisible() &&
+                    first->mapTo(&window, QPoint()).y() ==
+                        second->mapTo(&window, QPoint()).y() &&
+                    first->geometry().intersects(second->geometry()))
+                    return false;
+            }
+            return true;
+        };
+        if (!auditAdvancedPage(landingAction, "e2e-advanced-landing-tr",
+                               nullptr, nullptr) ||
+            !auditAdvancedPage(classicAction, "e2e-classic-tr",
+                               nullptr, nullptr) ||
+            !auditAdvancedPage(testLabAction, "e2e-testlab-tr",
+                               testLabGenerate, testLabAnalysis) ||
+            !auditAdvancedPage(capacityAction, "e2e-capacity-tr",
+                               capacitySearch, capacitySimulation)) {
+            qCritical() << "Advanced responsive visual audit failed";
+            return 69;
+        }
+        homeNavigation->click();
+        QApplication::processEvents();
+        const QPalette originalPalette = qApp->palette();
         QPalette darkPalette = originalPalette;
         darkPalette.setColor(QPalette::Window, QColor("#20201E"));
         darkPalette.setColor(QPalette::Base, QColor("#181816"));
@@ -1488,8 +1589,15 @@ int main(int argc, char *argv[]) {
         if (!window.grab().save(QDir(root).filePath(
                 "e2e-home-tr-dark-1366x768.png")))
             return 63;
-        qApp->setPalette(originalPalette);
-        window.setPalette(originalPalette);
+        QPalette auditLightPalette = originalPalette;
+        auditLightPalette.setColor(QPalette::Window, QColor("#F4F1EB"));
+        auditLightPalette.setColor(QPalette::Base, QColor("#FFFDF8"));
+        auditLightPalette.setColor(QPalette::WindowText, QColor("#24211D"));
+        auditLightPalette.setColor(QPalette::Text, QColor("#24211D"));
+        auditLightPalette.setColor(QPalette::ButtonText, QColor("#24211D"));
+        qApp->setPalette(auditLightPalette);
+        window.setPalette(auditLightPalette);
+        vidstorex_ui::applyTheme(window.QMainWindow::centralWidget());
         QApplication::processEvents();
         language->setCurrentIndex(language->findData("en"));
         QApplication::processEvents();
@@ -1513,7 +1621,11 @@ int main(int argc, char *argv[]) {
             "settingsLanguageSection");
         if (!settingsLanguageSection ||
             settingsLanguageSection->text() != QString::fromUtf8("Dil") ||
-            oauthConfig->isVisible() || syncCard->isVisible()) {
+            oauthConfig->isVisible() || syncCard->isVisible() ||
+            !settingsAuthor->text().contains(
+                QString::fromUtf8("Burhan Talha Yazıcı")) ||
+            settingsLinkedIn->property("externalUrl").toString() !=
+                QStringLiteral("https://www.linkedin.com/in/burhanbty")) {
             qCritical() << "Turkish Settings sections failed";
             return 60;
         }
@@ -1540,6 +1652,9 @@ int main(int argc, char *argv[]) {
             qCritical() << "English Experimental YouTube Sync separation failed";
             return 69;
         }
+        if (qEnvironmentVariableIntValue(
+                "VIDSTOREX_UI_AUDIT_ONLY") == 1)
+            return 0;
         homeNavigation->click();
         QApplication::processEvents();
 
@@ -1554,10 +1669,12 @@ int main(int argc, char *argv[]) {
             bool testedActiveLanguageSwitch = false;
             bool createCardDone = false;
             bool recoveryCardDone = false;
+            qint64 planFrozenAt = 0;
+            QString planDuration;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
-            false, false, false, false, false};
+            false, false, false, false, false, 0, {}};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
@@ -1599,6 +1716,28 @@ int main(int argc, char *argv[]) {
             }
             if (state->stage == 1 && sourceContinue->isEnabled()) {
                 sourceContinue->click();
+                if (!highCapacity->isChecked()) {
+                    fail(75, "Fresh Create did not default to High Capacity");
+                    return;
+                }
+                resilient->click();
+                auto *modePage = stack->currentWidget();
+                QPushButton *back = nullptr;
+                for (auto *button : modePage->findChildren<QPushButton *>())
+                    if (button->text() == QStringLiteral("Back")) {
+                        back = button;
+                        break;
+                    }
+                if (!back) {
+                    fail(76, "Mode Back control was not found");
+                    return;
+                }
+                back->click();
+                sourceContinue->click();
+                if (!resilient->isChecked()) {
+                    fail(77, "Mode choice was not preserved across Back/Continue");
+                    return;
+                }
                 highCapacity->click();
                 QApplication::processEvents();
                 window.grab().save(QDir(root).filePath("e2e-profile-en.png"));
@@ -1610,6 +1749,42 @@ int main(int argc, char *argv[]) {
                 return;
             }
             if (state->stage == 2 && createVideos->isEnabled()) {
+                if (state->planFrozenAt == 0) {
+                    if (activityTitle->text() !=
+                            QStringLiteral("Video Set plan is ready") ||
+                        !activityElapsed->text().startsWith(
+                            QStringLiteral("Duration:"))) {
+                        fail(78, "Completed plan does not use terminal wording");
+                        return;
+                    }
+                    state->planDuration = activityElapsed->text();
+                    state->planFrozenAt = QDateTime::currentMSecsSinceEpoch();
+                    return;
+                }
+                if (QDateTime::currentMSecsSinceEpoch() -
+                        state->planFrozenAt < 2200)
+                    return;
+                if (activityElapsed->text() != state->planDuration) {
+                    fail(79, "Completed plan duration continued changing");
+                    return;
+                }
+                language->setCurrentIndex(language->findData("tr"));
+                QApplication::processEvents();
+                if (activityTitle->text() !=
+                        QString::fromUtf8("Video Set planı hazır") ||
+                    !activityDescription->text().contains(
+                        QString::fromUtf8("hesapladı")) ||
+                    activityProgressLabel->text() !=
+                        QString::fromUtf8("Plan tamamlandı") ||
+                    !activityElapsed->text().startsWith(
+                        QString::fromUtf8("Süre:"))) {
+                    fail(80, "Completed plan Turkish copy is incomplete");
+                    return;
+                }
+                window.grab().save(QDir(root).filePath(
+                    "e2e-plan-complete-tr.png"));
+                language->setCurrentIndex(language->findData("en"));
+                QApplication::processEvents();
                 const QRegularExpression count(R"((\d+) video)");
                 const auto match = count.match(planSummary->text());
                 if (!match.hasMatch() || match.captured(1).toInt() < 3) {
