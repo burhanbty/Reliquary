@@ -2590,6 +2590,8 @@ void DriveManagerUI::applySemanticVisualRoles() {
     for (auto *button : {videoSetAssistantInputBrowseButton,
                          videoSetAssistantOutputBrowseButton,
                          videoSetProgressOpenFolderButton,
+                         videoSetCreateResultCardButton,
+                         videoSetRecoveryResultCardButton,
                          videoSetOpenVideosButton,
                          videoSetOpenYouTubeButton,
                          videoSetOpenChecklistButton,
@@ -2602,6 +2604,8 @@ void DriveManagerUI::applySemanticVisualRoles() {
                          settingsShowOnboardingButton})
         role(button, "secondary");
     role(videoSetOpenVideosButton, "primary");
+    role(videoSetProgressOpenFolderButton, "primary");
+    role(videoSetProgressContinueButton, "ghost");
     for (auto *button : {videoSetCopyShaButton,
                          videoSetReturnHomeButton,
                          videoSetRecentRemoveButton})
@@ -2670,6 +2674,7 @@ void DriveManagerUI::showVideoSetCreate() {
     }
     videoSetWorkflow.reset();
     videoSetWorkflow.choose_create();
+    videoSetCreateCompletedAt = {};
     if (videoSetClassicToolsGroup)
         videoSetClassicToolsGroup->setVisible(false);
     videoSetResilientRadio->setChecked(true);
@@ -2686,6 +2691,9 @@ void DriveManagerUI::showVideoSetRecover() {
     }
     videoSetWorkflow.reset();
     videoSetWorkflow.choose_recover();
+    videoSetRecoveryCompletedAt = {};
+    videoSetRecoveredProfileName.clear();
+    videoSetRecoveryFromYouTube = false;
     if (videoSetClassicToolsGroup)
         videoSetClassicToolsGroup->setVisible(false);
     videoSetAssistantStack->setCurrentIndex(7);
@@ -3001,6 +3009,8 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetSuccessLabel->setText(tr("Your file was recovered exactly."));
     videoSetDownloadButton->setText(tr("Download Processed Videos"));
     videoSetOpenRecoveredButton->setText(tr("Open File Location"));
+    videoSetCreateResultCardButton->setText(tr("Save Result Card"));
+    videoSetRecoveryResultCardButton->setText(tr("Save Result Card"));
     videoSetOpenSetFolderButton->setText(tr("Open Set Folder"));
     videoSetCopyShaButton->setText(tr("Copy SHA-256"));
     videoSetReturnHomeButton->setText(tr("Return Home"));
@@ -3640,10 +3650,14 @@ void DriveManagerUI::setupVideoSetAssistant(
         "videoSetAssistantProgressOpenFolder");
     videoSetProgressOpenFolderButton->setIcon(
         style()->standardIcon(QStyle::SP_DirOpenIcon));
+    videoSetCreateResultCardButton = new QPushButton("Save Result Card");
+    videoSetCreateResultCardButton->setObjectName(
+        "videoSetCreateResultCardButton");
     videoSetProgressContinueButton = new QPushButton("Continue to upload guide");
     videoSetProgressContinueButton->setObjectName("videoSetAssistantProgressContinue");
     progressButtons->addWidget(videoSetProgressResumeButton);
     progressButtons->addWidget(videoSetProgressOpenFolderButton);
+    progressButtons->addWidget(videoSetCreateResultCardButton);
     progressButtons->addStretch();
     progressButtons->addWidget(videoSetProgressContinueButton);
     progressLayout->addLayout(progressButtons);
@@ -3935,8 +3949,12 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetOpenSetFolderButton = new QPushButton("Open Set Folder");
     videoSetOpenSetFolderButton->setObjectName("videoSetOpenSetFolder");
     videoSetCopyShaButton = new QPushButton("Copy SHA-256");
+    videoSetRecoveryResultCardButton = new QPushButton("Save Result Card");
+    videoSetRecoveryResultCardButton->setObjectName(
+        "videoSetRecoveryResultCardButton");
     videoSetReturnHomeButton = new QPushButton("Return Home");
     doneActions->addWidget(videoSetOpenRecoveredButton);
+    doneActions->addWidget(videoSetRecoveryResultCardButton);
     doneActions->addWidget(videoSetOpenSetFolderButton);
     doneActions->addWidget(videoSetCopyShaButton);
     doneActions->addStretch();
@@ -4148,8 +4166,10 @@ void DriveManagerUI::setupVideoSetAssistant(
             this, [this]() {
         if (!videoSetCurrentSetRoot.isEmpty())
             QDesktopServices::openUrl(QUrl::fromLocalFile(
-                QDir(videoSetCurrentSetRoot).filePath("videos")));
+                    QDir(videoSetCurrentSetRoot).filePath("videos")));
     });
+    connect(videoSetCreateResultCardButton, &QPushButton::clicked,
+            this, &DriveManagerUI::showCreateResultCard);
     connect(videoSetAssistantCancelButton, &QPushButton::clicked,
             this, [this]() {
         if (videoSetDownloadProcess &&
@@ -4341,6 +4361,7 @@ void DriveManagerUI::setupVideoSetAssistant(
             videoSetCurrentSetRoot = videoSetInstantRecoveryJobRoot;
             videoSetPlaylistUrlEdit->setText(url);
             videoSetInstantRecoveryActive = true;
+            videoSetRecoveryFromYouTube = true;
             videoSetInstantRecoveryStatus->setText(tr("Downloading playlist videos..."));
             startVideoSetDownload();
         } catch (const std::exception &error) {
@@ -4376,6 +4397,8 @@ void DriveManagerUI::setupVideoSetAssistant(
     connect(videoSetCopyShaButton, &QPushButton::clicked, this, [this]() {
         QApplication::clipboard()->setText(videoSetFinalSha);
     });
+    connect(videoSetRecoveryResultCardButton, &QPushButton::clicked,
+            this, &DriveManagerUI::showRecoveryResultCard);
     connect(videoSetReturnHomeButton, &QPushButton::clicked, this, [this]() {
         videoSetWorkflow.reset();
         videoSetAssistantStack->setCurrentIndex(0);
@@ -4513,6 +4536,7 @@ void DriveManagerUI::setupVideoSetAssistant(
         videoSetDownloadButton->setEnabled(true);
         videoSetAssistantCancelButton->setEnabled(false);
         if (status == QProcess::NormalExit && code == 0) {
+            videoSetRecoveryFromYouTube = true;
             (void) videoSetOperationProgress.complete(
                 videoSetOperationProgress.view().operation_id,
                 QDateTime::currentMSecsSinceEpoch(),
@@ -5353,6 +5377,7 @@ void DriveManagerUI::handleVideoSetFinished(
         }
         const uint32_t count = videoSetWorkflow.view().part_count;
         videoSetWorkflow.apply_local_verification(count);
+        videoSetCreateCompletedAt = QDateTime::currentDateTime();
         videoSetAssistantProgress->setRange(0, static_cast<int>(count));
         videoSetAssistantProgress->setValue(static_cast<int>(count));
         videoSetProgressPhaseLabel->setText(tr("Finalizing Video Set"));
@@ -5467,8 +5492,10 @@ void DriveManagerUI::handleVideoSetFinished(
                         videoSetProcessBuffer.contains("Recovered exact"))) {
             const QRegularExpression final(R"(Final:\s*([^\r\n]+))");
             const QRegularExpression sha(R"(SHA-256:\s*([0-9a-fA-F]{64}))");
+            const QRegularExpression profile(R"(Profile:\s*([^\r\n]+))");
             const auto finalMatch = final.match(videoSetProcessBuffer);
             const auto shaMatch = sha.match(videoSetProcessBuffer);
+            const auto profileMatch = profile.match(videoSetProcessBuffer);
             const QString output = structuredExact
                 ? QString::fromStdString(operation.output_path)
                 : (finalMatch.hasMatch()
@@ -5477,8 +5504,13 @@ void DriveManagerUI::handleVideoSetFinished(
                 ? QString::fromStdString(operation.sha256).toUpper()
                 : (shaMatch.hasMatch()
                     ? shaMatch.captured(1).toUpper() : QString());
+            videoSetRecoveredProfileName = !operation.profile_name.empty()
+                ? QString::fromStdString(operation.profile_name)
+                : (profileMatch.hasMatch()
+                    ? profileMatch.captured(1).trimmed() : QString());
             videoSetWorkflow.apply_recovery_result(
                 output.toStdString(), true);
+            videoSetRecoveryCompletedAt = QDateTime::currentDateTime();
             if (videoSetInstantRecoveryActive) {
                 videoSetInstantRecoveryStatus->setText(tr(
                     "Your file was recovered exactly. Full-file SHA-256 matches."));
@@ -5650,8 +5682,14 @@ void DriveManagerUI::updateVideoSetAssistant() {
         view.state == video_set_workflow::State::LocallyVerified);
     videoSetProgressOpenFolderButton->setVisible(
         view.state == video_set_workflow::State::LocallyVerified);
+    videoSetCreateResultCardButton->setVisible(
+        view.state == video_set_workflow::State::LocallyVerified &&
+        currentCreateResultCard().has_value());
     videoSetProgressResumeButton->setVisible(
         view.state == video_set_workflow::State::EncodingPaused);
+    videoSetRecoveryResultCardButton->setVisible(
+        view.state == video_set_workflow::State::RecoveredExact &&
+        currentRecoveryResultCard().has_value());
     videoSetAssistantRecoverButton->setEnabled(
         view.can_recover && !videoSetOperationProgress.view().is_busy);
     videoSetScanSummaryLabel->setText(
@@ -6287,6 +6325,81 @@ void DriveManagerUI::startVideoSetDownload() {
         "videoSet/lastPlaylistUrl", videoSetPlaylistUrlEdit->text());
     updateVideoSetAssistant();
     videoSetDownloadProcess->start(executable, arguments);
+}
+
+std::optional<result_card::Model>
+DriveManagerUI::currentCreateResultCard() const {
+    const auto &view = videoSetWorkflow.view();
+    result_card::CreateEvidence evidence;
+    evidence.filePath = QString::fromStdString(view.source_filename);
+    evidence.fileSizeBytes = view.source_size;
+    evidence.profileName = QString::fromStdString(view.selected_profile);
+    evidence.partCount = view.part_count;
+    evidence.verifiedPartCount = view.local_verified_count;
+    evidence.allPartsCreated =
+        view.state == video_set_workflow::State::LocallyVerified;
+    evidence.localVerificationPassed =
+        view.part_count != 0 && view.local_verified_count == view.part_count;
+    evidence.completedAt = videoSetCreateCompletedAt;
+    evidence.appVersion = QString::fromLatin1(ms_version());
+    return result_card::makeCreateModel(
+        evidence, uiLanguage == QStringLiteral("tr")
+            ? QStringLiteral("tr_TR") : QStringLiteral("en_US"));
+}
+
+std::optional<result_card::Model>
+DriveManagerUI::currentRecoveryResultCard() const {
+    const auto &view = videoSetWorkflow.view();
+    const auto &operation = videoSetOperationProgress.view();
+    const QFileInfo recovered(QString::fromStdString(view.final_output_path));
+    const uint32_t expected = view.scan.expected_parts != 0
+        ? view.scan.expected_parts
+        : static_cast<uint32_t>(operation.part_count != 0
+            ? operation.part_count : view.part_count);
+    const uint32_t exact = view.scan.exact_parts != 0
+        ? view.scan.exact_parts : expected;
+    const bool returnedExact = expected != 0 && exact == expected &&
+        view.scan.missing_parts.empty() && view.scan.corrupt_parts.empty() &&
+        view.scan.conflict_count == 0;
+    result_card::RecoveryEvidence evidence;
+    evidence.status = view.state == video_set_workflow::State::RecoveredExact
+        ? result_card::RecoveryStatus::RecoveredExact
+        : result_card::RecoveryStatus::RecoveryFailed;
+    evidence.recoveredFilePath = recovered.absoluteFilePath();
+    evidence.fileSizeBytes = operation.file_size != 0
+        ? operation.file_size : static_cast<quint64>(recovered.size());
+    evidence.profileName = !videoSetRecoveredProfileName.isEmpty()
+        ? videoSetRecoveredProfileName
+        : !operation.profile_name.empty()
+        ? QString::fromStdString(operation.profile_name)
+        : QString::fromStdString(view.selected_profile);
+    evidence.partCount = expected;
+    evidence.verifiedPartCount = exact;
+    evidence.sourceKind = videoSetRecoveryFromYouTube
+        ? result_card::SourceKind::YouTubePlaylist
+        : result_card::SourceKind::Local;
+    evidence.sha256 = videoSetFinalSha;
+    evidence.returnedPartsExact = returnedExact;
+    evidence.finalShaExact = view.final_sha_exact;
+    evidence.completedAt = videoSetRecoveryCompletedAt;
+    evidence.appVersion = QString::fromLatin1(ms_version());
+    return result_card::makeRecoveryModel(
+        evidence, uiLanguage == QStringLiteral("tr")
+            ? QStringLiteral("tr_TR") : QStringLiteral("en_US"));
+}
+
+void DriveManagerUI::showCreateResultCard() {
+    const auto model = currentCreateResultCard();
+    if (!model) return;
+    result_card::PreviewDialog dialog(*model, this);
+    dialog.exec();
+}
+
+void DriveManagerUI::showRecoveryResultCard() {
+    const auto model = currentRecoveryResultCard();
+    if (!model) return;
+    result_card::PreviewDialog dialog(*model, this);
+    dialog.exec();
 }
 
 void DriveManagerUI::refreshRecentVideoSets() {

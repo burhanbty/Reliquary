@@ -5,92 +5,92 @@
     <name>DriveManagerUI</name>
     <message>
         <source>Turn files into resilient videos and recover them later.</source>
-        <translation type="vanished">Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtarın.</translation>
+        <translation>Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtarın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2783"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2790"/>
         <source>Home</source>
         <translation>Ana Sayfa</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2784"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2791"/>
         <source>Create</source>
         <translation>Oluştur</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2785"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5534"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2792"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5597"/>
         <source>Recover</source>
         <translation>Kurtar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2786"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2793"/>
         <source>Recent</source>
         <translation>Son Kullanılanlar</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="83"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2787"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2794"/>
         <source>Advanced</source>
         <translation>Gelişmiş</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2788"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2809"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2795"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2816"/>
         <source>Settings</source>
         <translation>Ayarlar</translation>
     </message>
     <message>
         <source>Language:</source>
-        <translation type="vanished">Dil:</translation>
+        <translation>Dil:</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2803"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2804"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2810"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2811"/>
         <source>User interface language</source>
         <translation>Kullanıcı arayüzü dili</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2790"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2797"/>
         <source>Open the Video Set home screen without clearing current work.</source>
         <translation>Mevcut çalışmayı temizlemeden Video Set ana ekranını açın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2793"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2800"/>
         <source>Start a new guided Video Set creation workflow.</source>
         <translation>Yeni bir yönlendirmeli Video Set oluşturma akışı başlatın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2796"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2803"/>
         <source>Choose videos or a set and recover the original file.</source>
         <translation>Videoları veya bir seti seçip orijinal dosyayı kurtarın.</translation>
     </message>
     <message>
         <source>Choose the interface language and the defaults used by the guided Video Set workflow.</source>
-        <translation type="vanished">Arayüz dilini ve yönlendirmeli Video Set akışında kullanılan varsayılanları seçin.</translation>
+        <translation>Arayüz dilini ve yönlendirmeli Video Set akışında kullanılan varsayılanları seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2812"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2819"/>
         <source>Interface language:</source>
         <translation>Arayüz dili:</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2813"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2820"/>
         <source>Default output folder:</source>
         <translation>Varsayılan çıktı klasörü:</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2814"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2821"/>
         <source>Choose folder</source>
         <translation>Klasör Seç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2815"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2822"/>
         <source>Remember recent Video Sets</source>
         <translation>Son kullanılan Video Set&apos;leri hatırla</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2820"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2827"/>
         <source>Show Advanced tools</source>
         <translation>Gelişmiş araçları göster</translation>
     </message>
@@ -100,189 +100,197 @@
         <translation>Varsayılan Video Set çıktı klasörünü seçin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2891"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2898"/>
         <source>&amp;File</source>
         <translation>&amp;Dosya</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2893"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2900"/>
         <source>&amp;Tools</source>
         <translation>&amp;Araçlar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2895"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2902"/>
         <source>&amp;Help</source>
         <translation>&amp;Yardım</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2897"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2904"/>
         <source>E&amp;xit</source>
         <translation>Çı&amp;kış</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2899"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2906"/>
         <source>&amp;Clear Logs</source>
         <translation>Günlükleri &amp;Temizle</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2903"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2910"/>
         <source>&amp;About</source>
         <translation>&amp;Hakkında</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2045"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2882"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2904"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2889"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2911"/>
         <source>Ready</source>
         <translation>Hazır</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3019"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3011"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3012"/>
+        <source>Save Result Card</source>
+        <translation>Sonuç Kartını Kaydet</translation>
+    </message>
+    <message>
+        <location filename="../src/drive_manager_ui.cpp" line="3028"/>
         <source>Technical details</source>
         <translation>Teknik ayrıntılar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3022"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3031"/>
         <source>Copy manifest location</source>
         <translation>Manifest konumunu kopyala</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4341"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4368"/>
         <source>Recovery job could not be prepared: %1</source>
         <translation>Kurtarma işi hazırlanamadı: %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4545"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4575"/>
         <source>Playlist download failed. Retry or continue with the manual recovery controls.</source>
         <translation>Oynatma listesi indirilemedi. Yeniden deneyin veya manuel kurtarma denetimleriyle devam edin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4781"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4815"/>
         <source>Video %1 / %2 is being created</source>
         <translation>Video %1 / %2 oluşturuluyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4785"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4819"/>
         <source>Video %1 / %2 is being verified locally</source>
         <translation>Video %1 / %2 yerel olarak doğrulanıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4788"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4822"/>
         <source>Video Set is ready</source>
         <translation>Video Set hazır</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4791"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4825"/>
         <source>Completed videos are decoded and verified locally before they are marked complete.</source>
         <translation>Tamamlanan videolar, tamamlandı olarak işaretlenmeden önce çözülür ve yerel olarak doğrulanır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4795"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4829"/>
         <source>Downloading video %1 / %2</source>
         <translation>Video %1 / %2 indiriliyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4797"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4831"/>
         <source>Discovering and downloading videos</source>
         <translation>Videolar keşfediliyor ve indiriliyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4807"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4841"/>
         <source>Final verification is in progress</source>
         <translation>Son doğrulama yapılıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4808"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4842"/>
         <source>VidStoreX is checking that the recovered file is exactly identical to the original file.</source>
         <translation>VidStoreX, kurtarılan dosyanın orijinal dosyayla birebir aynı olduğunu kontrol ediyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4810"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4844"/>
+        <location filename="../src/main_gui.cpp" line="1712"/>
         <source>Your file is being rebuilt</source>
         <translation>Dosyanız yeniden oluşturuluyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4897"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4935"/>
         <source>Live Data Path: file to parts to videos.</source>
         <translation>Canlı Veri Yolu: dosyadan parçalara, parçalardan videolara.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4899"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4937"/>
         <source>Live Data Path: videos are being checked; the original file is not being rebuilt yet.</source>
         <translation>Canlı Veri Yolu: videolar kontrol ediliyor; orijinal dosya henüz yeniden oluşturulmuyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4900"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4938"/>
         <source>Live Data Path: videos to verified parts to the original file.</source>
         <translation>Canlı Veri Yolu: videolardan doğrulanmış parçalara, parçalardan orijinal dosyaya.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4914"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4952"/>
         <source>High Capacity</source>
         <translation>Yüksek Kapasite</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4917"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4955"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4975"/>
         <source>%1 videos</source>
         <translation>%1 video</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4920"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4958"/>
         <source>Playlist count is not known yet</source>
         <translation>Oynatma listesi sayısı henüz bilinmiyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4921"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4959"/>
         <source>%1 playlist videos</source>
         <translation>%1 oynatma listesi videosu</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4948"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5004"/>
         <source>%1 / %2 parts verified</source>
         <translation>%1 / %2 parça doğrulandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4951"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5007"/>
         <source>%1 videos checked; %2 verified</source>
         <translation>%1 video kontrol edildi; %2 doğrulandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4958"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5014"/>
         <source>   %1 need attention</source>
         <translation>   %1 öğe ilgilenmenizi gerektiriyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4970"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5026"/>
         <source>%1 of %2 written</source>
         <translation>%1 / %2 yazıldı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4977"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5033"/>
         <source>%1 / %2 videos complete</source>
         <translation>%1 / %2 video tamamlandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4981"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5037"/>
         <source>Current download: %1%</source>
         <translation>Geçerli indirme: %1%</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5379"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5441"/>
         <source>Multiple Video Sets were found. Select a set-specific source; automatic recovery stopped safely.</source>
         <translation>Birden fazla Video Set bulundu. Sete özel bir kaynak seçin; otomatik kurtarma güvenle durduruldu.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5380"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5442"/>
         <source>The playlist does not contain one complete recoverable set. Review missing, corrupt, duplicate, and conflict details.</source>
         <translation>Oynatma listesi kurtarılabilir tek bir tam set içermiyor. Eksik, bozuk, kopya ve çakışma ayrıntılarını inceleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5401"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5463"/>
         <source>The recovered file already exists. Choose a different folder or use the manual recovery controls to confirm overwrite.</source>
         <translation>Kurtarılan dosya zaten var. Farklı bir klasör seçin veya üzerine yazmayı onaylamak için manuel kurtarma denetimlerini kullanın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5466"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5529"/>
         <source>The full-file SHA-256 matches the original.
 File: %1
 Size: %2
@@ -299,124 +307,124 @@ Set: %5
 SHA-256: %6</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5698"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5767"/>
         <source>A locally verified Video Set is required before sync.</source>
         <translation>Eşitlemeden önce yerel olarak doğrulanmış bir Video Set gerekir.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5704"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5773"/>
         <source>YouTube is not connected. Connect it in Settings or upload manually.</source>
-        <translation>YouTube bağlı değil. Ayarlar'dan bağlanın veya manuel yükleyin.</translation>
+        <translation>YouTube bağlı değil. Ayarlar&apos;dan bağlanın veya manuel yükleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5725"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5794"/>
         <source>Refreshing YouTube authorization...</source>
         <translation>YouTube yetkilendirmesi yenileniyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5772"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5841"/>
         <source>Creating playlist...</source>
         <translation>Oynatma listesi oluşturuluyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5782"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5851"/>
         <source>YouTube Sync needs attention: %1. Manual upload remains available.</source>
         <translation>YouTube Sync ilgilenmenizi gerektiriyor: %1. Manuel yükleme kullanılabilir.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5825"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5894"/>
         <source>Video Set part %1 is missing locally. Manual upload remains available.</source>
         <translation>Video Set parçası %1 yerelde eksik. Manuel yükleme kullanılabilir.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5854"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5923"/>
         <source>The current upload part could not be read.</source>
         <translation>Geçerli yükleme parçası okunamadı.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6063"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6132"/>
         <source>All uploaded videos were processed. The playlist is ready for returned-copy verification.</source>
         <translation>Yüklenen tüm videolar işlendi. Oynatma listesi, dönen kopya doğrulamasına hazır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6110"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6179"/>
         <source>YouTube Sync needs attention: %1 Manual upload remains available.</source>
         <translation>YouTube Sync ilgilenmenizi gerektiriyor: %1 Manuel yükleme kullanılabilir.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6267"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6409"/>
         <source>Recent Video Sets are disabled in Settings.</source>
         <translation>Son Video Set&apos;ler Ayarlar&apos;da devre dışı bırakıldı.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6290"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6432"/>
         <source>Location no longer exists</source>
         <translation>Konum artık mevcut değil</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6291"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6433"/>
         <source>Unavailable Video Set</source>
         <translation>Kullanılamayan Video Set</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6294"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6436"/>
         <source>Unavailable Video Set — %1</source>
         <translation>Kullanılamayan Video Set — %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6306"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6448"/>
         <source>%1 parts</source>
         <translation>%1 parça</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6310"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6452"/>
         <source>%1
 %2  ·  %3 parts</source>
         <translation>%1
 %2  ·  %3 parça</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6315"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6457"/>
         <source>Manifest could not be read</source>
         <translation>Manifest okunamadı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6316"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6458"/>
         <source>Unreadable Video Set</source>
         <translation>Okunamayan Video Set</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6319"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6461"/>
         <source>Unreadable Video Set — %1</source>
         <translation>Okunamayan Video Set — %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6325"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6467"/>
         <source>Last opened: </source>
         <translation>Son açılma: </translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6328"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6470"/>
         <source>Last opened: Not recorded</source>
         <translation>Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6350"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6492"/>
         <source>Status: %1</source>
         <translation>Durum: %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6376"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6518"/>
         <source>No recent Video Sets yet.</source>
         <translation>Henüz Video Set oluşturmadınız.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6527"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6669"/>
         <source>About VidStoreX</source>
         <translation>VidStoreX Hakkında</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6528"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6670"/>
         <source>VidStoreX
 
 Turn files into resilient videos and recover them later.
@@ -427,36 +435,36 @@ Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtar
 Sürüm 1.4</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2907"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2914"/>
         <source>&lt;b&gt;Video Set Assistant&lt;/b&gt;&lt;br&gt;Create resilient videos or recover an original file with a guided workflow. Advanced technical controls stay available separately.</source>
         <translation>&lt;b&gt;Video Set Asistanı&lt;/b&gt;&lt;br&gt;Yönlendirmeli bir akışla dayanıklı videolar oluşturun veya orijinal dosyayı kurtarın. Gelişmiş teknik denetimler ayrı olarak erişilebilir kalır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2909"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2916"/>
         <source>&lt;b&gt;Tested with real YouTube processing&lt;/b&gt;&lt;br&gt;6/6 single-video exact recoveries and 4/4 Video Set parts with an exact full-file SHA-256. Results describe the tested configuration and are not a guarantee for every future upload.</source>
         <translation>&lt;b&gt;Gerçek YouTube işlemesiyle test edildi&lt;/b&gt;&lt;br&gt;6/6 tek video birebir kurtarma ve tam dosya SHA-256 değeri birebir eşleşen 4/4 Video Set parçası. Sonuçlar test edilen yapılandırmayı açıklar; gelecekteki her yükleme için garanti değildir.</translation>
     </message>
     <message>
         <source>VidStoreX</source>
-        <translation type="vanished">VidStoreX</translation>
+        <translation>VidStoreX</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2914"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2921"/>
         <source>Choose your file</source>
         <translation>Dosyanızı seçin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2915"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2922"/>
         <source>Choose a mode</source>
         <translation>Bir mod seçin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2916"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2923"/>
         <source>Review and create videos</source>
         <translation>İnceleyin ve videoları oluşturun</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2917"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2924"/>
         <source>Create and verify videos</source>
         <translation>Videoları oluşturun ve doğrulayın</translation>
     </message>
@@ -465,49 +473,49 @@ Sürüm 1.4</translation>
         <translation>Videoları yükleyin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2919"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2926"/>
         <source>Download YouTube&apos;s processed copies</source>
         <translation>YouTube&apos;un işlediği kopyaları indirin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2920"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2927"/>
         <source>Check parts and recover</source>
         <translation>Parçaları kontrol edin ve kurtarın</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2921"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2928"/>
         <source>Recover and verify the file</source>
         <translation>Dosyayı kurtarın ve doğrulayın</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2922"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5535"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5541"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2929"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5598"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5604"/>
         <source>Done</source>
         <translation>Tamamlandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2924"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2931"/>
         <source>Create a resilient Video Set or recover an exact original.</source>
         <translation>Dayanıklı bir Video Set oluşturun veya orijinal dosyayı birebir kurtarın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2925"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2932"/>
         <source>Choose the file you want to turn into videos. Any file type is supported; the source is never moved, modified, or deleted.</source>
         <translation>Videolara dönüştürmek istediğiniz dosyayı seçin. Her dosya türü desteklenir; kaynak asla taşınmaz, değiştirilmez veya silinmez.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2926"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2933"/>
         <source>Choose how you want to balance reliability and video count.</source>
         <translation>Dayanıklılık ile video sayısı arasındaki dengeyi seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2927"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2934"/>
         <source>VidStoreX calculates real packet, frame, repair, and capacity values before creating any video.</source>
         <translation>VidStoreX herhangi bir video oluşturmadan önce gerçek paket, kare, onarım ve kapasite değerlerini hesaplar.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2928"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2935"/>
         <source>Each completed part is decoded and checked locally before it is accepted.</source>
         <translation>Tamamlanan her parça kabul edilmeden önce yerel olarak çözülür ve kontrol edilir.</translation>
     </message>
@@ -516,82 +524,82 @@ Sürüm 1.4</translation>
         <translation>Her videoyu Liste Dışı olarak yükleyin ve 1080p işlemenin tamamlanmasını bekleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2930"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2937"/>
         <source>Paste the playlist link, or choose the returned videos manually.</source>
         <translation>Oynatma listesi bağlantısını yapıştırın veya geri dönen videoları elle seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2931"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2938"/>
         <source>Select a set, manifest, video, or returned-video folder. Recovery starts only when you choose Recover.</source>
         <translation>Bir set, manifest, video veya geri dönen video klasörü seçin. Kurtarma yalnızca Kurtar&apos;ı seçtiğinizde başlar.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2932"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2939"/>
         <source>VidStoreX verifies every part and the final full-file SHA-256 before publishing the recovered file.</source>
         <translation>VidStoreX kurtarılan dosyayı yayımlamadan önce her parçayı ve son tam dosya SHA-256 değerini doğrular.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2933"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2940"/>
         <source>Recovery is successful only when the final SHA-256 matches.</source>
         <translation>Kurtarma yalnızca son SHA-256 eşleştiğinde başarılıdır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2941"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2946"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2948"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2953"/>
         <source>Create a Video Set</source>
         <translation>Video Set Oluştur</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2943"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2948"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2950"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2955"/>
         <source>Turn one file into one or more videos.</source>
         <translation>Bir dosyayı bir veya daha fazla videoya dönüştürün.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2944"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2951"/>
         <source>Choose a file</source>
         <translation>Dosya Seç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2949"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2956"/>
         <source>SOURCE → VIDEO SET</source>
         <translation>KAYNAK → VIDEO SET</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2950"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2954"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2957"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2961"/>
         <source>Recover a File</source>
         <translation>Dosyayı Kurtar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2951"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2955"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2958"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2962"/>
         <source>Rebuild the original file from downloaded Video Set videos.</source>
         <translation>İndirilen Video Set videolarından orijinal dosyayı geri oluşturun.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2953"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2960"/>
         <source>Choose videos or set</source>
         <translation>Video veya Set Seç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2957"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2964"/>
         <source>VIDEO → FILE</source>
         <translation>VİDEO → DOSYA</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2959"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2966"/>
         <source>Details</source>
         <translation>Ayrıntılar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2960"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2967"/>
         <source>Recent Video Sets</source>
         <translation>Son Video Set&apos;ler</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2389"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2961"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2968"/>
         <source>Continue</source>
         <translation>Devam Et</translation>
     </message>
@@ -600,67 +608,67 @@ Sürüm 1.4</translation>
         <translation>Klasörü Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3028"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3037"/>
         <source>Remove from list</source>
         <translation>Listeden Kaldır</translation>
     </message>
     <message>
         <source>Drop one file here, or use Choose file below.</source>
-        <translation type="vanished">Bir dosyayı buraya bırakın veya aşağıdaki Dosya Seç düğmesini kullanın.</translation>
+        <translation>Bir dosyayı buraya bırakın veya aşağıdaki Dosya Seç düğmesini kullanın.</translation>
     </message>
     <message>
         <source>Source file</source>
-        <translation type="vanished">Kaynak dosya</translation>
+        <translation>Kaynak dosya</translation>
     </message>
     <message>
         <source>Choose file...</source>
-        <translation type="vanished">Dosya seç...</translation>
+        <translation>Dosya seç...</translation>
     </message>
     <message>
         <source>Video Set output folder</source>
-        <translation type="vanished">Video Set çıktı klasörü</translation>
+        <translation>Video Set çıktı klasörü</translation>
     </message>
     <message>
         <source>Choose folder...</source>
-        <translation type="vanished">Klasör seç...</translation>
+        <translation>Klasör seç...</translation>
     </message>
     <message>
         <source>File:</source>
-        <translation type="vanished">Dosya:</translation>
+        <translation>Dosya:</translation>
     </message>
     <message>
         <source>Output folder:</source>
-        <translation type="vanished">Çıktı klasörü:</translation>
+        <translation>Çıktı klasörü:</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2822"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2829"/>
         <source>Back</source>
         <translation>Geri</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2993"/>
-        <location filename="../src/drive_manager_ui.cpp" line="4040"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3000"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4064"/>
         <source>Change</source>
         <translation>Değiştir</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4047"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4071"/>
         <source>No file selected.</source>
         <translation>Dosya seçilmedi.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4048"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4072"/>
         <source>This source file is missing or cannot be read.</source>
         <translation>Bu kaynak dosya eksik veya okunamıyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4036"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5540"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4060"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5603"/>
         <source>File</source>
         <translation>Dosya</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4032"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4056"/>
         <source>Name: %1
 Size: %2
 Type: %3
@@ -673,34 +681,34 @@ Yol: %4
 Orijinal dosya değişmeden kalacaktır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2975"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2982"/>
         <source>Most Reliable</source>
         <translation>En Güvenli</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2976"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2983"/>
         <source>Fewer &amp; Shorter Videos</source>
         <translation>Daha Az ve Daha Kısa Video</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2979"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2986"/>
         <source>Recommended</source>
         <translation>Önerilen</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2982"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2989"/>
         <source>Real YouTube tested</source>
         <translation>Gerçek YouTube&apos;da test edildi</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2983"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2990"/>
         <source>Uses more video time for the most conservative storage mode.
 Technical: 8x8, 1-bit, signal 1.0, repair 5%.</source>
         <translation>En korumacı depolama modu için daha fazla video süresi kullanır.
 Teknik: 8x8, 1-bit, sinyal 1.0, onarım %5.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2985"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2992"/>
         <source>Stores more data in each video and produces fewer or shorter videos.
 Real YouTube tested: 6/6 single-video exact and 4/4 Video Set parts with full-file SHA exact.
 Technical: 4x4, 1-bit, signal 1.0, repair 5%; config 538F2B009FAB.</source>
@@ -709,146 +717,146 @@ Gerçek YouTube testi: 6/6 tek video birebir ve tam dosya SHA değeri birebir e�
 Teknik: 4x4, 1-bit, sinyal 1.0, onarım %5; yapılandırma 538F2B009FAB.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3064"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3073"/>
         <source>✓ Selected — Resilient</source>
         <translation>✓ Seçili — Dayanıklı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3064"/>
-        <location filename="../src/drive_manager_ui.cpp" line="4914"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3073"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4952"/>
         <source>Resilient</source>
         <translation>Dayanıklı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3066"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3075"/>
         <source>✓ Selected — High Capacity</source>
         <translation>✓ Seçili — Yüksek Kapasite</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3066"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3075"/>
         <source>High Capacity (opt-in)</source>
         <translation>Yüksek Kapasite (isteğe bağlı)</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2994"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3001"/>
         <source>Advanced Settings</source>
         <translation>Gelişmiş Ayarlar</translation>
     </message>
     <message>
         <source>Target duration:</source>
-        <translation type="vanished">Hedef süre:</translation>
+        <translation>Hedef süre:</translation>
     </message>
     <message>
         <source>Maximum actual video size:</source>
-        <translation type="vanished">Azami gerçek video boyutu:</translation>
+        <translation>Azami gerçek video boyutu:</translation>
     </message>
     <message>
         <source>Safety reserve:</source>
-        <translation type="vanished">Güvenlik payı:</translation>
+        <translation>Güvenlik payı:</translation>
     </message>
     <message>
         <source>Container:</source>
-        <translation type="vanished">Kapsayıcı:</translation>
+        <translation>Kapsayıcı:</translation>
     </message>
     <message>
         <source>MKV (current backend format)</source>
-        <translation type="vanished">MKV (mevcut backend biçimi)</translation>
+        <translation>MKV (mevcut backend biçimi)</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3033"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3042"/>
         <source> seconds</source>
         <translation> saniye</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3035"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3044"/>
         <source> MiB (0 disables cap)</source>
         <translation> MiB (0 sınırı kapatır)</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3036"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3045"/>
         <source>Preferred duration for each planned video; actual duration follows packet and frame boundaries.</source>
         <translation>Planlanan her video için tercih edilen süre; gerçek süre paket ve kare sınırlarını izler.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3038"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3047"/>
         <source>Optional actual-size ceiling. Set 0 to disable the ceiling.</source>
         <translation>İsteğe bağlı gerçek boyut üst sınırı. Sınırı kapatmak için 0 ayarlayın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3040"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3049"/>
         <source>Keeps capacity in reserve so estimates do not use the absolute limit.</source>
         <translation>Tahminlerin mutlak sınırı kullanmaması için kapasitenin bir bölümünü yedekte tutar.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3042"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3051"/>
         <source>Repair data adds recoverable packets. The selected profile and config ID remain part of the manifest.</source>
         <translation>Onarım verisi kurtarılabilir paketler ekler. Seçili profil ve yapılandırma kimliği manifestin parçası olarak kalır.</translation>
     </message>
     <message>
         <source>Calculate plan</source>
-        <translation type="vanished">Planı Hesapla</translation>
+        <translation>Planı Hesapla</translation>
     </message>
     <message>
         <source>Estimates may differ from actual encoded sizes. The source file will not be modified. Final recovery is accepted only after SHA-256 verification.</source>
-        <translation type="vanished">Tahminler gerçek kodlanmış boyutlardan farklı olabilir. Kaynak dosya değiştirilmeyecektir. Son kurtarma yalnızca SHA-256 doğrulamasından sonra kabul edilir.</translation>
+        <translation>Tahminler gerçek kodlanmış boyutlardan farklı olabilir. Kaynak dosya değiştirilmeyecektir. Son kurtarma yalnızca SHA-256 doğrulamasından sonra kabul edilir.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2997"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3004"/>
         <source>Show part details</source>
         <translation>Parça ayrıntılarını göster</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2997"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3004"/>
         <source>Hide part details</source>
         <translation>Parça ayrıntılarını gizle</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3053"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3062"/>
         <source>Part</source>
         <translation>Parça</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3053"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3062"/>
         <source>Payload bytes</source>
         <translation>Yük baytları</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3053"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3062"/>
         <source>Frames</source>
         <translation>Kareler</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3054"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3063"/>
         <source>Duration</source>
         <translation>Süre</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3054"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3063"/>
         <source>Estimated size</source>
         <translation>Tahmini boyut</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3054"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3063"/>
         <source>Status</source>
         <translation>Durum</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5540"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5603"/>
         <source>Create Videos</source>
         <translation>Videoları Oluştur</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5271"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5332"/>
         <source>Create %1 Videos</source>
         <translation>%1 Video Oluştur</translation>
     </message>
     <message>
         <source>Resume</source>
-        <translation type="vanished">Devam Ettir</translation>
+        <translation>Devam Ettir</translation>
     </message>
     <message>
         <source>Continue to upload guide</source>
-        <translation type="vanished">Yükleme rehberine devam et</translation>
+        <translation>Yükleme rehberine devam et</translation>
     </message>
     <message>
         <source>1. Open the videos folder.
@@ -858,7 +866,7 @@ Teknik: 4x4, 1-bit, sinyal 1.0, onarım %5; yapılandırma 538F2B009FAB.</transl
 5. Copy the playlist link and return here.
 
 VidStoreX never signs in to your account and never uploads automatically.</source>
-        <translation type="vanished">1. Videolar klasörünü açın.
+        <translation>1. Videolar klasörünü açın.
 2. Tüm videoları YouTube&apos;a Liste Dışı olarak yükleyin.
 3. Her video için 1080p işlemenin bitmesini bekleyin.
 4. Tüm videoları tek bir oynatma listesine koyun.
@@ -868,196 +876,196 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Open Videos Folder</source>
-        <translation type="vanished">Videolar Klasörünü Aç</translation>
+        <translation>Videolar Klasörünü Aç</translation>
     </message>
     <message>
         <source>Open Upload Checklist</source>
-        <translation type="vanished">Yükleme Kontrol Listesini Aç</translation>
+        <translation>Yükleme Kontrol Listesini Aç</translation>
     </message>
     <message>
         <source>I have uploaded the videos</source>
-        <translation type="vanished">Videoları yükledim</translation>
+        <translation>Videoları yükledim</translation>
     </message>
     <message>
         <source>Playlist URL:</source>
-        <translation type="vanished">Oynatma Listesi URL&apos;si:</translation>
+        <translation>Oynatma Listesi URL&apos;si:</translation>
     </message>
     <message>
         <source>Download Returned Videos</source>
-        <translation type="vanished">Geri Dönen Videoları İndir</translation>
+        <translation>Geri Dönen Videoları İndir</translation>
     </message>
     <message>
         <source>Select yt-dlp executable</source>
-        <translation type="vanished">yt-dlp çalıştırılabilir dosyasını seç</translation>
+        <translation>yt-dlp çalıştırılabilir dosyasını seç</translation>
     </message>
     <message>
         <source>Choose returned videos manually</source>
-        <translation type="vanished">Geri dönen videoları elle seç</translation>
+        <translation>Geri dönen videoları elle seç</translation>
     </message>
     <message>
         <source>Waiting for a playlist link.</source>
-        <translation type="vanished">Oynatma listesi bağlantısı bekleniyor.</translation>
+        <translation>Oynatma listesi bağlantısı bekleniyor.</translation>
     </message>
     <message>
         <source>Video Set folder, set_manifest.json, video, or returned folder</source>
-        <translation type="vanished">Video Set klasörü, set_manifest.json, video veya geri dönen klasör</translation>
+        <translation>Video Set klasörü, set_manifest.json, video veya geri dönen klasör</translation>
     </message>
     <message>
         <source>Choose Set or Videos...</source>
-        <translation type="vanished">Set veya Videoları Seç...</translation>
+        <translation>Set veya Videoları Seç...</translation>
     </message>
     <message>
         <source>Choose manifest or video...</source>
-        <translation type="vanished">Manifest veya video seç...</translation>
+        <translation>Manifest veya video seç...</translation>
     </message>
     <message>
         <source>Recovered output folder</source>
-        <translation type="vanished">Kurtarılan çıktı klasörü</translation>
+        <translation>Kurtarılan çıktı klasörü</translation>
     </message>
     <message>
         <source>Output folder...</source>
-        <translation type="vanished">Çıktı klasörü...</translation>
+        <translation>Çıktı klasörü...</translation>
     </message>
     <message>
         <source>Set or videos:</source>
-        <translation type="vanished">Set veya videolar:</translation>
+        <translation>Set veya videolar:</translation>
     </message>
     <message>
         <source>Recovered file folder:</source>
-        <translation type="vanished">Kurtarılan dosya klasörü:</translation>
+        <translation>Kurtarılan dosya klasörü:</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3046"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3055"/>
         <source>Verified</source>
         <translation>Doğrulandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3046"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3055"/>
         <source>Missing</source>
         <translation>Eksik</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3046"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3055"/>
         <source>Corrupt</source>
         <translation>Bozuk</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3047"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3056"/>
         <source>Duplicates</source>
         <translation>Yinelenen</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3047"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3056"/>
         <source>Conflicts</source>
         <translation>Çakışma</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2967"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2974"/>
         <source>Check Videos</source>
         <translation>Videoları Kontrol Et</translation>
     </message>
     <message>
         <source>Open Returned Folder</source>
-        <translation type="vanished">Geri Dönen Klasörü Aç</translation>
+        <translation>Geri Dönen Klasörü Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2971"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2978"/>
         <source>Recover Original File</source>
         <translation>Orijinal Dosyayı Kurtar</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2968"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2975"/>
         <source>Inspect embedded Video Set information without rebuilding the original file.</source>
         <translation>Orijinal dosyayı yeniden oluşturmadan gömülü Video Set bilgilerini inceleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2972"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2979"/>
         <source>Rebuild the original file from all verified parts.</source>
         <translation>Orijinal dosyayı doğrulanmış tüm parçalardan yeniden oluşturun.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5660"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5729"/>
         <source>Everything is ready.</source>
         <translation>Her şey hazır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5663"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5732"/>
         <source>Recovery will become available after scanning finishes and every required part is verified.</source>
         <translation>Tarama bittikten ve gereken her parça doğrulandıktan sonra kurtarma kullanılabilir olacaktır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5662"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5731"/>
         <source>Scan complete. Select Recover Original File to rebuild the file.</source>
         <translation>Tarama tamamlandı. Dosyayı yeniden oluşturmak için Orijinal Dosyayı Kurtar&apos;ı seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4276"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4302"/>
         <source>Returned videos selected. Choose Check Videos when you are ready.</source>
         <translation>Geri dönen videolar seçildi. Hazır olduğunuzda Videoları Kontrol Et&apos;i seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4516"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4546"/>
         <source>Download complete. Choose Check Videos to inspect the returned copies.</source>
         <translation>İndirme tamamlandı. Geri dönen kopyaları incelemek için Videoları Kontrol Et&apos;i seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3001"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3008"/>
         <source>Your file was recovered exactly.</source>
         <translation>Dosyanız birebir kurtarıldı.</translation>
     </message>
     <message>
         <source>Open Recovered File Location</source>
-        <translation type="vanished">Kurtarılan Dosyanın Konumunu Aç</translation>
+        <translation>Kurtarılan Dosyanın Konumunu Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3005"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3014"/>
         <source>Copy SHA-256</source>
         <translation>SHA-256&apos;yı Kopyala</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3006"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3015"/>
         <source>Return Home</source>
         <translation>Ana Sayfaya Dön</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3000"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3007"/>
         <source>Show technical log</source>
         <translation>Teknik günlüğü göster</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3000"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3007"/>
         <source>Hide technical log</source>
         <translation>Teknik günlüğü gizle</translation>
     </message>
     <message>
         <source>Cancel safely</source>
-        <translation type="vanished">Güvenle İptal Et</translation>
+        <translation>Güvenle İptal Et</translation>
     </message>
     <message>
         <source>Retry</source>
-        <translation type="vanished">Yeniden Dene</translation>
+        <translation>Yeniden Dene</translation>
     </message>
     <message>
         <source>This is taking longer than usual. VidStoreX is still working; no action is required.</source>
-        <translation type="vanished">Bu işlem normalden uzun sürüyor. VidStoreX çalışmaya devam ediyor; işlem yapmanız gerekmiyor.</translation>
+        <translation>Bu işlem normalden uzun sürüyor. VidStoreX çalışmaya devam ediyor; işlem yapmanız gerekmiyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5540"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5603"/>
         <source>Mode</source>
         <translation>Mod</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5541"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5604"/>
         <source>YouTube</source>
         <translation>YouTube</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5534"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5597"/>
         <source>Choose</source>
         <translation>Seç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5534"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5597"/>
         <source>Check</source>
         <translation>Kontrol Et</translation>
     </message>
@@ -1070,32 +1078,32 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
         <translation>Etkin Değil</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4819"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4853"/>
         <source>Cancelling...</source>
         <translation>İptal ediliyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4999"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5060"/>
         <source>Elapsed: %1</source>
         <translation>Geçen: %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5002"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5063"/>
         <source>Remaining: %1</source>
         <translation>Kalan: %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4945"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5001"/>
         <source>Discovering videos...</source>
         <translation>Videolar bulunuyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5622"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5691"/>
         <source>Discovering and checking videos...</source>
         <translation>Videolar bulunuyor ve kontrol ediliyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4961"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5017"/>
         <source>Part/item %1 of %2   Completed: %3</source>
         <translation>Parça/öğe %1 / %2   Tamamlanan: %3</translation>
     </message>
@@ -1105,157 +1113,157 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Store one file across multiple videos, or recover a file from downloaded videos.</source>
-        <translation type="vanished">Bir dosyayı birden fazla videoda saklayın veya indirilen videolardan bir dosyayı kurtarın.</translation>
+        <translation>Bir dosyayı birden fazla videoda saklayın veya indirilen videolardan bir dosyayı kurtarın.</translation>
     </message>
     <message>
         <source>Choose Create or Recover.</source>
-        <translation type="vanished">Oluştur veya Kurtar&apos;ı seçin.</translation>
+        <translation>Oluştur veya Kurtar&apos;ı seçin.</translation>
     </message>
     <message>
         <source>Choose the file you want to turn into videos.</source>
-        <translation type="vanished">Videolara dönüştürmek istediğiniz dosyayı seçin.</translation>
+        <translation>Videolara dönüştürmek istediğiniz dosyayı seçin.</translation>
     </message>
     <message>
         <source>Choose a readable file and an output folder.</source>
-        <translation type="vanished">Okunabilir bir dosya ve çıktı klasörü seçin.</translation>
+        <translation>Okunabilir bir dosya ve çıktı klasörü seçin.</translation>
     </message>
     <message>
         <source>Continue to calculate the plan.</source>
-        <translation type="vanished">Planı hesaplamak için devam edin.</translation>
+        <translation>Planı hesaplamak için devam edin.</translation>
     </message>
     <message>
         <source>Calculating a safe Video Set plan...</source>
-        <translation type="vanished">Güvenli bir Video Set planı hesaplanıyor...</translation>
+        <translation>Güvenli bir Video Set planı hesaplanıyor...</translation>
     </message>
     <message>
         <source>The source file is being read without modification.</source>
-        <translation type="vanished">Kaynak dosya değiştirilmeden okunuyor.</translation>
+        <translation>Kaynak dosya değiştirilmeden okunuyor.</translation>
     </message>
     <message>
         <source>Review the estimate, then create the videos.</source>
-        <translation type="vanished">Tahmini inceleyin, ardından videoları oluşturun.</translation>
+        <translation>Tahmini inceleyin, ardından videoları oluşturun.</translation>
     </message>
     <message>
         <source>Creating and checking each video...</source>
-        <translation type="vanished">Her video oluşturuluyor ve kontrol ediliyor...</translation>
+        <translation>Her video oluşturuluyor ve kontrol ediliyor...</translation>
     </message>
     <message>
         <source>You can cancel safely and continue later.</source>
-        <translation type="vanished">Güvenle iptal edip daha sonra devam edebilirsiniz.</translation>
+        <translation>Güvenle iptal edip daha sonra devam edebilirsiniz.</translation>
     </message>
     <message>
         <source>Video creation was paused safely.</source>
-        <translation type="vanished">Video oluşturma güvenle duraklatıldı.</translation>
+        <translation>Video oluşturma güvenle duraklatıldı.</translation>
     </message>
     <message>
         <source>You can continue this Video Set later.</source>
-        <translation type="vanished">Bu Video Set&apos;e daha sonra devam edebilirsiniz.</translation>
+        <translation>Bu Video Set&apos;e daha sonra devam edebilirsiniz.</translation>
     </message>
     <message>
         <source>Next, upload every video as Unlisted.</source>
-        <translation type="vanished">Sonra her videoyu Liste Dışı olarak yükleyin.</translation>
+        <translation>Sonra her videoyu Liste Dışı olarak yükleyin.</translation>
     </message>
     <message>
         <source>Put the videos in one playlist, then continue.</source>
-        <translation type="vanished">Videoları tek bir oynatma listesine koyup devam edin.</translation>
+        <translation>Videoları tek bir oynatma listesine koyup devam edin.</translation>
     </message>
     <message>
         <source>Paste the playlist link to download YouTube&apos;s processed copies.</source>
-        <translation type="vanished">YouTube&apos;un işlediği kopyaları indirmek için oynatma listesi bağlantısını yapıştırın.</translation>
+        <translation>YouTube&apos;un işlediği kopyaları indirmek için oynatma listesi bağlantısını yapıştırın.</translation>
     </message>
     <message>
         <source>You can also choose downloaded videos manually.</source>
-        <translation type="vanished">İndirilen videoları elle de seçebilirsiniz.</translation>
+        <translation>İndirilen videoları elle de seçebilirsiniz.</translation>
     </message>
     <message>
         <source>Downloading returned videos...</source>
-        <translation type="vanished">Geri dönen videolar indiriliyor...</translation>
+        <translation>Geri dönen videolar indiriliyor...</translation>
     </message>
     <message>
         <source>When download finishes, choose Check Videos.</source>
-        <translation type="vanished">İndirme bittiğinde Videoları Kontrol Et&apos;i seçin.</translation>
+        <translation>İndirme bittiğinde Videoları Kontrol Et&apos;i seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5084"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5145"/>
         <source>Checking embedded Video Set information...</source>
         <translation>Gömülü Video Set bilgileri kontrol ediliyor...</translation>
     </message>
     <message>
         <source>Filenames and playlist order are not used as identity.</source>
-        <translation type="vanished">Dosya adları ve oynatma listesi sırası kimlik olarak kullanılmaz.</translation>
+        <translation>Dosya adları ve oynatma listesi sırası kimlik olarak kullanılmaz.</translation>
     </message>
     <message>
         <source>Download the missing parts, then scan the folder again.</source>
-        <translation type="vanished">Eksik parçaları indirin, ardından klasörü yeniden tarayın.</translation>
+        <translation>Eksik parçaları indirin, ardından klasörü yeniden tarayın.</translation>
     </message>
     <message>
         <source>Different videos claim to be the same part.</source>
-        <translation type="vanished">Farklı videolar aynı parça olduğunu iddia ediyor.</translation>
+        <translation>Farklı videolar aynı parça olduğunu iddia ediyor.</translation>
     </message>
     <message>
         <source>Remove the conflicting copy and scan again.</source>
-        <translation type="vanished">Çakışan kopyayı kaldırıp yeniden tarayın.</translation>
+        <translation>Çakışan kopyayı kaldırıp yeniden tarayın.</translation>
     </message>
     <message>
         <source>One or more parts are corrupt or could not be verified.</source>
-        <translation type="vanished">Bir veya daha fazla parça bozuk ya da doğrulanamadı.</translation>
+        <translation>Bir veya daha fazla parça bozuk ya da doğrulanamadı.</translation>
     </message>
     <message>
         <source>Download the affected videos again, then rescan.</source>
-        <translation type="vanished">Etkilenen videoları yeniden indirip tekrar tarayın.</translation>
+        <translation>Etkilenen videoları yeniden indirip tekrar tarayın.</translation>
     </message>
     <message>
         <source>Your file is ready to recover.</source>
-        <translation type="vanished">Dosyanız kurtarılmaya hazır.</translation>
+        <translation>Dosyanız kurtarılmaya hazır.</translation>
     </message>
     <message>
         <source>Recovering and checking the original file...</source>
-        <translation type="vanished">Orijinal dosya kurtarılıyor ve kontrol ediliyor...</translation>
+        <translation>Orijinal dosya kurtarılıyor ve kontrol ediliyor...</translation>
     </message>
     <message>
         <source>Success is shown only after the full SHA-256 matches.</source>
-        <translation type="vanished">Başarı yalnızca tam SHA-256 eşleştikten sonra gösterilir.</translation>
+        <translation>Başarı yalnızca tam SHA-256 eşleştikten sonra gösterilir.</translation>
     </message>
     <message>
         <source>The full-file SHA-256 matches the original.</source>
-        <translation type="vanished">Tam dosya SHA-256 değeri orijinalle eşleşiyor.</translation>
+        <translation>Tam dosya SHA-256 değeri orijinalle eşleşiyor.</translation>
     </message>
     <message>
         <source>The operation could not be completed.</source>
-        <translation type="vanished">İşlem tamamlanamadı.</translation>
+        <translation>İşlem tamamlanamadı.</translation>
     </message>
     <message>
         <source>Open technical details, correct the problem, and retry.</source>
-        <translation type="vanished">Teknik ayrıntıları açın, sorunu düzeltin ve yeniden deneyin.</translation>
+        <translation>Teknik ayrıntıları açın, sorunu düzeltin ve yeniden deneyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5499"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5562"/>
         <source>Your file will be divided into %1 videos.</source>
         <translation>Dosyanız %1 videoya bölünecek.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5322"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5502"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5384"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5565"/>
         <source>All %1 videos were created and verified locally.</source>
         <translation>%1 videonun tümü oluşturuldu ve yerel olarak doğrulandı.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5506"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5569"/>
         <source>%1 of %2 parts are missing.</source>
         <translation>%2 parçanın %1 tanesi eksik.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5510"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5573"/>
         <source>All %1 of %2 parts were found and verified.</source>
         <translation>%2 parçanın %1 tanesi bulundu ve doğrulandı.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4776"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4810"/>
         <source>Calculating the Video Set plan</source>
         <translation>Video Set planı hesaplanıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4790"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4824"/>
         <source>Creating and verifying videos</source>
         <translation>Videolar oluşturuluyor ve doğrulanıyor</translation>
     </message>
@@ -1264,7 +1272,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
         <translation>İşlenen videolar indiriliyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4800"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4834"/>
         <source>Scanning downloaded videos</source>
         <translation>İndirilen videolar taranıyor</translation>
     </message>
@@ -1273,7 +1281,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
         <translation>Orijinal dosya kurtarılıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4801"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4835"/>
         <source>VidStoreX is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.</source>
         <translation>VidStoreX videoları kontrol ediyor ve gömülü Video Set bilgilerini okuyor. Orijinal dosya henüz yeniden oluşturulmuyor.</translation>
     </message>
@@ -1282,63 +1290,63 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
         <translation>VidStoreX son tam dosya SHA-256 değerini kontrol ediyor. Kurtarma yalnızca eşleşirse başarılı olur.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4811"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4845"/>
         <source>Verified parts are being decoded and written back into the original file.</source>
         <translation>Doğrulanmış parçalar çözülüyor ve orijinal dosyaya geri yazılıyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5031"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5092"/>
         <source>Calculating plan...</source>
         <translation>Plan hesaplanıyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5033"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5094"/>
         <source>Reading source metadata and calculating packet capacity.</source>
         <translation>Kaynak meta verileri okunuyor ve paket kapasitesi hesaplanıyor.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5051"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5112"/>
         <source>Reading source file</source>
         <translation>Kaynak dosya okunuyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5052"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5113"/>
         <source>Preparing Video Set</source>
         <translation>Video Set hazırlanıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5146"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5207"/>
         <source>Checking video</source>
         <translation>Video kontrol ediliyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5151"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5212"/>
         <source>Preparing parts</source>
         <translation>Parçalar hazırlanıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5160"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5221"/>
         <source>Verified part %1; writing recovered data</source>
         <translation>%1. parça doğrulandı; kurtarılan veri yazılıyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5103"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5164"/>
         <source>Reading returned video</source>
         <translation>Geri dönen video okunuyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2781"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2788"/>
         <source>FILE → VIDEO → FILE · DIGITAL ARCHIVE</source>
         <translation>DOSYA → VİDEO → DOSYA · DİJİTAL ARŞİV</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2810"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2817"/>
         <source>Manage language, storage, and advanced access. Changes apply immediately.</source>
         <translation>Dil, depolama ve gelişmiş erişimi yönetin. Değişiklikler anında uygulanır.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="82"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2839"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2846"/>
         <source>Storage</source>
         <translation>Depolama</translation>
     </message>
@@ -1404,7 +1412,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2050"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2888"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2895"/>
         <source>Connected account</source>
         <translation>Bağlı hesap</translation>
     </message>
@@ -1426,7 +1434,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2135"/>
         <source>VidStoreX needs permission to upload Video Set videos and manage the playlist created for this set.</source>
-        <translation>VidStoreX'in Video Set videolarını yüklemek ve bu set için oluşturulan oynatma listesini yönetmek için izne ihtiyacı var.</translation>
+        <translation>VidStoreX&apos;in Video Set videolarını yüklemek ve bu set için oluşturulan oynatma listesini yönetmek için izne ihtiyacı var.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2138"/>
@@ -1439,117 +1447,117 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
         <translation>OAuth belirteci yanıtı geçersizdi: %1</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2842"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2849"/>
         <source>YouTube Test Lab</source>
         <translation>YouTube Test Laboratuvarı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2845"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2852"/>
         <source>Capacity Lab</source>
         <translation>Kapasite Laboratuvarı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2848"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2855"/>
         <source>Classic Video Set Tools</source>
         <translation>Klasik Video Set Araçları</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2913"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2920"/>
         <source>Store your files safely in videos</source>
         <translation>Dosyalarınızı videolarda güvenle saklayın</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2958"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2965"/>
         <source>✓ Real YouTube tested</source>
         <translation>✓ Gerçek YouTube turunda test edildi</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2962"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2969"/>
         <source>Open Folder</source>
         <translation>Klasörü Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2964"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2971"/>
         <source>More recent set actions</source>
         <translation>Diğer son set işlemleri</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2965"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2972"/>
         <source>Create your first set</source>
         <translation>İlk setinizi oluşturun</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2966"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2973"/>
         <source>Recover returned videos</source>
         <translation>Geri dönen videoları kurtarın</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2993"/>
-        <location filename="../src/drive_manager_ui.cpp" line="4049"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3000"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4073"/>
         <source>Choose file</source>
         <translation>Dosya seç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3002"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3009"/>
         <source>Download Processed Videos</source>
         <translation>İşlenmiş Videoları İndir</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3003"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3010"/>
         <source>Open File Location</source>
         <translation>Dosya Konumunu Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3004"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3013"/>
         <source>Open Set Folder</source>
         <translation>Set Klasörünü Aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3007"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3016"/>
         <source>Advanced / Classic Video Set Tools</source>
         <translation>Gelişmiş / Klasik Video Set Araçları</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3011"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3020"/>
         <source>6/6 single-video exact · 4/4 set parts + full SHA-256 exact</source>
         <translation>6/6 tek video birebir · 4/4 set parçası + tam SHA-256 birebir</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3015"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3024"/>
         <source>Measured results for the tested configuration; not an absolute guarantee.</source>
         <translation>Test edilen yapılandırmanın ölçülmüş sonuçlarıdır; mutlak garanti değildir.</translation>
     </message>
     <message>
         <source>Show manifest</source>
-        <translation type="vanished">Manifesti göster</translation>
+        <translation>Manifesti göster</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3025"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3034"/>
         <source>Open report</source>
         <translation>Raporu aç</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3031"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3040"/>
         <source>High Capacity: 4x4, 1-bit, signal 1.0, repair 5%, 1920x1080 at 30 FPS; config 538F2B009FAB</source>
         <translation>Yüksek Kapasite: 4x4, 1-bit, sinyal 1.0, onarım %5, 30 FPS&apos;de 1920x1080; yapılandırma 538F2B009FAB</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="3032"/>
+        <location filename="../src/drive_manager_ui.cpp" line="3041"/>
         <source>Resilient: 8x8, 1-bit, signal 1.0, repair 5%, 1920x1080 at 30 FPS</source>
         <translation>Dayanıklı: 8x8, 1-bit, sinyal 1.0, onarım %5, 30 FPS&apos;de 1920x1080</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5148"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5209"/>
         <source>Completed %1 of %2 locally verified videos</source>
         <translation>Yerel olarak doğrulanan %2 videodan %1 tanesi tamamlandı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5268"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5329"/>
         <source>Your file will be turned into %1 video(s).</source>
         <translation>Dosyanız %1 videoya dönüştürülecek.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5273"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5334"/>
         <source>About %1 per video
 Estimated total duration: %2
 Estimated total output: %3
@@ -1564,28 +1572,28 @@ Kurtarma disk gereksinimi: %5
 Seçili mod: %6</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5278"/>
-        <location filename="../src/drive_manager_ui.cpp" line="5281"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5339"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5342"/>
         <source> minutes</source>
         <translation> dakika</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5289"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5350"/>
         <source>Fewer &amp; Shorter Videos (High Capacity)</source>
         <translation>Daha Az ve Daha Kısa Video (Yüksek Kapasite)</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5290"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5351"/>
         <source>Most Reliable (Resilient)</source>
         <translation>En Güvenli (Dayanıklı)</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5302"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5363"/>
         <source>The videos were not completely created and verified. Use Resume to keep verified parts and continue later.</source>
         <translation>Videolar tam olarak oluşturulup doğrulanmadı. Doğrulanmış parçaları koruyup daha sonra devam etmek için Devam Ettir&apos;i kullanın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5320"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5382"/>
         <source>Finalizing Video Set</source>
         <translation>Video Set tamamlanıyor</translation>
     </message>
@@ -1596,7 +1604,7 @@ SHA-256: %2
 Parts: %3
 Profile: %4
 Set: %5</source>
-        <translation type="vanished">Tam dosya SHA-256 değeri orijinalle eşleşiyor.
+        <translation>Tam dosya SHA-256 değeri orijinalle eşleşiyor.
 Çıktı: %1
 SHA-256: %2
 Parçalar: %3
@@ -1604,71 +1612,71 @@ Profil: %4
 Set: %5</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5535"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5598"/>
         <source>Verify</source>
         <translation>Doğrula</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5627"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5696"/>
         <source>Verified: %1/%2   Missing: %3   Corrupt: %4   Duplicates: %5   Conflicts: %6</source>
         <translation>Doğrulanan: %1/%2   Eksik: %3   Bozuk: %4   Yinelenen: %5   Çakışma: %6</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5635"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5704"/>
         <source>Scan has not found a Video Set summary yet.</source>
         <translation>Tarama henüz bir Video Set özeti bulmadı.</translation>
     </message>
     <message>
         <source>%1 — %2 — %3 parts</source>
-        <translation type="vanished">%1 — %2 — %3 parça</translation>
+        <translation>%1 — %2 — %3 parça</translation>
     </message>
     <message>
         <source> — Location no longer exists</source>
-        <translation type="vanished"> — Konum artık mevcut değil</translation>
+        <translation> — Konum artık mevcut değil</translation>
     </message>
     <message>
         <source> — Manifest could not be read</source>
-        <translation type="vanished"> — Manifest okunamadı</translation>
+        <translation> — Manifest okunamadı</translation>
     </message>
     <message>
         <source>
 Last opened: </source>
-        <translation type="vanished">
+        <translation>
 Son açılma: </translation>
     </message>
     <message>
         <source>
 Last opened: Not recorded</source>
-        <translation type="vanished">
+        <translation>
 Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6274"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6416"/>
         <source>Ready for YouTube</source>
         <translation>YouTube için hazır</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6275"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6417"/>
         <source>Ready to recover</source>
         <translation>Kurtarmaya hazır</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6276"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6418"/>
         <source>Recovered exactly</source>
         <translation>Birebir kurtarıldı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6277"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6419"/>
         <source>Creating videos</source>
         <translation>Videolar oluşturuluyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6278"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6420"/>
         <source>Ready to create</source>
         <translation>Oluşturmaya hazır</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6279"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6421"/>
         <source>Needs attention</source>
         <translation>İlgilenilmesi gerekiyor</translation>
     </message>
@@ -1681,37 +1689,37 @@ Son açılma: Kaydedilmedi</translation>
         <translation>YouTube oynatma listesi bağlantısını yapıştırın</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4309"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4335"/>
         <source>Paste a valid YouTube playlist link containing list=.</source>
         <translation>list= içeren geçerli bir YouTube oynatma listesi bağlantısı yapıştırın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4308"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4334"/>
         <source>Ready. VidStoreX will download, identify one complete set, recover it, and verify the full-file SHA-256.</source>
         <translation>Hazır. VidStoreX videoları indirecek, tek bir tam seti belirleyecek, kurtaracak ve tam dosya SHA-256 değerini doğrulayacak.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4318"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4344"/>
         <source>Choose a writable recovered-file folder before continuing.</source>
         <translation>Devam etmeden önce yazılabilir bir kurtarılan dosya klasörü seçin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4337"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4364"/>
         <source>Downloading playlist videos...</source>
         <translation>Oynatma listesi videoları indiriliyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4525"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4555"/>
         <source>Download complete. Checking embedded Video Set information...</source>
         <translation>İndirme tamamlandı. Gömülü Video Set bilgileri denetleniyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5405"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5467"/>
         <source>One complete set was found. Recovering and checking the full-file SHA-256...</source>
         <translation>Tek bir tam set bulundu. Dosya kurtarılıyor ve tam dosya SHA-256 değeri denetleniyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5445"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5508"/>
         <source>Your file was recovered exactly. Full-file SHA-256 matches.</source>
         <translation>Dosyanız birebir kurtarıldı. Tam dosya SHA-256 değeri eşleşiyor.</translation>
     </message>
@@ -1725,25 +1733,25 @@ Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1970"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2866"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2873"/>
         <source>Connect YouTube</source>
         <translation>YouTube&apos;a Bağlan</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1972"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2867"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2874"/>
         <source>Disconnect</source>
         <translation>Bağlantıyı Kes</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2047"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2885"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2892"/>
         <source>Connected</source>
         <translation>Bağlı</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2047"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2885"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2892"/>
         <source>Not connected</source>
         <translation>Bağlı değil</translation>
     </message>
@@ -1754,7 +1762,7 @@ Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2045"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2883"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2890"/>
         <source>Missing — YouTube Sync is not configured for this build.</source>
         <translation>Eksik — Bu derleme için YouTube Senkronizasyonu yapılandırılmadı.</translation>
     </message>
@@ -1763,48 +1771,48 @@ Son açılma: Kaydedilmedi</translation>
         <translation>YouTube Senkronizasyonu ile Yükle</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4229"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4255"/>
         <source>Upload paused. Already uploaded videos remain on YouTube.</source>
         <translation>Yükleme durduruldu. Daha önce yüklenen videolar YouTube&apos;da kalır.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="4228"/>
-        <location filename="../src/drive_manager_ui.cpp" line="6079"/>
-        <location filename="../src/drive_manager_ui.cpp" line="6104"/>
-        <location filename="../src/drive_manager_ui.cpp" line="6113"/>
+        <location filename="../src/drive_manager_ui.cpp" line="4254"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6148"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6173"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6182"/>
         <source>Resume Upload</source>
         <translation>Yüklemeye Devam Et</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5833"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5902"/>
         <source>Uploading Part %1 of %2</source>
         <translation>%1/%2. Parça Yükleniyor</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="5809"/>
+        <location filename="../src/drive_manager_ui.cpp" line="5878"/>
         <source>All parts were uploaded. Checking YouTube processing...</source>
         <translation>Tüm parçalar yüklendi. YouTube işleme durumu denetleniyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6060"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6129"/>
         <source>Videos were uploaded successfully, but they are Private. Automatic download of YouTube&apos;s processed copies is unavailable in this configuration.</source>
         <translation>Videolar başarıyla yüklendi ancak Gizli durumda. Bu yapılandırmada YouTube&apos;un işlenmiş kopyalarını otomatik indirme kullanılamıyor.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1981"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2873"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2880"/>
         <source>Privacy-friendly titles</source>
         <translation>Gizliliği koruyan başlıklar</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1983"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2874"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2881"/>
         <source>Download and verify after YouTube finishes processing</source>
         <translation>YouTube işlemeyi bitirdikten sonra indir ve doğrula</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1974"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2868"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2875"/>
         <source>Open setup instructions</source>
         <translation>Kurulum yönergelerini aç</translation>
     </message>
@@ -1814,54 +1822,54 @@ Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1979"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2871"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2878"/>
         <source>Private</source>
         <translation>Gizli</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1980"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2872"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2879"/>
         <source>Public</source>
         <translation>Herkese Açık</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1978"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2870"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2877"/>
         <source>Unlisted</source>
         <translation>Liste Dışı</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6076"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6145"/>
         <source>Processing is taking longer than expected. %1 of %2 videos are ready. Resume later to check again.</source>
         <translation>İşleme beklenenden uzun sürüyor. %1/%2 video hazır. Daha sonra Devam Et ile yeniden denetleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6087"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6156"/>
         <source>%1 of %2 videos are processed. Checking again in %3 seconds.</source>
         <translation>%1/%2 video işlendi. %3 saniye sonra yeniden denetlenecek.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6146"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6215"/>
         <source>Waiting for processed 1080p copy...</source>
         <translation>İşlenmiş 1080p kopya bekleniyor...</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6171"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6240"/>
         <source>Waiting for processed 1080p copy. Checking again in %1 seconds.</source>
         <translation>İşlenmiş 1080p kopya bekleniyor. %1 saniye sonra yeniden denetlenecek.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6136"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6205"/>
         <source>Processing is taking longer than expected. The 1080p copies are not available yet; Resume later or download manually.</source>
         <translation>İşleme beklenenden uzun sürüyor. 1080p kopyalar henüz kullanılamıyor; daha sonra devam edin veya elle indirin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6125"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6194"/>
         <source>Videos are processed, but yt-dlp is unavailable. Select it or use the manual download controls.</source>
         <translation>Videolar işlendi ancak yt-dlp kullanılamıyor. yt-dlp&apos;yi seçin veya elle indirme denetimlerini kullanın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="6186"/>
+        <location filename="../src/drive_manager_ui.cpp" line="6255"/>
         <source>yt-dlp could not check the processed 1080p copies. Manual download remains available.</source>
         <translation>yt-dlp işlenmiş 1080p kopyaları denetleyemedi. Elle indirme kullanılabilir durumda.</translation>
     </message>
@@ -1870,12 +1878,12 @@ Son açılma: Kaydedilmedi</translation>
         <translation>Gelişmiş / Deneysel / YouTube Senkronizasyonu</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2851"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2858"/>
         <source>Experimental</source>
         <translation>Deneysel</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2854"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2861"/>
         <source>YouTube Sync (Experimental)</source>
         <translation>YouTube Senkronizasyonu (Deneysel)</translation>
     </message>
@@ -1896,12 +1904,12 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
         <translation>5. YouTube&apos;a Yükleyin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2918"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2925"/>
         <source>Upload to YouTube</source>
         <translation>YouTube&apos;a Yükleyin</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2929"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2936"/>
         <source>Upload your VidStoreX videos to YouTube and add them to one playlist.</source>
         <translation>VidStoreX videolarınızı YouTube&apos;a yükleyin ve tek bir oynatma listesine ekleyin.</translation>
     </message>
@@ -1947,7 +1955,7 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="1968"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2869"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2876"/>
         <source>Choose...</source>
         <translation>Seç...</translation>
     </message>
@@ -1962,22 +1970,22 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2051"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2889"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2896"/>
         <source>—</source>
         <translation>—</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2901"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2908"/>
         <source>Getting Started</source>
         <translation>Başlangıç Rehberi</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2816"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2823"/>
         <source>Review the three-step guide to creating, storing, and recovering a file.</source>
         <translation>Dosya oluşturma, videoları saklama ve dosyayı kurtarmayı anlatan üç adımlı rehberi yeniden inceleyin.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2818"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2825"/>
         <source>Show Getting Started Again</source>
         <translation>Başlangıç Rehberini Tekrar Göster</translation>
     </message>
@@ -2024,7 +2032,7 @@ Tüm parçaları tek bir oynatma listesine ekleyin</translation>
         <translation>VidStoreX, kurtarılan dosyanın orijinal dosyayla birebir aynı olduğunu doğrular.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2821"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2828"/>
         <source>Skip</source>
         <translation>Atla</translation>
     </message>
@@ -2035,24 +2043,24 @@ Tüm parçaları tek bir oynatma listesine ekleyin</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2384"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2828"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2835"/>
         <source>Getting started progress</source>
         <translation>Başlangıç rehberi ilerlemesi</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2385"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2829"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2836"/>
         <source>Page %1 of 3</source>
         <translation>3 sayfadan %1.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2392"/>
-        <location filename="../src/drive_manager_ui.cpp" line="2823"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2830"/>
         <source>Complete Getting Started and open Home.</source>
         <translation>Başlangıç Rehberini tamamlayın ve Ana Sayfa&apos;yı açın.</translation>
     </message>
     <message>
-        <location filename="../src/drive_manager_ui.cpp" line="2825"/>
+        <location filename="../src/drive_manager_ui.cpp" line="2832"/>
         <source>Return to the previous Getting Started page.</source>
         <translation>Önceki Başlangıç Rehberi sayfasına dönün.</translation>
     </message>
@@ -2065,6 +2073,202 @@ Tüm parçaları tek bir oynatma listesine ekleyin</translation>
         <location filename="../src/drive_manager_ui.cpp" line="2366"/>
         <source>Getting Started cannot be opened while an operation is running.</source>
         <translation>Bir işlem sürerken Başlangıç Rehberi açılamaz.</translation>
+    </message>
+</context>
+<context>
+    <name>VidStoreXResultCard</name>
+    <message>
+        <location filename="../src/result_card.cpp" line="33"/>
+        <source>Result Card</source>
+        <translation>Sonuç Kartı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="34"/>
+        <source>Verified Recovery</source>
+        <translation>Doğrulanmış Kurtarma</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="35"/>
+        <source>Your file was recovered exactly</source>
+        <translation>Dosyanız birebir kurtarıldı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="36"/>
+        <source>Video Set Ready</source>
+        <translation>Video Set Hazır</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="37"/>
+        <source>Local verification complete</source>
+        <translation>Yerel doğrulama tamamlandı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="38"/>
+        <source>Ready for upload</source>
+        <translation>Yüklemeye hazır</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="39"/>
+        <source>Digital Archive Report</source>
+        <translation>Dijital Arşiv Raporu</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="40"/>
+        <source>Playlist</source>
+        <translation>Oynatma Listesi</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="41"/>
+        <source>File</source>
+        <translation>Dosya</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="42"/>
+        <source>Original File</source>
+        <translation>Orijinal Dosya</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="43"/>
+        <source>Verified Parts</source>
+        <translation>Doğrulanmış Parçalar</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="44"/>
+        <source>YouTube Round-Trip</source>
+        <translation>YouTube Turu</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="45"/>
+        <source>Local Recovery</source>
+        <translation>Yerel Kurtarma</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="46"/>
+        <source>Verified</source>
+        <translation>Doğrulandı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="47"/>
+        <source>Full-file SHA-256</source>
+        <translation>Tam Dosya SHA-256</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="48"/>
+        <source>Match</source>
+        <translation>Eşleşti</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="49"/>
+        <source>%1 / %2 parts verified</source>
+        <translation>%1 / %2 parça doğrulandı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="50"/>
+        <source>%1 / %2 videos created</source>
+        <translation>%1 / %2 video oluşturuldu</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="51"/>
+        <source>Created with VidStoreX</source>
+        <translation>VidStoreX ile oluşturuldu</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="52"/>
+        <source>Most Reliable</source>
+        <translation>En Güvenli</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="53"/>
+        <source>Fewer Videos</source>
+        <translation>Daha Az Video</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="54"/>
+        <source>Show file name</source>
+        <translation>Dosya adını göster</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="55"/>
+        <source>Show file size</source>
+        <translation>Dosya boyutunu göster</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="56"/>
+        <source>Show profile</source>
+        <translation>Profili göster</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="57"/>
+        <source>Show shortened SHA-256</source>
+        <translation>Kısaltılmış SHA-256'yı göster</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="58"/>
+        <source>Show full SHA-256</source>
+        <translation>Tam SHA-256'yı göster</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="59"/>
+        <source>Include technical details</source>
+        <translation>Teknik ayrıntıları ekle</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="60"/>
+        <source>Copy Image</source>
+        <translation>Görseli Kopyala</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="61"/>
+        <source>Save PNG</source>
+        <translation>PNG Kaydet</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="62"/>
+        <source>Close</source>
+        <translation>Kapat</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="63"/>
+        <source>Result card saved</source>
+        <translation>Sonuç kartı kaydedildi</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="64"/>
+        <source>Result card could not be saved.</source>
+        <translation>Sonuç kartı kaydedilemedi.</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="65"/>
+        <source>Image copied</source>
+        <translation>Görsel kopyalandı</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="66"/>
+        <source>PNG Image (*.png)</source>
+        <translation>PNG Görseli (*.png)</translation>
+    </message>
+    <message>
+        <location filename="../src/result_card.cpp" line="67"/>
+        <source>VidStoreX result card preview</source>
+        <translation>VidStoreX sonuç kartı önizlemesi</translation>
+    </message>
+</context>
+<context>
+    <name>youtube_sync::YouTubeNetworkService</name>
+    <message>
+        <location filename="../src/youtube_network_service.cpp" line="29"/>
+        <source>Unsupported network operation.</source>
+        <translation>Desteklenmeyen ağ işlemi.</translation>
+    </message>
+    <message>
+        <location filename="../src/youtube_network_service.cpp" line="38"/>
+        <source>The YouTube network request failed.</source>
+        <translation>YouTube ağ isteği başarısız oldu.</translation>
+    </message>
+    <message>
+        <location filename="../src/youtube_network_service.cpp" line="127"/>
+        <source>YouTube authorization could not be completed.</source>
+        <translation>YouTube yetkilendirmesi tamamlanamadı.</translation>
     </message>
 </context>
 </TS>

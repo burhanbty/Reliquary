@@ -98,6 +98,10 @@ struct ProgressUpdate {
     std::string status;
     std::string sha256;
     std::string output_path;
+    std::string file_name;
+    std::optional<uint64_t> file_size;
+    std::string profile_name;
+    std::optional<uint64_t> part_count;
     std::string suggested_action;
     bool can_retry = false;
     std::optional<int> exit_code;
@@ -148,6 +152,10 @@ public:
         string_field("status", update.status);
         string_field("sha256", update.sha256);
         string_field("output_path", update.output_path);
+        string_field("file_name", update.file_name);
+        number_field("file_size", update.file_size);
+        string_field("profile_name", update.profile_name);
+        number_field("part_count", update.part_count);
         string_field("suggested_action", update.suggested_action);
         if (update.can_retry) out << ",\"can_retry\":true";
         if (update.exit_code)
@@ -1113,7 +1121,8 @@ int do_recover(const Options &options) {
         write_recovery_state(state, plan, final, completed, plan.aggregate_state);
         write_reports(report_root, plan, {}, duplicates);
         std::cout << "Set " << set_id << ": Recovered exact\nFinal: " << final.string()
-                  << "\nSHA-256: " << plan.original_file_sha256.hexValue() << "\n";
+                  << "\nSHA-256: " << plan.original_file_sha256.hexValue()
+                  << "\nProfile: " << plan.profile_name << "\n";
         progress.emit({.type = "result", .phase = "completed",
                        .message = "Original file recovered exactly",
                        .current = plan.parts.size(),
@@ -1124,7 +1133,11 @@ int do_recover(const Options &options) {
                        .determinate = plan.original_file_size != 0,
                        .status = "recovered_exact",
                        .sha256 = plan.original_file_sha256.hexValue(),
-                       .output_path = final.string()});
+                       .output_path = final.string(),
+                       .file_name = plan.original_filename,
+                       .file_size = plan.original_file_size,
+                       .profile_name = plan.profile_name,
+                       .part_count = plan.parts.size()});
     }
     std::error_code ignored; std::filesystem::remove_all(temporary, ignored);
     return overall;

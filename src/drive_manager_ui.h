@@ -55,6 +55,7 @@
 #include "encoding_reliability.h"
 #include "gui_preflight_model.h"
 #include "media_storage.h"
+#include "result_card.h"
 #include "video_set_workflow.h"
 #include "youtube_network_service.h"
 
@@ -367,6 +368,16 @@ private:
 
     void openRecentVideoSet(const QString &manifestPath);
 
+    [[nodiscard]] std::optional<result_card::Model>
+    currentCreateResultCard() const;
+
+    [[nodiscard]] std::optional<result_card::Model>
+    currentRecoveryResultCard() const;
+
+    void showCreateResultCard();
+
+    void showRecoveryResultCard();
+
     [[nodiscard]] QStringList videoSetEncodeArguments(
         const QString &command) const;
 
@@ -624,6 +635,7 @@ private:
     QLabel *videoSetProgressPartLabel = nullptr;
     QPushButton *videoSetProgressContinueButton = nullptr;
     QPushButton *videoSetProgressOpenFolderButton = nullptr;
+    QPushButton *videoSetCreateResultCardButton = nullptr;
     QPushButton *videoSetProgressResumeButton = nullptr;
     QPushButton *videoSetAssistantCancelButton = nullptr;
     QFrame *videoSetActivityPanel = nullptr;
@@ -684,6 +696,7 @@ private:
     QPushButton *videoSetOpenRecoveredButton = nullptr;
     QPushButton *videoSetOpenSetFolderButton = nullptr;
     QPushButton *videoSetCopyShaButton = nullptr;
+    QPushButton *videoSetRecoveryResultCardButton = nullptr;
     QPushButton *videoSetReturnHomeButton = nullptr;
     QGroupBox *videoSetClassicToolsGroup = nullptr;
     QPushButton *videoSetPlanButton = nullptr;
@@ -706,6 +719,10 @@ private:
     QString videoSetCurrentSetRoot;
     QString videoSetCurrentManifest;
     QString videoSetFinalSha;
+    QString videoSetRecoveredProfileName;
+    QDateTime videoSetCreateCompletedAt;
+    QDateTime videoSetRecoveryCompletedAt;
+    bool videoSetRecoveryFromYouTube = false;
     bool videoSetAssistantOperation = false;
     bool videoSetCancelRequested = false;
     bool videoSetInstantRecoveryActive = false;

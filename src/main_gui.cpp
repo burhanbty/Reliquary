@@ -18,11 +18,13 @@
 #include <QAction>
 #include <QDateTime>
 #include <QComboBox>
+#include <QClipboard>
 #include <QDebug>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QDir>
+#include <QDialog>
 #include <QFile>
 #include <QFrame>
 #include <QIcon>
@@ -223,6 +225,107 @@ private:
     bool authorizationValid_ = true;
     bool metadataPrivate_ = true;
 };
+
+bool exerciseResultCardPreview(
+    QPushButton *openButton, const QString &outputPath,
+    const QStringList &requiredSummary,
+    const QStringList &forbiddenSummary,
+    const QString &previewScreenshot, QString *error) {
+    if (!openButton || !openButton->isVisible() || !openButton->isEnabled()) {
+        if (error) *error = QStringLiteral("result card button is unavailable");
+        return false;
+    }
+    QFile::remove(outputPath);
+    qputenv("VIDSTOREX_RESULT_CARD_TEST_OUTPUT", outputPath.toUtf8());
+    bool handled = false;
+    QString nestedError;
+    QTimer interaction;
+    interaction.setSingleShot(true);
+    QObject::connect(&interaction, &QTimer::timeout, qApp, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog || dialog->objectName() !=
+                QStringLiteral("resultCardPreviewDialog")) {
+            nestedError = QStringLiteral("result card preview did not open");
+            if (dialog) dialog->reject();
+            handled = true;
+            return;
+        }
+        auto *preview = dialog->findChild<QLabel *>(
+            "resultCardPreviewImage");
+        auto *save = dialog->findChild<QPushButton *>(
+            "resultCardSavePngButton");
+        auto *copy = dialog->findChild<QPushButton *>(
+            "resultCardCopyImageButton");
+        auto *close = dialog->findChild<QPushButton *>(
+            "resultCardCloseButton");
+        if (!preview || !save || !copy || !close) {
+            nestedError = QStringLiteral("result card preview controls are missing");
+            dialog->reject();
+            handled = true;
+            return;
+        }
+        const QString summary = preview->accessibleDescription();
+        for (const auto &required : requiredSummary) {
+            if (!summary.contains(required, Qt::CaseInsensitive)) {
+                nestedError = QStringLiteral("preview summary is missing: ") +
+                    required + QStringLiteral("; actual: ") + summary;
+                dialog->reject();
+                handled = true;
+                return;
+            }
+        }
+        for (const auto &forbidden : forbiddenSummary) {
+            if (summary.contains(forbidden, Qt::CaseInsensitive)) {
+                nestedError = QStringLiteral("preview summary leaked: ") +
+                    forbidden;
+                dialog->reject();
+                handled = true;
+                return;
+            }
+        }
+        if (!previewScreenshot.isEmpty()) dialog->grab().save(previewScreenshot);
+        copy->click();
+        if (QApplication::clipboard()->image().size() != QSize(1600, 900)) {
+            nestedError = QStringLiteral("copied result card has wrong dimensions");
+            dialog->reject();
+            handled = true;
+            return;
+        }
+        save->click();
+        const QImage saved(outputPath);
+        if (saved.size() != QSize(1600, 900)) {
+            nestedError = QStringLiteral("saved result card has wrong dimensions");
+            dialog->reject();
+            handled = true;
+            return;
+        }
+        handled = true;
+        close->click();
+    });
+    QTimer fallback;
+    fallback.setSingleShot(true);
+    QObject::connect(&fallback, &QTimer::timeout, qApp, [&]() {
+        if (handled) return;
+        nestedError = QStringLiteral("result card preview interaction timed out");
+        handled = true;
+        if (auto *dialog = qobject_cast<QDialog *>(
+                QApplication::activeModalWidget()))
+            dialog->reject();
+    });
+    interaction.start(75);
+    fallback.start(3000);
+    openButton->click();
+    interaction.stop();
+    fallback.stop();
+    qunsetenv("VIDSTOREX_RESULT_CARD_TEST_OUTPUT");
+    if (!handled || !nestedError.isEmpty()) {
+        if (error) *error = nestedError.isEmpty()
+            ? QStringLiteral("result card preview did not complete")
+            : nestedError;
+        return false;
+    }
+    return true;
+}
 #endif
 
 } // namespace
@@ -678,6 +781,12 @@ int main(int argc, char *argv[]) {
 #endif
 
     if (!instantRecoverySmokeRoot.isEmpty()) {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != QStringLiteral("windows")) {
+            qCritical() << "Instant Recovery result card E2E requires qwindows";
+            return 80;
+        }
+#endif
         qputenv("VIDSTOREX_FAKE_YTDLP_SOURCE",
                 instantRecoveryFixtureVideos.toUtf8());
         qputenv("VIDSTOREX_RECOVERY_JOBS_ROOT",
@@ -697,6 +806,8 @@ int main(int argc, char *argv[]) {
             "instantPlaylistRecoveryStatus");
         auto *success = window.findChild<QLabel *>(
             "videoSetAssistantExactSuccess");
+        auto *resultCard = window.findChild<QPushButton *>(
+            "videoSetRecoveryResultCardButton");
         auto *activityPanel = window.findChild<QFrame *>(
             "videoSetActivityPanel");
         auto *activityTitle = window.findChild<QLabel *>(
@@ -706,7 +817,7 @@ int main(int argc, char *argv[]) {
         auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
             window.findChild<QWidget *>("videoSetLiveDataPath"));
         if (!recoverNavigation || !playlist || !output || !start ||
-            !status || !success || !activityPanel || !activityTitle ||
+            !status || !success || !resultCard || !activityPanel || !activityTitle ||
             !activityDescription || !activityFlow) {
             qCritical() << "Instant Recovery widgets were not found";
             return 81;
@@ -739,7 +850,8 @@ int main(int argc, char *argv[]) {
         QObject::connect(timer, &QTimer::timeout, &window,
             [&app, &window, status, success, recovered, timer, elapsed,
              observedPhases, activityPanel, activityTitle,
-             activityDescription, activityFlow, instantRecoverySmokeRoot]() {
+             activityDescription, activityFlow, instantRecoverySmokeRoot,
+             resultCard]() {
             *elapsed += 100;
             const auto savePhase = [&](const QString &phase,
                                        const QString &filename) {
@@ -777,6 +889,36 @@ int main(int argc, char *argv[]) {
                     qCritical() << "Instant Recovery exact output is missing";
                     app.exit(82);
                 } else {
+                    QString cardError;
+                    const QString cardPath = QDir(instantRecoverySmokeRoot)
+                        .filePath("instant-result-card.png");
+                    if (!exerciseResultCardPreview(
+                            resultCard, cardPath,
+                            {QStringLiteral("source.bin"),
+                             QStringLiteral("High Capacity"),
+                             QStringLiteral("YouTube Round-Trip"),
+                             QStringLiteral("SHA-256"),
+                             QStringLiteral("Match")},
+                            {QDir::fromNativeSeparators(instantRecoverySmokeRoot),
+                             QStringLiteral("playlist?list="),
+                             QStringLiteral("PL_FAKE_E2E")},
+                            QDir(instantRecoverySmokeRoot).filePath(
+                                "instant-result-card-preview.png"),
+                            &cardError)) {
+                        qCritical() << "Instant Recovery result card failed:"
+                                    << cardError;
+                        QFile diagnostics(QDir(instantRecoverySmokeRoot)
+                            .filePath("instant-card-error.txt"));
+                        if (diagnostics.open(
+                                QIODevice::WriteOnly | QIODevice::Text))
+                            diagnostics.write(cardError.toUtf8());
+                        app.exit(87);
+                        timer->stop();
+                        window.close();
+                        delete elapsed;
+                        delete observedPhases;
+                        return;
+                    }
                     qInfo() << "Instant Recovery qwindows E2E complete:"
                             << status->text();
                     app.exit(0);
@@ -1186,6 +1328,8 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantProgressContinue");
         auto *progressPart = window.findChild<QLabel *>(
             "videoSetAssistantCurrentPart");
+        auto *createResultCard = window.findChild<QPushButton *>(
+            "videoSetCreateResultCardButton");
         auto *uploaded = window.findChild<QPushButton *>(
             "videoSetAssistantUploaded");
         auto *recoveryInput = window.findChild<QLineEdit *>(
@@ -1200,6 +1344,8 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantScanSummary");
         auto *success = window.findChild<QLabel *>(
             "videoSetAssistantExactSuccess");
+        auto *recoveryResultCard = window.findChild<QPushButton *>(
+            "videoSetRecoveryResultCardButton");
         auto *recent = window.findChild<QListWidget *>(
             "videoSetRecentList");
         auto *activityPanel = window.findChild<QFrame *>(
@@ -1262,6 +1408,7 @@ int main(int argc, char *argv[]) {
         if (!stack || !create || !input || !output || !sourceContinue ||
             !highCapacity || !target || !maximumSize || !calculate ||
             !planSummary || !createVideos || !progressContinue ||
+            !createResultCard || !recoveryResultCard ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
             !success || !recent || !activityPanel || !activityTitle ||
@@ -1405,10 +1552,12 @@ int main(int argc, char *argv[]) {
             bool sawScan = false;
             bool sawRecovery = false;
             bool testedActiveLanguageSwitch = false;
+            bool createCardDone = false;
+            bool recoveryCardDone = false;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
-            false, false, false};
+            false, false, false, false, false};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
@@ -1476,6 +1625,49 @@ int main(int argc, char *argv[]) {
                 if (!progressPart->text().contains("verified locally")) {
                     fail(34, "Assistant did not show local exact completion");
                     return;
+                }
+                if (!state->createCardDone) {
+                    QString cardError;
+                    if (!exerciseResultCardPreview(
+                            createResultCard,
+                            QDir(root).filePath("create-result-card.png"),
+                            {QStringLiteral("source.bin"),
+                             QStringLiteral("High Capacity"),
+                             QStringLiteral("Video Set Ready"),
+                             QStringLiteral("videos created"),
+                             QStringLiteral("Local verification")},
+                            {QStringLiteral("YouTube Round-Trip"),
+                             QDir::fromNativeSeparators(root)},
+                            QDir(root).filePath(
+                                "create-result-card-preview.png"),
+                            &cardError)) {
+                        fail(74, QStringLiteral(
+                            "Create result card E2E failed: ") + cardError);
+                        return;
+                    }
+                    state->createCardDone = true;
+                    language->setCurrentIndex(language->findData("tr"));
+                    QApplication::processEvents();
+                    if (!exerciseResultCardPreview(
+                            createResultCard,
+                            QDir(root).filePath("create-result-card-tr.png"),
+                            {QString::fromUtf8("source.bin"),
+                             QString::fromUtf8("High Capacity"),
+                             QString::fromUtf8("Video Set Hazır"),
+                             QString::fromUtf8("video oluşturuldu"),
+                             QString::fromUtf8("Yerel doğrulama")},
+                            {QStringLiteral("YouTube Round-Trip"),
+                             QDir::fromNativeSeparators(root)},
+                            QDir(root).filePath(
+                                "create-result-card-preview-tr.png"),
+                            &cardError)) {
+                        fail(76, QStringLiteral(
+                            "Turkish Create result card E2E failed: ") +
+                            cardError);
+                        return;
+                    }
+                    language->setCurrentIndex(language->findData("en"));
+                    QApplication::processEvents();
                 }
                 const QDir setsDirectory(sets);
                 const auto setNames = setsDirectory.entryList(
@@ -1623,6 +1815,27 @@ int main(int argc, char *argv[]) {
                 if (!success->text().contains("recovered exactly")) {
                     fail(39, "Assistant exact-success screen was not shown");
                     return;
+                }
+                if (!state->recoveryCardDone) {
+                    QString cardError;
+                    if (!exerciseResultCardPreview(
+                            recoveryResultCard,
+                            QDir(root).filePath("recovery-result-card.png"),
+                            {QStringLiteral("source.bin"),
+                             QStringLiteral("High Capacity"),
+                             QStringLiteral("Local Recovery"),
+                             QStringLiteral("SHA-256"),
+                             QStringLiteral("Match")},
+                            {QStringLiteral("YouTube Round-Trip"),
+                             QDir::fromNativeSeparators(root)},
+                            QDir(root).filePath(
+                                "recovery-result-card-preview.png"),
+                            &cardError)) {
+                        fail(75, QStringLiteral(
+                            "Recovery result card E2E failed: ") + cardError);
+                        return;
+                    }
+                    state->recoveryCardDone = true;
                 }
                 if (!successRail->isVisible() || successRail->height() < 1 ||
                     !window.grab().save(

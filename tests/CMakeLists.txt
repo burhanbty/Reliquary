@@ -118,7 +118,34 @@ if (TARGET media_storage_gui)
                 PROPERTIES ENVIRONMENT
                 "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
     else ()
-        gtest_discover_tests(media_storage_ui_visual_identity_tests
+    gtest_discover_tests(media_storage_ui_visual_identity_tests
+                DISCOVERY_MODE PRE_TEST)
+    endif ()
+
+    add_executable(media_storage_result_card_tests
+            test_result_card.cpp
+            test_ui_visual_identity_main.cpp
+            "${CMAKE_SOURCE_DIR}/src/result_card.cpp"
+            "${CMAKE_SOURCE_DIR}/src/result_card.h"
+    )
+    target_include_directories(media_storage_result_card_tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/src")
+    target_compile_definitions(media_storage_result_card_tests PRIVATE
+            VIDSTOREX_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(media_storage_result_card_tests PRIVATE
+            Qt6::Core
+            Qt6::Widgets
+            GTest::gtest)
+    qt_add_translations(media_storage_result_card_tests
+            TS_FILES "${CMAKE_SOURCE_DIR}/translations/vidstorex_tr.ts"
+            RESOURCE_PREFIX "/i18n")
+    if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
+        gtest_discover_tests(media_storage_result_card_tests
+                DISCOVERY_MODE PRE_TEST
+                PROPERTIES ENVIRONMENT
+                "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
+    else ()
+        gtest_discover_tests(media_storage_result_card_tests
                 DISCOVERY_MODE PRE_TEST)
     endif ()
 endif ()

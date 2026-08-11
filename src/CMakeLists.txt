@@ -40,6 +40,7 @@ list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/video_set_cli.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/interface_language.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.cpp")
+list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/result_card.cpp")
 list(REMOVE_ITEM SRC_CPP "${CMAKE_CURRENT_SOURCE_DIR}/youtube_network_service.cpp")
 
 target_sources(media_storage_core PRIVATE
@@ -76,6 +77,8 @@ if (BUILD_GUI)
             "${CMAKE_CURRENT_SOURCE_DIR}/ui_theme.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/visual_components.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/result_card.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/result_card.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/youtube_network_service.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/youtube_network_service.cpp"
     )

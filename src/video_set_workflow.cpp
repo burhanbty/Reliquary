@@ -226,6 +226,11 @@ bool OperationProgressModel::apply(const OperationEvent &event,
     if (!event.sha256.empty()) progress_.sha256 = event.sha256;
     if (!event.output_path.empty())
         progress_.output_path = event.output_path;
+    if (!event.file_name.empty()) progress_.file_name = event.file_name;
+    assign_if_present(progress_.file_size, event.file_size);
+    if (!event.profile_name.empty())
+        progress_.profile_name = event.profile_name;
+    assign_if_present(progress_.part_count, event.part_count);
     if (event.has_scan_summary) {
         progress_.scan = event.scan;
         progress_.has_scan_summary = true;
@@ -796,7 +801,12 @@ std::optional<OperationEvent> parse_progress_jsonl(
         assign_if_present(event.status, json_string(line, "status"));
         assign_if_present(event.sha256, json_string(line, "sha256"));
         assign_if_present(event.output_path,
-                          json_string(line, "output_path"));
+                           json_string(line, "output_path"));
+        assign_if_present(event.file_name, json_string(line, "file_name"));
+        event.file_size = json_u64(line, "file_size");
+        assign_if_present(event.profile_name,
+                          json_string(line, "profile_name"));
+        event.part_count = json_u64(line, "part_count");
 
         const auto candidates = json_u64(line, "candidates");
         const auto checked = json_u64(line, "checked");

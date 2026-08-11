@@ -39,6 +39,8 @@ VidStoreX includes a three-step first-run guide that explains creation, manual v
 
 VidStoreX visualizes file creation and recovery using live part-level progress derived from the actual processing state.
 
+Verified operations can be exported as privacy-conscious VidStoreX result cards.
+
 The desktop app opens on a card-based Video Set home screen with separate
 Create, Recover, Recent, Advanced, and Settings paths. Resilient is always
 the default; High Capacity remains an explicit opt-in. English and Turkish

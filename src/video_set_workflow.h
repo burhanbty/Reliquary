@@ -163,6 +163,10 @@ struct OperationEvent {
     std::string status;
     std::string sha256;
     std::string output_path;
+    std::string file_name;
+    std::optional<uint64_t> file_size;
+    std::string profile_name;
+    std::optional<uint64_t> part_count;
     ScanSummary scan;
     bool has_scan_summary = false;
 };
@@ -197,6 +201,10 @@ struct OperationProgress {
     std::string status;
     std::string sha256;
     std::string output_path;
+    std::string file_name;
+    uint64_t file_size = 0;
+    std::string profile_name;
+    uint64_t part_count = 0;
     ScanSummary scan;
     bool has_scan_summary = false;
 };

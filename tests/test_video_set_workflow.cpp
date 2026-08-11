@@ -299,13 +299,17 @@ TEST(VideoSetWorkflow, StructuredProgressParsingIsSafeAndForwardCompatible) {
 TEST(VideoSetWorkflow, StructuredResultCarriesRecoveryProof) {
     using namespace video_set_workflow;
     const auto parsed = parse_progress_jsonl(
-        R"({"type":"result","operation_id":9,"operation":"recover","status":"recovered_exact","sha256":"2FAD","output_path":"C:/out/archive.bin"})");
+        R"({"type":"result","operation_id":9,"operation":"recover","status":"recovered_exact","sha256":"2FAD","output_path":"C:/out/archive.bin","file_name":"archive.bin","file_size":1048576,"profile_name":"high-capacity","part_count":4})");
     ASSERT_TRUE(parsed.has_value());
     EXPECT_EQ(parsed->state, OperationState::Completed);
     EXPECT_EQ(parsed->phase, OperationPhase::Completed);
     EXPECT_EQ(parsed->status, "recovered_exact");
     EXPECT_EQ(parsed->sha256, "2FAD");
     EXPECT_EQ(parsed->output_path, "C:/out/archive.bin");
+    EXPECT_EQ(parsed->file_name, "archive.bin");
+    EXPECT_EQ(parsed->file_size, 1048576u);
+    EXPECT_EQ(parsed->profile_name, "high-capacity");
+    EXPECT_EQ(parsed->part_count, 4u);
 }
 
 TEST(VideoSetWorkflow, StructuredErrorCarriesRetryGuidanceAndExitCode) {
