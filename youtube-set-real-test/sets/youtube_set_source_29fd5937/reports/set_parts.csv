@@ -1,0 +1,5 @@
+part_index,part_id,offset,chunk_size,chunk_sha256,video,actual_size,local_verification,recovery
+0,aac1633d37aceeecb7d402f09e5ca999,0,8553216,da2cc1a5adbe381646a30a7572fe540a7a0d433c35dbe961121f74ab615b62d8,"youtube_set_source_VSXSET_29fd5937_P0001-of-0004_aac1633d37ac_high-capacity.mkv",183550374,"Exact","Pending"
+1,64c1defbccb4b43ca69a084eb78295f9,8553216,8553216,3618ec95b8ded9e46de814f173332ad94f8fb95479f54cf461f4faba655b15f6,"youtube_set_source_VSXSET_29fd5937_P0002-of-0004_64c1defbccb4_high-capacity.mkv",183550411,"Exact","Pending"
+2,5b6f7a6a8df0a5f7fc4f05b564d89c08,17106432,8553216,f94abd8a097af2cd35628e06f3c04d377f382d9dc902829302b99b1042b77f27,"youtube_set_source_VSXSET_29fd5937_P0003-of-0004_5b6f7a6a8df0_high-capacity.mkv",183549597,"Exact","Pending"
+3,4049112041604ebe0749325b7bc097ab,25659648,7894784,9a78a8f2856154db137cb32c34cdd72893cd32f5cba37f4054e26cdde59af998,"youtube_set_source_VSXSET_29fd5937_P0004-of-0004_404911204160_high-capacity.mkv",169416153,"Exact","Pending"
