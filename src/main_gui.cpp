@@ -1583,6 +1583,20 @@ int main(int argc, char *argv[]) {
             "videoSetRecoveryResultCardButton");
         auto *recent = window.findChild<QListWidget *>(
             "videoSetRecentList");
+        auto *recentFull = window.findChild<QListWidget *>(
+            "videoSetRecentFullList");
+        auto *recentNavigation = window.findChild<QPushButton *>(
+            "recentNavigationButton");
+        auto *recentPage = window.findChild<QWidget *>(
+            "videoSetRecentPage");
+        auto *actionBar = window.findChild<QFrame *>(
+            "videoSetWizardActionBar");
+        auto *sourceBack = window.findChild<QPushButton *>(
+            "videoSetAssistantSourceBack");
+        auto *modeBack = window.findChild<QPushButton *>(
+            "videoSetAssistantModeBack");
+        auto *planBack = window.findChild<QPushButton *>(
+            "videoSetAssistantPlanBack");
         auto *activityPanel = window.findChild<QFrame *>(
             "videoSetActivityPanel");
         auto *activityTitle = window.findChild<QLabel *>(
@@ -1677,7 +1691,9 @@ int main(int argc, char *argv[]) {
             !createResultCard || !recoveryResultCard ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
-            !success || !recent || !activityPanel || !activityTitle ||
+            !success || !recent || !recentFull || !recentNavigation ||
+            !recentPage || !actionBar || !sourceBack || !modeBack ||
+            !planBack || !activityPanel || !activityTitle ||
             !activityDescription || !activityElapsed ||
             !activityProgressLabel || !activityProgress ||
             !activityFlow ||
@@ -1749,6 +1765,92 @@ int main(int argc, char *argv[]) {
                 return 62;
             }
         }
+        recentNavigation->click();
+        QApplication::processEvents();
+        if (stack->currentIndex() != 10 || !recentPage->isVisible() ||
+            homeHeading->isVisible() || trustLabel->isVisible() ||
+            recentFull->count() != recent->count() ||
+            !activityPanel->isHidden()) {
+            qCritical() << "Home and Recent are not isolated presentation pages";
+            return 83;
+        }
+        for (const auto &[size, suffix] : homeSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            if (!window.grab().save(QDir(root).filePath(
+                    "e2e-recent-tr-light-" + suffix + ".png"))) {
+                qCritical() << "Could not save dedicated Recent audit" << suffix;
+                return 84;
+            }
+        }
+        homeNavigation->click();
+        QApplication::processEvents();
+        if (stack->currentIndex() != 0 || !homeHeading->isVisible() ||
+            !trustLabel->isVisible() || recentPage->isVisible()) {
+            qCritical() << "Recent did not route back to the distinct Home page";
+            return 85;
+        }
+        const auto actionIsPinnedAndVisible =
+            [&window, actionBar, assistantScroll](QPushButton *button) {
+            if (!button || !button->isVisible() || !button->isEnabled() ||
+                !actionBar->isVisible() ||
+                assistantScroll->isAncestorOf(actionBar) ||
+                assistantScroll->isAncestorOf(button))
+                return false;
+            const QRect buttonRect(button->mapTo(&window, QPoint()),
+                                   button->size());
+            return window.rect().contains(buttonRect) &&
+                actionBar->geometry().bottom() <=
+                    window.QMainWindow::centralWidget()->height();
+        };
+        create->click();
+        input->setText(source);
+        output->setText(sets);
+        QApplication::processEvents();
+        for (const auto &[size, suffix] : homeSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            if (stack->currentIndex() != 1 || !activityPanel->isHidden() ||
+                !actionIsPinnedAndVisible(sourceContinue) ||
+                !window.grab().save(QDir(root).filePath(
+                    "e2e-create-step1-" + suffix + ".png"))) {
+                qCritical() << "Create Step 1 pinned action audit failed" << suffix;
+                return 86;
+            }
+        }
+        sourceContinue->click();
+        QApplication::processEvents();
+        for (const auto &[size, suffix] : homeSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            if (stack->currentIndex() != 2 || !activityPanel->isHidden() ||
+                !actionIsPinnedAndVisible(calculate) ||
+                !window.grab().save(QDir(root).filePath(
+                    "e2e-create-step2-" + suffix + ".png"))) {
+                qCritical() << "Create Step 2 pinned action audit failed" << suffix;
+                return 87;
+            }
+        }
+        recoveryInput->setText(root);
+        recoveryOutput->setText(recovered);
+        recoverChoice->click();
+        QApplication::processEvents();
+        for (const auto &[size, suffix] : homeSizes) {
+            window.resize(size);
+            QApplication::processEvents();
+            if (stack->currentIndex() != 7 || !activityPanel->isHidden() ||
+                !actionIsPinnedAndVisible(scan) ||
+                !window.grab().save(QDir(root).filePath(
+                    "e2e-recover-initial-" + suffix + ".png"))) {
+                qCritical() << "Recover pinned action audit failed" << suffix;
+                return 88;
+            }
+        }
+        create->click();
+        QApplication::processEvents();
+        if (stack->currentIndex() == 2) modeBack->click();
+        homeNavigation->click();
+        QApplication::processEvents();
         if (stack->isAncestorOf(classicTools)) {
             qCritical() << "Classic tools leaked into consumer Home";
             return 68;
@@ -1903,16 +2005,20 @@ int main(int argc, char *argv[]) {
             bool testedActiveLanguageSwitch = false;
             bool createCardDone = false;
             bool recoveryCardDone = false;
+            bool isolationChecked = false;
+            bool activeEncodeNavigationChecked = false;
+            bool activeRecoveryNavigationChecked = false;
             qint64 planFrozenAt = 0;
             QString planDuration;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
-            false, false, false, false, false, 0, {}};
+            false, false, false, false, false, false, false, false, 0, {}};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
-            [&, state, timer, root, source, sets, returned, recovered]() {
+            [&, state, timer, root, source, sets, returned, recovered,
+             homeSizes, actionIsPinnedAndVisible]() {
             const auto fail = [&](const int code, const QString &message) {
                 qCritical() << message;
                 QFile diagnostic(QDir(root).filePath("e2e-failure.txt"));
@@ -1955,18 +2061,21 @@ int main(int argc, char *argv[]) {
                     return;
                 }
                 resilient->click();
-                auto *modePage = stack->currentWidget();
-                QPushButton *back = nullptr;
-                for (auto *button : modePage->findChildren<QPushButton *>())
-                    if (button->text() == QStringLiteral("Back")) {
-                        back = button;
-                        break;
-                    }
-                if (!back) {
-                    fail(76, "Mode Back control was not found");
+                QApplication::processEvents();
+                if (!modeBack->isVisible()) {
+                    fail(76, QString(
+                        "Mode Back control was not visible (stack=%1, action=%2, "
+                        "actionPage=%3, parent=%4)")
+                        .arg(stack->currentIndex())
+                        .arg(actionBar->isVisible())
+                        .arg(modeBack->parentWidget()
+                            ? modeBack->parentWidget()->isVisible() : false)
+                        .arg(modeBack->parentWidget()
+                            ? modeBack->parentWidget()->objectName()
+                            : QStringLiteral("none")));
                     return;
                 }
-                back->click();
+                modeBack->click();
                 sourceContinue->click();
                 if (!resilient->isChecked()) {
                     fail(77, "Mode choice was not preserved across Back/Continue");
@@ -2019,6 +2128,92 @@ int main(int argc, char *argv[]) {
                     "e2e-plan-complete-tr.png"));
                 language->setCurrentIndex(language->findData("en"));
                 QApplication::processEvents();
+                if (!state->isolationChecked) {
+                    const QString terminalDuration = activityElapsed->text();
+                    for (const auto &[size, suffix] : homeSizes) {
+                        window.resize(size);
+                        QApplication::processEvents();
+                        if (stack->currentIndex() != 3 ||
+                            activityPanel->isHidden() ||
+                            !actionIsPinnedAndVisible(createVideos) ||
+                            !window.grab().save(QDir(root).filePath(
+                                "e2e-create-step3-" + suffix + ".png"))) {
+                            fail(89, "Create Step 3 pinned action audit failed: " +
+                                suffix);
+                            return;
+                        }
+                    }
+                    planBack->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 2 ||
+                        !activityPanel->isHidden() ||
+                        !calculate->text().contains("Review plan",
+                            Qt::CaseInsensitive)) {
+                        fail(90, "Completed plan leaked onto Create Mode");
+                        return;
+                    }
+                    window.grab().save(QDir(root).filePath(
+                        "e2e-bug-repro-create-mode.png"));
+                    modeBack->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 1 ||
+                        !activityPanel->isHidden() ||
+                        !actionIsPinnedAndVisible(sourceContinue)) {
+                        fail(91, "Completed plan leaked onto Create File");
+                        return;
+                    }
+                    window.grab().save(QDir(root).filePath(
+                        "e2e-bug-repro-create-file.png"));
+                    recoverChoice->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 7 ||
+                        !activityPanel->isHidden()) {
+                        fail(92, "Completed Create plan leaked into Recover");
+                        return;
+                    }
+                    window.grab().save(QDir(root).filePath(
+                        "e2e-bug-repro-recover.png"));
+                    homeNavigation->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 0 ||
+                        !activityPanel->isHidden()) {
+                        fail(93, "Completed Create plan leaked into Home");
+                        return;
+                    }
+                    recentNavigation->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 10 ||
+                        !activityPanel->isHidden()) {
+                        fail(94, "Completed Create plan leaked into Recent");
+                        return;
+                    }
+                    create->click();
+                    QApplication::processEvents();
+                    sourceContinue->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 2 ||
+                        !calculate->text().contains("Review plan",
+                            Qt::CaseInsensitive)) {
+                        fail(95, "Same-input navigation did not preserve the plan");
+                        return;
+                    }
+                    calculate->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 3 ||
+                        activityPanel->isHidden() ||
+                        activityElapsed->text() != terminalDuration) {
+                        fail(96, "Returning to the valid plan changed its duration");
+                        return;
+                    }
+                    state->isolationChecked = true;
+                    if (qEnvironmentVariableIntValue(
+                            "VIDSTOREX_WORKFLOW_LAYOUT_ONLY") == 1) {
+                        timer->stop();
+                        window.close();
+                        app.exit(0);
+                        return;
+                    }
+                }
                 const QRegularExpression count(R"((\d+) video)");
                 const auto match = count.match(planSummary->text());
                 if (!match.hasMatch() || match.captured(1).toInt() < 3) {
@@ -2031,6 +2226,10 @@ int main(int argc, char *argv[]) {
                 return;
             }
             if (state->stage == 3 && progressContinue->isEnabled()) {
+                if (!state->activeEncodeNavigationChecked) {
+                    fail(104, "Encode completed before navigation persistence was verified");
+                    return;
+                }
                 if (!progressPart->text().contains("verified locally")) {
                     fail(34, "Assistant did not show local exact completion");
                     return;
@@ -2097,6 +2296,23 @@ int main(int argc, char *argv[]) {
                     fail(44, "Recent Video Sets did not record last-opened time");
                     return;
                 }
+                recentNavigation->click();
+                QApplication::processEvents();
+                if (stack->currentIndex() != 10 || recentFull->count() != 1 ||
+                    recentFull->item(0)->data(Qt::UserRole) !=
+                        recent->item(0)->data(Qt::UserRole) ||
+                    !activityPanel->isHidden()) {
+                    fail(97, "Recent full list diverged from the Home preview model");
+                    return;
+                }
+                window.grab().save(QDir(root).filePath(
+                    "e2e-recent-populated.png"));
+                create->click();
+                QApplication::processEvents();
+                if (stack->currentIndex() != 4 || activityPanel->isHidden()) {
+                    fail(98, "Completed Create state did not survive Recent navigation");
+                    return;
+                }
                 const QDir videos(QDir(state->setRoot).filePath("videos"));
                 auto videoNames = videos.entryList({"*.mkv"}, QDir::Files);
                 if (videoNames.size() < 3) {
@@ -2152,6 +2368,23 @@ int main(int argc, char *argv[]) {
                     fail(71, "Create Live Data Path or consumer source summary is invalid");
                     return;
                 }
+                if (!state->activeEncodeNavigationChecked) {
+                    recoverChoice->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 7 ||
+                        !activityPanel->isHidden()) {
+                        fail(99, "Active encode leaked into Recover presentation");
+                        return;
+                    }
+                    create->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 4 ||
+                        activityPanel->isHidden()) {
+                        fail(100, "Active encode did not survive navigation");
+                        return;
+                    }
+                    state->activeEncodeNavigationChecked = true;
+                }
                 window.grab().save(QDir(root).filePath(
                     "e2e-create-processing-en.png"));
                 const QString savedInput = input->text();
@@ -2192,8 +2425,26 @@ int main(int argc, char *argv[]) {
             }
             if (state->stage == 5 && !activityPanel->isHidden() &&
                 (activityTitle->text() == "Your file is being rebuilt" ||
-                 activityTitle->text() == "Final verification is in progress"))
+                 activityTitle->text() == "Final verification is in progress")) {
                 state->sawRecovery = true;
+                if (!state->activeRecoveryNavigationChecked) {
+                    homeNavigation->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 0 ||
+                        !activityPanel->isHidden()) {
+                        fail(101, "Active recovery leaked into Home presentation");
+                        return;
+                    }
+                    recoverChoice->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != 8 ||
+                        activityPanel->isHidden()) {
+                        fail(102, "Active recovery did not survive navigation");
+                        return;
+                    }
+                    state->activeRecoveryNavigationChecked = true;
+                }
+            }
             if (state->stage == 4 && recover->isEnabled()) {
                 if (!state->sawScan) {
                     fail(47, QString(
@@ -2217,6 +2468,7 @@ int main(int argc, char *argv[]) {
             }
             if (state->stage == 5 && stack->currentIndex() == 9) {
                 if (!state->sawRecovery ||
+                    !state->activeRecoveryNavigationChecked ||
                     !activityPanel->property("observedFinalHash").toBool()) {
                     fail(48, "Recovery or final SHA phase was not observed");
                     return;
@@ -2311,12 +2563,22 @@ int main(int argc, char *argv[]) {
                     homeNavigation->click();
                     window.resize(1920, 1080);
                     QApplication::processEvents();
-                    if (recent->count() != 5 ||
-                        !recent->verticalScrollBar()->isVisible() ||
-                        recent->height() < 3 * 58 ||
+                    if (recent->count() != 3 ||
+                        recent->verticalScrollBar()->isVisible() ||
+                        recent->height() < 3 * 52 ||
                         !window.grab().save(QDir(root).filePath(
                             "e2e-home-tr-five-recent.png"))) {
-                        fail(66, "Multiple Recent rows did not use bounded scrolling");
+                        fail(66, "Home Recent preview was not capped at three rows");
+                        return;
+                    }
+                    recentNavigation->click();
+                    QApplication::processEvents();
+                    if (recentFull->count() != 5 ||
+                        recentFull->item(0)->data(Qt::UserRole) !=
+                            recent->item(0)->data(Qt::UserRole) ||
+                        !window.grab().save(QDir(root).filePath(
+                            "e2e-recent-tr-five-recent.png"))) {
+                        fail(103, "Dedicated Recent did not show the full model");
                         return;
                     }
                     QSettings().setValue(

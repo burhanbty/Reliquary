@@ -314,6 +314,83 @@ TEST(VideoSetWorkflow, OperationDurationsFreezeAndRetriesStartFromZero) {
     EXPECT_DOUBLE_EQ(model.view().elapsed_seconds, 3.0);
 }
 
+TEST(VideoSetWorkflow, OperationDomainsSeparateCreateAndRecoverWork) {
+    using namespace video_set_workflow;
+    EXPECT_EQ(operation_domain(OperationType::Plan), OperationDomain::Create);
+    EXPECT_EQ(operation_domain(OperationType::Encode), OperationDomain::Create);
+    EXPECT_EQ(operation_domain(OperationType::Download),
+              OperationDomain::Recover);
+    EXPECT_EQ(operation_domain(OperationType::Scan), OperationDomain::Recover);
+    EXPECT_EQ(operation_domain(OperationType::Recover),
+              OperationDomain::Recover);
+    EXPECT_EQ(operation_domain(OperationType::FinalHash),
+              OperationDomain::Recover);
+    EXPECT_EQ(operation_domain(OperationType::OAuth), OperationDomain::None);
+    EXPECT_EQ(operation_domain(OperationType::Upload), OperationDomain::None);
+}
+
+TEST(VideoSetWorkflow, ActivityPresentationIsOwnedByItsExactWorkflowStep) {
+    using namespace video_set_workflow;
+    const auto visible = [](const PresentationPage page,
+                            const OperationType type,
+                            const bool planMatches = false,
+                            const OperationState state =
+                                OperationState::Running) {
+        OperationProgress operation;
+        operation.operation_id = 1;
+        operation.operation_type = type;
+        operation.state = state;
+        return should_present_operation(page, operation, planMatches);
+    };
+
+    EXPECT_FALSE(visible(PresentationPage::None, OperationType::Plan, true));
+    EXPECT_FALSE(visible(
+        PresentationPage::CreateSource, OperationType::Plan, true));
+    EXPECT_FALSE(visible(
+        PresentationPage::CreateMode, OperationType::Plan, true));
+    EXPECT_TRUE(visible(
+        PresentationPage::CreatePlan, OperationType::Plan, true));
+    EXPECT_TRUE(visible(
+        PresentationPage::CreatePlan, OperationType::Plan, false));
+    EXPECT_FALSE(visible(PresentationPage::CreatePlan, OperationType::Plan,
+                         false, OperationState::Completed));
+    EXPECT_TRUE(visible(PresentationPage::CreatePlan, OperationType::Plan,
+                        true, OperationState::Completed));
+
+    EXPECT_TRUE(visible(
+        PresentationPage::CreateProgress, OperationType::Encode));
+    EXPECT_FALSE(visible(
+        PresentationPage::CreatePlan, OperationType::Encode));
+    EXPECT_TRUE(visible(PresentationPage::RecoverSetup, OperationType::Scan));
+    EXPECT_FALSE(visible(
+        PresentationPage::RecoverDownload, OperationType::Scan));
+    EXPECT_TRUE(visible(
+        PresentationPage::RecoverProgress, OperationType::Recover));
+    EXPECT_TRUE(visible(
+        PresentationPage::RecoverProgress, OperationType::FinalHash));
+    EXPECT_FALSE(visible(
+        PresentationPage::RecoverSetup, OperationType::Recover));
+}
+
+TEST(VideoSetWorkflow, SourceAndProfileChangesInvalidateAnExistingPlan) {
+    using namespace video_set_workflow;
+    Controller controller;
+    controller.choose_create();
+    controller.select_source("archive.bin", 4096);
+    controller.apply_plan(sample_plan());
+    ASSERT_EQ(controller.view().state, State::Planned);
+
+    controller.select_source("replacement.bin", 8192);
+    EXPECT_EQ(controller.view().state, State::ReadyToPlan);
+    EXPECT_EQ(controller.view().source_filename, "replacement.bin");
+
+    controller.apply_plan(sample_plan());
+    ASSERT_EQ(controller.view().state, State::Planned);
+    controller.select_profile("resilient", "A4807C0503E1");
+    EXPECT_EQ(controller.view().state, State::ReadyToPlan);
+    EXPECT_EQ(controller.view().selected_profile, "resilient");
+}
+
 TEST(VideoSetWorkflow, StructuredProgressParsingIsSafeAndForwardCompatible) {
     using namespace video_set_workflow;
     const auto parsed = parse_progress_jsonl(

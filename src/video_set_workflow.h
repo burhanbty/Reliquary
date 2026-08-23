@@ -59,6 +59,23 @@ enum class OperationState {
     Failed
 };
 
+enum class OperationDomain {
+    None,
+    Create,
+    Recover
+};
+
+enum class PresentationPage {
+    None,
+    CreateSource,
+    CreateMode,
+    CreatePlan,
+    CreateProgress,
+    RecoverDownload,
+    RecoverSetup,
+    RecoverProgress
+};
+
 enum class State {
     Welcome,
     SourceRequired,
@@ -289,6 +306,12 @@ private:
     std::string_view value) noexcept;
 [[nodiscard]] OperationPhase parse_operation_phase(
     std::string_view value) noexcept;
+[[nodiscard]] OperationDomain operation_domain(
+    OperationType type) noexcept;
+[[nodiscard]] bool should_present_operation(
+    PresentationPage page,
+    const OperationProgress &operation,
+    bool current_plan_matches) noexcept;
 [[nodiscard]] std::optional<OperationEvent> parse_progress_jsonl(
     std::string_view line) noexcept;
 [[nodiscard]] PlanSummary summarize_plan(const video_set::SetPlan &plan);

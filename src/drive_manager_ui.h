@@ -327,6 +327,8 @@ private:
 
     void showVideoSetHome();
 
+    void showVideoSetRecent();
+
     void showVideoSetCreate();
 
     void showVideoSetRecover();
@@ -344,6 +346,15 @@ private:
     void handleVideoSetProgressOutput(const QString &text);
 
     void renderVideoSetActivity();
+
+    [[nodiscard]] video_set_workflow::PresentationPage
+    currentOperationPresentationPage() const noexcept;
+
+    [[nodiscard]] QString currentVideoSetPlanInputKey() const;
+
+    [[nodiscard]] bool currentVideoSetPlanMatches() const;
+
+    void updateWizardActionBarVisibility();
 
     void handleVideoSetFinished(int exitCode,
                                 QProcess::ExitStatus exitStatus);
@@ -585,6 +596,9 @@ private:
     // Video Set Assistant (guided UI over the existing file-only CLI workflow)
     QWidget *videoSetPage = nullptr;
     QWidget *videoSetWelcomePage = nullptr;
+    QWidget *videoSetRecentPage = nullptr;
+    QLabel *videoSetRecentPageTitle = nullptr;
+    QLabel *videoSetRecentPageDescription = nullptr;
     QLabel *videoSetIntroLabel = nullptr;
     QLabel *videoSetValidationLabel = nullptr;
     QStackedWidget *videoSetAssistantStack = nullptr;
@@ -592,6 +606,8 @@ private:
     QVector<QLabel *> videoSetAssistantPageHeadings;
     QVector<QLabel *> videoSetAssistantPageSubtitles;
     VidStoreXStepper *videoSetStepIndicator = nullptr;
+    QFrame *videoSetWizardActionBar = nullptr;
+    QStackedWidget *videoSetWizardActionStack = nullptr;
     QLabel *videoSetPrimaryMessage = nullptr;
     QLabel *videoSetSuggestedAction = nullptr;
     QPushButton *videoSetWelcomeCreateButton = nullptr;
@@ -616,6 +632,13 @@ private:
     QLabel *videoSetRecentEmptyLabel = nullptr;
     QPushButton *videoSetRecentEmptyCreateButton = nullptr;
     QPushButton *videoSetRecentEmptyRecoverButton = nullptr;
+    QListWidget *videoSetRecentFullList = nullptr;
+    QPushButton *videoSetRecentFullContinueButton = nullptr;
+    QPushButton *videoSetRecentFullOpenFolderButton = nullptr;
+    QPushButton *videoSetRecentFullRemoveButton = nullptr;
+    QFrame *videoSetRecentFullEmptyState = nullptr;
+    QLabel *videoSetRecentFullEmptyLabel = nullptr;
+    QPushButton *videoSetRecentFullEmptyCreateButton = nullptr;
     QLineEdit *videoSetAssistantInputEdit = nullptr;
     QLineEdit *videoSetAssistantOutputEdit = nullptr;
     QPushButton *videoSetAssistantInputBrowseButton = nullptr;
@@ -737,6 +760,8 @@ private:
     QString videoSetProgressLineBuffer;
     QString videoSetActiveCommand;
     QStringList videoSetLastAssistantArguments;
+    QString videoSetPlanningInputKey;
+    QString videoSetPlannedInputKey;
     QString videoSetCurrentSetRoot;
     QString videoSetCurrentManifest;
     QString videoSetFinalSha;
@@ -748,6 +773,8 @@ private:
     bool videoSetCancelRequested = false;
     bool videoSetInstantRecoveryActive = false;
     QString videoSetInstantRecoveryJobRoot;
+    int videoSetLastCreatePage = 1;
+    int videoSetLastRecoverPage = 7;
 
     // YouTube Capacity Lab (experimental; never changes production defaults)
     QComboBox *capacityPresetCombo = nullptr;

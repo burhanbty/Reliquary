@@ -731,6 +731,54 @@ std::string_view operation_phase_name(const OperationPhase phase) noexcept {
     return "unknown";
 }
 
+OperationDomain operation_domain(const OperationType type) noexcept {
+    switch (type) {
+        case OperationType::Plan:
+        case OperationType::Encode:
+            return OperationDomain::Create;
+        case OperationType::Download:
+        case OperationType::Scan:
+        case OperationType::Recover:
+        case OperationType::FinalHash:
+        case OperationType::Finalize:
+        case OperationType::ProcessedDownload:
+        case OperationType::InstantRecovery:
+            return OperationDomain::Recover;
+        default:
+            return OperationDomain::None;
+    }
+}
+
+bool should_present_operation(const PresentationPage page,
+                              const OperationProgress &operation,
+                              const bool current_plan_matches) noexcept {
+    if (operation.state == OperationState::Idle ||
+        operation.operation_type == OperationType::None)
+        return false;
+
+    switch (operation.operation_type) {
+        case OperationType::Plan:
+            return page == PresentationPage::CreatePlan &&
+                (operation.state != OperationState::Completed ||
+                 current_plan_matches);
+        case OperationType::Encode:
+            return page == PresentationPage::CreateProgress;
+        case OperationType::Download:
+        case OperationType::ProcessedDownload:
+        case OperationType::InstantRecovery:
+            return page == PresentationPage::RecoverDownload ||
+                   page == PresentationPage::RecoverSetup;
+        case OperationType::Scan:
+            return page == PresentationPage::RecoverSetup;
+        case OperationType::Recover:
+        case OperationType::FinalHash:
+        case OperationType::Finalize:
+            return page == PresentationPage::RecoverProgress;
+        default:
+            return false;
+    }
+}
+
 OperationType parse_operation_type(const std::string_view value) noexcept {
     if (value == "plan") return OperationType::Plan;
     if (value == "encode") return OperationType::Encode;

@@ -92,6 +92,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         QWidget#videoSetAssistantRecoverPage,
         QWidget#videoSetAssistantRecoveryProgressPage,
         QWidget#videoSetAssistantDonePage,
+        QWidget#videoSetRecentPage,
         QWidget#settingsPage,
         QWidget#onboardingPage,
         QWidget#classicToolsContent,
@@ -149,21 +150,33 @@ QString applicationStyleSheet(const QPalette &palette) {
         }
         QFrame[vsxRole="actionCard"] { border-color: %14; }
         QFrame#videoSetRecentGroup { background: %23; border-color: %14; }
+        QFrame#videoSetRecentFullGroup { background: %23; border-color: %14; }
+        QFrame#videoSetWizardActionBar {
+            background: %1; border: 0; border-top: 1px solid %13;
+            border-radius: 0;
+        }
         QFrame#videoSetTrustStrip {
             background: %24; border: 1px solid %13;
             border-left: 3px solid %8;
         }
-        QListWidget#videoSetRecentList {
+        QListWidget#videoSetRecentList,
+        QListWidget#videoSetRecentFullList {
             background: transparent; border: 0; border-radius: 0;
         }
-        QListWidget#videoSetRecentList::item {
+        QListWidget#videoSetRecentList::item,
+        QListWidget#videoSetRecentFullList::item {
             background: %2; border: 1px solid %13; border-radius: 8px;
             margin-bottom: 6px;
             padding: 0;
         }
-        QListWidget#videoSetRecentList::item:hover { background: %3; }
-        QListWidget#videoSetRecentList::item:selected { background: %4; color: %5; }
-        QListWidget#videoSetRecentList QFrame {
+        QListWidget#videoSetRecentList::item:hover,
+        QListWidget#videoSetRecentFullList::item:hover { background: %3; }
+        QListWidget#videoSetRecentList::item:selected,
+        QListWidget#videoSetRecentFullList::item:selected {
+            background: %4; color: %5;
+        }
+        QListWidget#videoSetRecentList QFrame,
+        QListWidget#videoSetRecentFullList QFrame {
             background: transparent; border: 0; border-left: 3px solid %8;
         }
         QLabel[recentTitle="true"] { font-size: 14px; font-weight: 700; color: %5; }

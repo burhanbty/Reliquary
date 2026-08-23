@@ -253,7 +253,7 @@ if (TARGET media_storage_gui)
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_video_set_assistant.cmake"
     )
     set_tests_properties(
-            GUI.VideoSetAssistantE2E PROPERTIES TIMEOUT 130)
+            GUI.VideoSetAssistantE2E PROPERTIES TIMEOUT 390)
     add_test(
             NAME GUI.FirstRunOnboardingE2E
             COMMAND ${CMAKE_COMMAND}
