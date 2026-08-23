@@ -699,6 +699,8 @@ private:
     QLabel *videoSetActivityRemaining = nullptr;
     QLabel *videoSetActivityWatchdog = nullptr;
     QPushButton *videoSetActivityRetryButton = nullptr;
+    QToolButton *videoSetActivityDetailsButton = nullptr;
+    QWidget *videoSetActivityDetails = nullptr;
     QLabel *videoSetRecoveryAvailabilityLabel = nullptr;
     QToolButton *videoSetTechnicalLogButton = nullptr;
     QTextEdit *videoSetLog = nullptr;

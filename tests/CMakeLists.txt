@@ -163,6 +163,8 @@ add_test(
 )
 
 add_executable(fake_ytdlp fake_ytdlp.cpp)
+set_target_properties(fake_ytdlp PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 if (TARGET media_storage_gui)
     add_test(
@@ -249,6 +251,7 @@ if (TARGET media_storage_gui)
             NAME GUI.VideoSetAssistantE2E
             COMMAND ${CMAKE_COMMAND}
                     "-DGUI=$<TARGET_FILE:media_storage_gui>"
+                    "-DFAKE_YTDLP=$<TARGET_FILE:fake_ytdlp>"
                     "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/gui_video_set_assistant"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/test_gui_video_set_assistant.cmake"
     )

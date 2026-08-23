@@ -339,6 +339,7 @@ int main(int argc, char *argv[]) {
     QString preflightSmokeInput;
     QString preflightSmokeOutput;
     QString videoSetAssistantSmokeRoot;
+    QString videoSetAssistantFakeYtDlp;
     QString instantRecoverySmokeRoot;
     QString instantRecoveryFakeYtDlp;
     QString instantRecoveryFixtureVideos;
@@ -363,6 +364,10 @@ int main(int argc, char *argv[]) {
         } else if (argument == "--video-set-assistant-smoke-root" &&
                    i + 1 < argc) {
             videoSetAssistantSmokeRoot =
+                QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--video-set-assistant-fake-ytdlp" &&
+                   i + 1 < argc) {
+            videoSetAssistantFakeYtDlp =
                 QString::fromLocal8Bit(argv[++i]);
         } else if (argument == "--instant-recovery-smoke-root" &&
                    i + 1 < argc) {
@@ -484,9 +489,11 @@ int main(int argc, char *argv[]) {
                 settings.setValue("onboarding/stateSentinel",
                                   "preserve-user-state");
             }
-            if (!instantRecoveryFakeYtDlp.isEmpty())
+            const QString fakeYtDlp = !videoSetAssistantFakeYtDlp.isEmpty()
+                ? videoSetAssistantFakeYtDlp : instantRecoveryFakeYtDlp;
+            if (!fakeYtDlp.isEmpty())
                 settings.setValue("videoSet/ytdlpPath",
-                                  instantRecoveryFakeYtDlp);
+                                  fakeYtDlp);
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
             if (!youtubeSyncSmokeRoot.isEmpty()) {
                 settings.setValue("videoSet/recentManifests",
@@ -1019,6 +1026,7 @@ int main(int argc, char *argv[]) {
 #endif
         qputenv("VIDSTOREX_FAKE_YTDLP_SOURCE",
                 instantRecoveryFixtureVideos.toUtf8());
+        qputenv("VIDSTOREX_FAKE_YTDLP_DELAY_MS", "1200");
         qputenv("VIDSTOREX_RECOVERY_JOBS_ROOT",
                 QDir(instantRecoverySmokeRoot).filePath(
                     "RecoveryJobs").toUtf8());
@@ -1046,9 +1054,20 @@ int main(int argc, char *argv[]) {
             "videoSetActivityDescription");
         auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
             window.findChild<QWidget *>("videoSetLiveDataPath"));
+        auto *activityDetailsButton = window.findChild<QToolButton *>(
+            "videoSetActivityDetailsToggle");
+        auto *activityDetails = window.findChild<QWidget *>(
+            "videoSetActivityDetails");
+        auto *applicationHeader = window.findChild<QFrame *>(
+            "applicationHeader");
+        auto *workflowStepper = static_cast<VidStoreXStepper *>(
+            window.findChild<QWidget *>("videoSetAssistantStepper"));
+        auto *language = window.findChild<QComboBox *>("uiLanguageCombo");
         if (!recoverNavigation || !playlist || !output || !start ||
             !status || !success || !resultCard || !activityPanel || !activityTitle ||
-            !activityDescription || !activityFlow) {
+            !activityDescription || !activityFlow || !activityDetailsButton ||
+            !activityDetails || !applicationHeader || !workflowStepper ||
+            !language) {
             qCritical() << "Instant Recovery widgets were not found";
             return 81;
         }
@@ -1062,6 +1081,8 @@ int main(int argc, char *argv[]) {
         const QString recovered = QDir(instantRecoverySmokeRoot)
             .filePath("recovered-instant");
         QDir().mkpath(recovered);
+        language->setCurrentIndex(language->findData("tr"));
+        QApplication::processEvents();
         recoverNavigation->click();
         output->setText(recovered);
         playlist->setText(
@@ -1081,7 +1102,8 @@ int main(int argc, char *argv[]) {
             [&app, &window, status, success, recovered, timer, elapsed,
              observedPhases, activityPanel, activityTitle,
              activityDescription, activityFlow, instantRecoverySmokeRoot,
-             resultCard]() {
+             resultCard, activityDetailsButton, activityDetails,
+             applicationHeader, workflowStepper, playlist, output, start]() {
             *elapsed += 100;
             const auto savePhase = [&](const QString &phase,
                                        const QString &filename) {
@@ -1090,8 +1112,47 @@ int main(int argc, char *argv[]) {
                 window.grab().save(QDir(instantRecoverySmokeRoot)
                     .filePath(filename));
             };
-            if (activityPanel->property("observedDownload").toBool())
-                savePhase("download", "instant-download.png");
+            if (activityPanel->property("observedDownload").toBool() &&
+                activityFlow->mode() ==
+                    VidStoreXProcessingFlow::Mode::Download &&
+                !observedPhases->contains("download")) {
+                const auto substantiallyVisible = [&window](QWidget *widget) {
+                    const QRect rect(widget->mapTo(&window, QPoint()),
+                                     widget->size());
+                    const QRect visible = rect.intersected(window.rect());
+                    return widget->isVisible() && visible.width() > 0 &&
+                        visible.height() >= qMax(1, widget->height() / 2);
+                };
+                const QList<QPair<QSize, QString>> sizes{
+                    {{1366, 768}, "1366x768"},
+                    {{1600, 900}, "1600x900"}};
+                for (const auto &[size, suffix] : sizes) {
+                    window.resize(size);
+                    QApplication::processEvents();
+                    if (applicationHeader->height() > 76 ||
+                        workflowStepper->height() > 50 ||
+                        activityPanel->height() >= window.height() / 4 ||
+                        activityDetailsButton->isChecked() ||
+                        activityDetails->isVisible() ||
+                        activityFlow->isVisible() ||
+                        !substantiallyVisible(playlist) ||
+                        !substantiallyVisible(output) ||
+                        !substantiallyVisible(start) ||
+                        !window.grab().save(QDir(instantRecoverySmokeRoot)
+                            .filePath("e2e-recover-active-download-" +
+                                      suffix + ".png"))) {
+                        qCritical() << "Instant Recovery active download "
+                                       "layout audit failed" << suffix;
+                        app.exit(130); timer->stop(); return;
+                    }
+                }
+                observedPhases->insert("download");
+                window.grab().save(QDir(instantRecoverySmokeRoot)
+                    .filePath("instant-download.png"));
+                auto *language = window.findChild<QComboBox *>("uiLanguageCombo");
+                if (language)
+                    language->setCurrentIndex(language->findData("en"));
+            }
             if (activityPanel->property("observedScan").toBool() &&
                 activityFlow->mode() == VidStoreXProcessingFlow::Mode::Scan) {
                 if (!activityDescription->text().contains(
@@ -1218,6 +1279,10 @@ int main(int argc, char *argv[]) {
             window.findChild<QWidget *>("videoSetBlockProgress"));
         auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
             window.findChild<QWidget *>("videoSetLiveDataPath"));
+        auto *activityDetailsButton = window.findChild<QToolButton *>(
+            "videoSetActivityDetailsToggle");
+        auto *activityDetails = window.findChild<QWidget *>(
+            "videoSetActivityDetails");
         auto *activityParts = static_cast<VidStoreXPartGrid *>(
             window.findChild<QWidget *>("videoSetPartGrid"));
         auto *technicalToggle = window.findChild<QToolButton *>(
@@ -1272,7 +1337,8 @@ int main(int argc, char *argv[]) {
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
             !activityPanel || !activityTitle || !activityProgress ||
-            !activityFlow || !activityParts ||
+            !activityFlow || !activityDetailsButton || !activityDetails ||
+            !activityParts ||
             !technicalToggle || !technicalLog || !homeNavigation ||
             !settingsNavigation || !language || !settingsLanguage ||
             !settingsPage || !advancedNavigation || !trustLabel ||
@@ -1292,6 +1358,8 @@ int main(int argc, char *argv[]) {
             createChoice->focusPolicy() == Qt::NoFocus ||
             recoverChoice->focusPolicy() == Qt::NoFocus ||
             assistantScroll->isAncestorOf(activityPanel) ||
+            activityDetailsButton->isChecked() ||
+            !activityDetails->isHidden() ||
             technicalLog->document()->maximumBlockCount() != 5000 ||
             homeHeading->text() == QStringLiteral("Reliquary") ||
             (!homeHeading->text().contains("safely") &&
@@ -1613,10 +1681,16 @@ int main(int argc, char *argv[]) {
             window.findChild<QWidget *>("videoSetBlockProgress"));
         auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
             window.findChild<QWidget *>("videoSetLiveDataPath"));
+        auto *activityDetailsButton = window.findChild<QToolButton *>(
+            "videoSetActivityDetailsToggle");
+        auto *activityDetails = window.findChild<QWidget *>(
+            "videoSetActivityDetails");
         auto *activityParts = static_cast<VidStoreXPartGrid *>(
             window.findChild<QWidget *>("videoSetPartGrid"));
         auto *activitySource = window.findChild<QLabel *>(
             "videoSetProcessingSummary");
+        auto *activityLog = window.findChild<QTextEdit *>(
+            "videoSetTechnicalLog");
         auto *language = window.findChild<QComboBox *>(
             "uiLanguageCombo");
         auto *homeNavigation = window.findChild<QPushButton *>(
@@ -1639,6 +1713,28 @@ int main(int argc, char *argv[]) {
             "advancedNavigationButton");
         auto *brandSubtitle = window.findChild<QLabel *>(
             "brandSubtitle");
+        auto *applicationHeader = window.findChild<QFrame *>(
+            "applicationHeader");
+        auto *workflowStepper = static_cast<VidStoreXStepper *>(
+            window.findChild<QWidget *>("videoSetAssistantStepper"));
+        auto *planHeading = window.findChild<QLabel *>(
+            "videoSetPageHeading3");
+        auto *planSubtitle = window.findChild<QLabel *>(
+            "videoSetPageSubtitle3");
+        auto *sourceHeading = window.findChild<QLabel *>(
+            "videoSetPageHeading1");
+        auto *recoverHeading = window.findChild<QLabel *>(
+            "videoSetPageHeading7");
+        auto *planMetrics = window.findChild<QLabel *>(
+            "videoSetAssistantPlanMetrics");
+        auto *playlistEdit = window.findChild<QLineEdit *>(
+            "videoSetPlaylistUrl");
+        auto *downloadReturned = window.findChild<QPushButton *>(
+            "videoSetDownloadReturnedVideos");
+        auto *downloadStatus = window.findChild<QLabel *>(
+            "videoSetDownloadStatus");
+        auto *instantPlaylistEdit = window.findChild<QLineEdit *>(
+            "instantPlaylistUrl");
         auto *resilientCard = window.findChild<QGroupBox *>(
             "videoSetResilientCard");
         auto *highCapacityCard = window.findChild<QGroupBox *>(
@@ -1698,14 +1794,19 @@ int main(int argc, char *argv[]) {
             !planBack || !activityPanel || !activityTitle ||
             !activityDescription || !activityElapsed ||
             !activityProgressLabel || !activityProgress ||
-            !activityFlow ||
-            !activityParts || !activitySource || !language ||
+            !activityFlow || !activityDetailsButton || !activityDetails ||
+            !activityParts || !activitySource || !activityLog || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
             !settingsAuthor || !settingsAboutHeading ||
             !settingsAboutVersion || !settingsAboutDefinition ||
             !settingsLinkedInUrl || !settingsLinkedIn ||
             !advancedNavigation || !homeHeading || !trustLabel ||
+            !applicationHeader || !workflowStepper || !planHeading ||
+            !planSubtitle ||
+            !planMetrics || !sourceHeading || !recoverHeading ||
+            !playlistEdit || !downloadReturned || !downloadStatus ||
+            !instantPlaylistEdit ||
             !classicTools || !successRail || !capacityHeading ||
             !capacityAction || !landingAction || !testLabAction ||
             !classicAction || !capacitySearch || !capacitySimulation ||
@@ -1805,6 +1906,17 @@ int main(int argc, char *argv[]) {
                 actionBar->geometry().bottom() <=
                     window.QMainWindow::centralWidget()->height();
         };
+        const auto substantiallyVisibleInWorkflow =
+            [assistantScroll](QWidget *widget) {
+            if (!assistantScroll || !widget || !widget->isVisible())
+                return false;
+            const QRect rect(widget->mapTo(assistantScroll->viewport(),
+                                           QPoint()), widget->size());
+            const QRect visible = rect.intersected(
+                assistantScroll->viewport()->rect());
+            return visible.width() > 0 &&
+                visible.height() >= qMax(1, widget->height() / 2);
+        };
         create->click();
         input->setText(source);
         output->setText(sets);
@@ -1813,6 +1925,9 @@ int main(int argc, char *argv[]) {
             window.resize(size);
             QApplication::processEvents();
             if (stack->currentIndex() != 1 || !activityPanel->isHidden() ||
+                applicationHeader->height() > 76 ||
+                workflowStepper->height() > 50 ||
+                sourceHeading->mapTo(&window, QPoint()).x() > 80 ||
                 !actionIsPinnedAndVisible(sourceContinue) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-create-step1-" + suffix + ".png"))) {
@@ -1841,6 +1956,10 @@ int main(int argc, char *argv[]) {
             window.resize(size);
             QApplication::processEvents();
             if (stack->currentIndex() != 7 || !activityPanel->isHidden() ||
+                applicationHeader->height() > 76 ||
+                workflowStepper->height() > 50 ||
+                recoverHeading->mapTo(&window, QPoint()).x() > 80 ||
+                !substantiallyVisibleInWorkflow(instantPlaylistEdit) ||
                 !actionIsPinnedAndVisible(scan) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-recover-initial-" + suffix + ".png"))) {
@@ -2012,6 +2131,7 @@ int main(int argc, char *argv[]) {
             bool activeRecoveryNavigationChecked = false;
             qint64 planFrozenAt = 0;
             QString planDuration;
+            bool activeDownloadCaptured = false;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
@@ -2045,7 +2165,10 @@ int main(int argc, char *argv[]) {
                         .arg(activityTitle->text())
                         .arg(activityPanel->property("observedScan").toBool())
                         .arg(activityPanel->property("observedRecovery").toBool())
-                        .arg(activityPanel->property("observedFinalHash").toBool()));
+                        .arg(activityPanel->property("observedFinalHash").toBool()) +
+                    QString(" description=%1 log=%2")
+                        .arg(activityDescription->text(),
+                             activityLog->toPlainText().right(1200)));
                 return;
             }
             if (state->stage == 0) {
@@ -2102,7 +2225,10 @@ int main(int argc, char *argv[]) {
                         !activityPanel->property("terminalOperation").toBool() ||
                         activityFlow->presentationMode() !=
                             VidStoreXProcessingFlow::PresentationMode::Compact ||
-                        activityPanel->height() > 280) {
+                        activityPanel->height() > 160 ||
+                        activityDetailsButton->isChecked() ||
+                        activityDetails->isVisible() ||
+                        activityFlow->isVisible()) {
                         fail(78, "Completed plan does not use terminal wording");
                         return;
                     }
@@ -2136,11 +2262,18 @@ int main(int argc, char *argv[]) {
                 QApplication::processEvents();
                 if (!state->isolationChecked) {
                     const QString terminalDuration = activityElapsed->text();
+                    language->setCurrentIndex(language->findData("tr"));
+                    QApplication::processEvents();
                     for (const auto &[size, suffix] : homeSizes) {
                         window.resize(size);
                         QApplication::processEvents();
                         if (stack->currentIndex() != 3 ||
                             activityPanel->isHidden() ||
+                            activityPanel->height() > 160 ||
+                            activityDetails->isVisible() ||
+                            activityFlow->isVisible() ||
+                            applicationHeader->height() > 76 ||
+                            workflowStepper->height() > 50 ||
                             !actionIsPinnedAndVisible(createVideos) ||
                             !window.grab().save(QDir(root).filePath(
                                 "e2e-create-step3-" + suffix + ".png"))) {
@@ -2148,7 +2281,39 @@ int main(int argc, char *argv[]) {
                                 suffix);
                             return;
                         }
+                        const int subtitleBottom = planSubtitle->mapTo(
+                            &window, QPoint()).y() + planSubtitle->height();
+                        const int summaryTop = planSummary->mapTo(
+                            &window, QPoint()).y();
+                        const int summaryBottom = summaryTop +
+                            planSummary->height();
+                        const int metricsTop = planMetrics->mapTo(
+                            &window, QPoint()).y();
+                        if (summaryTop - subtitleBottom > 20 ||
+                            metricsTop - summaryBottom > 28) {
+                            fail(105, "Create Plan content is not top-aligned: " +
+                                suffix);
+                            return;
+                        }
+                        if (size == QSize(1600, 900) &&
+                            (assistantScroll->verticalScrollBar()->isVisible() ||
+                             !substantiallyVisibleInWorkflow(planSummary) ||
+                             !substantiallyVisibleInWorkflow(planMetrics))) {
+                            fail(106, QString(
+                                "Create Plan review is not visible in the "
+                                "1600x900 viewport (scroll=%1 max=%2 page=%3 "
+                                "stackMin=%4 currentMin=%5 viewport=%6)")
+                                .arg(assistantScroll->verticalScrollBar()->isVisible())
+                                .arg(assistantScroll->verticalScrollBar()->maximum())
+                                .arg(assistantScroll->verticalScrollBar()->pageStep())
+                                .arg(stack->minimumHeight())
+                                .arg(stack->currentWidget()->minimumSizeHint().height())
+                                .arg(assistantScroll->viewport()->height()));
+                            return;
+                        }
                     }
+                    language->setCurrentIndex(language->findData("en"));
+                    QApplication::processEvents();
                     planBack->click();
                     QApplication::processEvents();
                     if (stack->currentIndex() != 2 ||
@@ -2348,10 +2513,82 @@ int main(int argc, char *argv[]) {
                     return;
                 }
                 window.grab().save(QDir(root).filePath("e2e-youtube-en.png"));
+                qputenv("VIDSTOREX_FAKE_YTDLP_SOURCE",
+                        videos.absolutePath().toUtf8());
+                qputenv("VIDSTOREX_FAKE_YTDLP_DELAY_MS", "1200");
+                // Ensure the deterministic adapter wins over any yt-dlp on
+                // the developer machine, matching Instant Recovery E2E.
+                qputenv("PATH", QByteArray{});
                 uploaded->click();
+                QApplication::processEvents();
+                playlistEdit->setText(
+                    "https://www.youtube.com/playlist?list=PL_FAKE_CREATE_E2E");
+                QApplication::processEvents();
+                if (stack->currentIndex() != 6 ||
+                    !downloadReturned->isEnabled()) {
+                    fail(107, "Create YouTube download controls were not ready");
+                    return;
+                }
+                language->setCurrentIndex(language->findData("tr"));
+                QApplication::processEvents();
+                downloadReturned->click();
+                state->stage = 31;
+                return;
+            }
+            if (state->stage == 31) {
+                if (activityPanel->property("terminalOperation").toBool() &&
+                    activityTitle->text().contains("failed",
+                        Qt::CaseInsensitive)) {
+                    fail(131, QString(
+                        "Create YouTube download failed: %1 | %2 | %3")
+                        .arg(activityDescription->text(),
+                             downloadStatus->text(),
+                             activityLog->toPlainText().right(1200)));
+                    return;
+                }
+                if (!state->activeDownloadCaptured &&
+                    activityPanel->property("observedDownload").toBool() &&
+                    activityFlow->mode() ==
+                        VidStoreXProcessingFlow::Mode::Download &&
+                    !activityPanel->property("terminalOperation").toBool()) {
+                    const QList<QPair<QSize, QString>> downloadSizes{
+                        {{1366, 768}, "1366x768"},
+                        {{1600, 900}, "1600x900"}};
+                    for (const auto &[size, suffix] : downloadSizes) {
+                        window.resize(size);
+                        QApplication::processEvents();
+                        const QRect actionRect(
+                            downloadReturned->mapTo(&window, QPoint()),
+                            downloadReturned->size());
+                        if (applicationHeader->height() > 76 ||
+                            workflowStepper->height() > 50 ||
+                            activityPanel->isHidden() ||
+                            activityPanel->height() >= window.height() / 4 ||
+                            activityDetailsButton->isChecked() ||
+                            activityDetails->isVisible() ||
+                            activityFlow->isVisible() ||
+                            !substantiallyVisibleInWorkflow(playlistEdit) ||
+                            !actionBar->isVisible() ||
+                            !window.rect().contains(actionRect) ||
+                            !window.grab().save(QDir(root).filePath(
+                                "e2e-create-youtube-active-" + suffix +
+                                ".png"))) {
+                            fail(108, "Create YouTube active download layout "
+                                "audit failed: " + suffix);
+                            return;
+                        }
+                    }
+                    state->activeDownloadCaptured = true;
+                    return;
+                }
+                if (!state->activeDownloadCaptured ||
+                    !downloadReturned->isEnabled() ||
+                    stack->currentIndex() != 7)
+                    return;
+                language->setCurrentIndex(language->findData("en"));
+                QApplication::processEvents();
                 recoveryInput->setText(returned);
                 recoveryOutput->setText(recovered);
-                stack->setCurrentIndex(7);
                 scan->click();
                 if (recover->isEnabled()) {
                     fail(46, "Recovery was enabled while a new scan was starting");
@@ -2365,16 +2602,37 @@ int main(int argc, char *argv[]) {
                 !state->testedActiveLanguageSwitch &&
                 stack->currentIndex() == 4 &&
                 !progressContinue->isEnabled()) {
-                if (activityPanel->isHidden() || activityFlow->isHidden() ||
+                if (activityPanel->isHidden() || activityFlow->isVisible() ||
+                    activityDetails->isVisible() ||
+                    activityDetailsButton->isChecked() ||
+                    activityPanel->height() > 160 ||
                     activityFlow->mode() != VidStoreXProcessingFlow::Mode::Create ||
                     activityFlow->presentationMode() !=
-                        VidStoreXProcessingFlow::PresentationMode::Normal ||
+                        VidStoreXProcessingFlow::PresentationMode::Compact ||
                     activityPanel->property("terminalOperation").toBool() ||
                     activitySource->text().contains(source,
                         Qt::CaseInsensitive) ||
                     activitySource->text().isEmpty() ||
                     activityProgress->accessibleDescription().isEmpty()) {
-                    fail(71, "Create Live Data Path or consumer source summary is invalid");
+                    fail(71, QString(
+                        "Create Live Data Path or consumer source summary is "
+                        "invalid (panelHidden=%1 flowVisible=%2 detailsVisible=%3 "
+                        "detailsChecked=%4 panelHeight=%5 flowMode=%6 "
+                        "presentation=%7 terminal=%8 sourceEmpty=%9 "
+                        "sourceContainsPath=%10 accessibleEmpty=%11 source=%12)")
+                        .arg(activityPanel->isHidden())
+                        .arg(activityFlow->isVisible())
+                        .arg(activityDetails->isVisible())
+                        .arg(activityDetailsButton->isChecked())
+                        .arg(activityPanel->height())
+                        .arg(static_cast<int>(activityFlow->mode()))
+                        .arg(static_cast<int>(activityFlow->presentationMode()))
+                        .arg(activityPanel->property("terminalOperation").toBool())
+                        .arg(activitySource->text().isEmpty())
+                        .arg(activitySource->text().contains(
+                            source, Qt::CaseInsensitive))
+                        .arg(activityProgress->accessibleDescription().isEmpty())
+                        .arg(activitySource->text()));
                     return;
                 }
                 if (!state->activeEncodeNavigationChecked) {
@@ -2493,11 +2751,10 @@ int main(int argc, char *argv[]) {
                             QDir(root).filePath("recovery-result-card.png"),
                             {QStringLiteral("source.bin"),
                              QStringLiteral("High Capacity"),
-                             QStringLiteral("Local Recovery"),
+                             QStringLiteral("YouTube Round-Trip"),
                              QStringLiteral("SHA-256"),
                              QStringLiteral("Match")},
-                            {QStringLiteral("YouTube Round-Trip"),
-                             QDir::fromNativeSeparators(root)},
+                            {QDir::fromNativeSeparators(root)},
                             QDir(root).filePath(
                                 "recovery-result-card-preview.png"),
                             &cardError)) {

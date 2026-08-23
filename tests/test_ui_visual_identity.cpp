@@ -400,6 +400,40 @@ TEST(UiVisualIdentity, ResponsiveDensityModesAreSimpleOrderedAndBounded) {
     EXPECT_LT(compact.tableMinHeight, wide.tableMinHeight);
 }
 
+TEST(UiVisualIdentity, ResponsiveHeightDensityTreatsLaptopHeightsAsShort) {
+    using vidstorex_ui::HeightDensity;
+    EXPECT_EQ(vidstorex_ui::heightDensityForViewport(1280, 720),
+              HeightDensity::Short);
+    EXPECT_EQ(vidstorex_ui::heightDensityForViewport(1366, 768),
+              HeightDensity::Short);
+    EXPECT_EQ(vidstorex_ui::heightDensityForViewport(1600, 900),
+              HeightDensity::Regular);
+    EXPECT_EQ(vidstorex_ui::heightDensityForViewport(1920, 1080),
+              HeightDensity::Regular);
+}
+
+TEST(UiVisualIdentity, WorkflowStructureIsWiderThanReadableContent) {
+    using vidstorex_ui::ResponsiveMode;
+    for (const auto mode : {ResponsiveMode::Compact,
+                            ResponsiveMode::Normal,
+                            ResponsiveMode::Wide}) {
+        const auto density = vidstorex_ui::densityMetrics(mode);
+        EXPECT_GT(density.workflowMaxWidth, density.pageMaxWidth);
+        EXPECT_GE(density.workflowMaxWidth, 1800);
+        EXPECT_LE(density.workflowMaxWidth, 1920);
+    }
+}
+
+TEST(UiVisualIdentity, WideDensityUsesSpaceWithoutUpscalingControls) {
+    using vidstorex_ui::ResponsiveMode;
+    const auto normal = vidstorex_ui::densityMetrics(ResponsiveMode::Normal);
+    const auto wide = vidstorex_ui::densityMetrics(ResponsiveMode::Wide);
+    EXPECT_LE(wide.controlHeight, normal.controlHeight);
+    EXPECT_LE(wide.buttonHeight, normal.buttonHeight);
+    EXPECT_LE(wide.navigationHeight, normal.navigationHeight);
+    EXPECT_LE(wide.wizardActionHeight, normal.wizardActionHeight);
+}
+
 TEST(UiVisualIdentity, LiveDataPathHasCompactTerminalPresentation) {
     VidStoreXProcessingFlow flow;
     flow.setParts({VidStoreXPartState::Verified});
@@ -421,8 +455,9 @@ TEST(UiVisualIdentity, StepperUsesCompactHeightWithoutClipping) {
     VidStoreXStepper stepper;
     stepper.setSteps({"File", "Mode", "Create", "YouTube", "Done"}, 1);
     stepper.setProperty("densityMode", "compact");
+    stepper.setProperty("heightDensity", "short");
     const QImage compact = render(stepper, stepper.sizeHint());
-    EXPECT_EQ(stepper.sizeHint().height(), 52);
+    EXPECT_EQ(stepper.sizeHint().height(), 44);
     EXPECT_LE(stepper.minimumSizeHint().width(), 420);
     EXPECT_GT(unique_opaque_colors(compact), 4);
 }

@@ -7,6 +7,7 @@ unset(SOURCE_PAYLOAD)
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env "QT_SCALE_FACTOR=1.0"
             "${GUI}" --video-set-assistant-smoke-root "${TEST_ROOT}"
+            --video-set-assistant-fake-ytdlp "${FAKE_YTDLP}"
     RESULT_VARIABLE GUI_RESULT
     OUTPUT_VARIABLE GUI_OUTPUT
     ERROR_VARIABLE GUI_ERROR
@@ -38,6 +39,7 @@ foreach(SCALE IN ITEMS 1.25 1.5)
                 "QT_SCALE_FACTOR=${SCALE}"
                 "VIDSTOREX_WORKFLOW_LAYOUT_ONLY=1"
                 "${GUI}" --video-set-assistant-smoke-root "${RUN_ROOT}"
+                --video-set-assistant-fake-ytdlp "${FAKE_YTDLP}"
         RESULT_VARIABLE LAYOUT_RESULT
         OUTPUT_VARIABLE LAYOUT_OUTPUT
         ERROR_VARIABLE LAYOUT_ERROR

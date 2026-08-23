@@ -699,12 +699,18 @@ void VidStoreXStepper::setSteps(const QStringList &steps, const int active,
 }
 
 QSize VidStoreXStepper::sizeHint() const {
-    return property("densityMode").toString() == QStringLiteral("compact")
-        ? QSize(640, 52) : QSize(720, 58);
+    const bool compactWidth = property("densityMode").toString() ==
+        QStringLiteral("compact");
+    const bool shortHeight = property("heightDensity").toString() ==
+        QStringLiteral("short");
+    return {compactWidth ? 640 : 720, shortHeight ? 44 : 48};
 }
 QSize VidStoreXStepper::minimumSizeHint() const {
-    return property("densityMode").toString() == QStringLiteral("compact")
-        ? QSize(420, 48) : QSize(460, 54);
+    const bool compactWidth = property("densityMode").toString() ==
+        QStringLiteral("compact");
+    const bool shortHeight = property("heightDensity").toString() ==
+        QStringLiteral("short");
+    return {compactWidth ? 420 : 460, shortHeight ? 42 : 46};
 }
 
 void VidStoreXStepper::paintEvent(QPaintEvent *) {
@@ -714,8 +720,10 @@ void VidStoreXStepper::paintEvent(QPaintEvent *) {
     if (steps_.isEmpty() || width() <= 0 || height() <= 0) return;
     const int count = steps_.size();
     const int segment = width() / count;
-    const int box = qMin(26, height() - 24);
-    const int boxY = 3;
+    const bool shortHeight = property("heightDensity").toString() ==
+        QStringLiteral("short");
+    const int box = qMin(shortHeight ? 26 : 28, height() - 18);
+    const int boxY = 2;
     QFont labelFont = font();
     labelFont.setPointSizeF(qMax(8.0, labelFont.pointSizeF() - 1.0));
     for (int i = 0; i < count; ++i) {
@@ -754,8 +762,8 @@ void VidStoreXStepper::paintEvent(QPaintEvent *) {
         }
         p.setFont(labelFont);
         p.setPen(current ? t.textPrimary : t.textSecondary);
-        p.drawText(QRect(segment * i + 2, boxY + box + 5,
-                         segment - 4, height() - boxY - box - 5),
+        p.drawText(QRect(segment * i + 2, boxY + box + 2,
+                         segment - 4, height() - boxY - box - 2),
                    Qt::AlignHCenter | Qt::AlignTop | Qt::TextSingleLine,
                    p.fontMetrics().elidedText(steps_[i], Qt::ElideRight,
                                               segment - 8));

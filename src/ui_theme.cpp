@@ -27,17 +27,24 @@ ResponsiveMode responsiveModeForViewport(const int width, const int height) {
     return ResponsiveMode::Normal;
 }
 
+HeightDensity heightDensityForViewport(const int, const int height) {
+    return height < 800 ? HeightDensity::Short : HeightDensity::Regular;
+}
+
 DensityMetrics densityMetrics(const ResponsiveMode mode) {
     switch (mode) {
         case ResponsiveMode::Compact:
-            return {14, Layout::ContentMaxWidth, 10, 14, 10,
+            return {14, Layout::ContentMaxWidth, Layout::WorkflowMaxWidth,
+                    10, 14, 10,
                     32, 34, 8, 34, 52, 150};
         case ResponsiveMode::Wide:
-            return {24, Layout::ContentMaxWidth, 18, 20, 14,
-                    36, 38, 12, 40, 60, 220};
+            return {24, 1480, Layout::WorkflowMaxWidth,
+                    14, 18, 12,
+                    34, 36, 10, 36, 56, 210};
         case ResponsiveMode::Normal:
-            return {20, Layout::ContentMaxWidth, 14, 18, 12,
-                    34, 36, 10, 38, 58, 190};
+            return {18, Layout::ContentMaxWidth, Layout::WorkflowMaxWidth,
+                    12, 16, 10,
+                    34, 36, 9, 36, 56, 190};
     }
     return densityMetrics(ResponsiveMode::Normal);
 }
@@ -109,7 +116,7 @@ QString applicationStyleSheet(const QPalette &palette) {
     const ThemeTokens t = themeTokens(palette);
     return QString(R"CSS(
         QWidget { font-size: 13px; }
-        QMainWindow, QWidget#centralWidget { background: %22; color: %5; }
+        QMainWindow, QWidget#centralWidget { background: %1; color: %5; }
         QScrollArea#videoSetAssistantScrollArea QWidget#qt_scrollarea_viewport,
         QStackedWidget#videoSetAssistantStack,
         QWidget#videoSetAssistantWelcomePage,
@@ -130,8 +137,9 @@ QString applicationStyleSheet(const QPalette &palette) {
         QWidget#capacityLabContent,
         QWidget#advancedLandingContent,
         QWidget#experimentalYouTubeSyncContent {
-            background: %22;
+            background: %1;
         }
+        QTabWidget#applicationPages::pane { border: 0; margin: 0; }
         QFrame#applicationHeader {
             background: %1; border: 0; border-bottom: 1px solid %13;
         }
@@ -142,6 +150,16 @@ QString applicationStyleSheet(const QPalette &palette) {
         QLabel[pageTitle="true"] { font-size: 22px; font-weight: 730; color: %5; }
         QLabel[sectionTitle="true"] { font-size: 17px; font-weight: 700; color: %5; }
         QLabel[cardTitle="true"] { font-size: 16px; font-weight: 700; color: %5; }
+        QWidget[workflowPage="true"] QLabel[pageTitle="true"] {
+            font-size: 20px;
+        }
+        QWidget[workflowPage="true"] QLabel[sectionTitle="true"],
+        QFrame#videoSetActivityPanel QLabel[cardTitle="true"] {
+            font-size: 15px;
+        }
+        QLabel#videoSetActivityDescription,
+        QLabel#videoSetProcessingSummary,
+        QLabel#videoSetBlockProgressLabel { font-size: 12px; }
         QLabel[metricValue="true"] { font-size: 20px; font-weight: 750; color: %5; }
         QLabel[muted="true"] { color: %7; }
         QFrame#onboardingCard { border-radius: 12px; }
@@ -225,7 +243,7 @@ QString applicationStyleSheet(const QPalette &palette) {
             background: %1; border: 1px solid %13; border-radius: 8px;
         }
         QWidget#videoSetAssistantStepper {
-            background: %1; border: 1px solid %13; border-radius: 8px;
+            background: %1; border: 1px solid %13; border-radius: 5px;
         }
         QPushButton, QToolButton {
             min-height: 30px; padding: 2px 12px; border-radius: 6px;

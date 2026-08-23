@@ -30,6 +30,7 @@ struct Control final {
 
 struct Layout final {
     static constexpr int ContentMaxWidth = 1420;
+    static constexpr int WorkflowMaxWidth = 1880;
     static constexpr int HeroPadding = 18;
     static constexpr int SectionGap = 18;
     static constexpr int CompactActionGap = 8;
@@ -37,12 +38,14 @@ struct Layout final {
 };
 
 enum class ResponsiveMode { Compact, Normal, Wide };
+enum class HeightDensity { Short, Regular };
 
 // Application-wide logical-pixel geometry.  Pages consume these values instead
 // of growing their own unrelated margins and minimum heights.
 struct DensityMetrics final {
     int pageMargin;
     int pageMaxWidth;
+    int workflowMaxWidth;
     int sectionGap;
     int cardPadding;
     int compactCardPadding;
@@ -55,6 +58,7 @@ struct DensityMetrics final {
 };
 
 [[nodiscard]] ResponsiveMode responsiveModeForViewport(int width, int height);
+[[nodiscard]] HeightDensity heightDensityForViewport(int width, int height);
 [[nodiscard]] DensityMetrics densityMetrics(ResponsiveMode mode);
 [[nodiscard]] QString responsiveModeName(ResponsiveMode mode);
 
