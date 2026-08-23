@@ -45,7 +45,7 @@ std::string sanitized_basename(std::string value) {
 std::string privacy_friendly_title(const VideoMetadata &metadata) {
     const auto prefix = metadata.set_id.substr(0, 8);
     std::ostringstream out;
-    out << "VidStoreX - Set " << prefix << " - Part "
+    out << "Reliquary - Set " << prefix << " - Part "
         << std::setw(2) << std::setfill('0') << metadata.part_index + 1 << '/'
         << std::setw(2) << std::setfill('0') << metadata.part_count;
     if (!metadata.privacy_friendly_titles && !metadata.source_basename.empty())
@@ -55,7 +55,7 @@ std::string privacy_friendly_title(const VideoMetadata &metadata) {
 
 std::string video_metadata_json(const VideoMetadata &metadata) {
     std::ostringstream description;
-    description << "VidStoreX Video Set\nSet: " << metadata.set_id.substr(0, 8)
+    description << "Reliquary Video Set\nSet: " << metadata.set_id.substr(0, 8)
                 << "\nPart: " << metadata.part_index + 1 << '/'
                 << metadata.part_count;
     return "{\"snippet\":{\"title\":\"" +
@@ -128,7 +128,7 @@ ApiError classify_api_error(const int status, const std::string_view body,
         result.user_message = "The YouTube upload session expired. Review before retrying to avoid a duplicate.";
     } else if (status == 500 || status == 502 || status == 503 || status == 504) {
         result.category = "UploadFailed";
-        result.user_message = "YouTube is temporarily unavailable. VidStoreX will retry safely.";
+        result.user_message = "YouTube is temporarily unavailable. Reliquary will retry safely.";
         result.retryable = true;
     } else {
         result.category = operation == "playlist_create" ? "PlaylistCreateFailed" :

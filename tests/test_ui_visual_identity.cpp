@@ -1,6 +1,7 @@
 #include "ui_theme.h"
 #include "visual_components.h"
 #include "app_branding.h"
+#include "brand_intro.h"
 
 #include <gtest/gtest.h>
 
@@ -10,7 +11,11 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPalette>
+#include <QKeyEvent>
+#include <QPointer>
+#include <QSettings>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QTimer>
 
 #include <algorithm>
@@ -59,6 +64,69 @@ int unique_opaque_colors(const QImage &image) {
 }
 
 } // namespace
+
+TEST(ProductBranding, CanonicalReliquaryIdentityAndAttributionAreStable) {
+    EXPECT_STREQ(vidstorex::branding::kProductName, "Reliquary");
+    EXPECT_STREQ(vidstorex::branding::kAuthorName,
+                 "Burhan Talha Yazıcı");
+    EXPECT_STREQ(vidstorex::branding::kAuthorAlias, "BTY");
+    EXPECT_STREQ(vidstorex::branding::kLinkedInUrl,
+                 "https://www.linkedin.com/in/burhanbty");
+    EXPECT_STREQ(vidstorex::branding::kDefinitionEnglish,
+                 "A container for preserving something precious.");
+    EXPECT_STREQ(vidstorex::branding::kDefinitionTurkish,
+                 "Değerli bir şeyi korumak için kullanılan muhafaza.");
+    EXPECT_EQ(vidstorex::branding::kBrandIntroVersion, 1);
+}
+
+TEST(ProductBranding, SettingsMigrationCopiesOnlyMissingValuesIdempotently) {
+    QTemporaryDir temporary;
+    ASSERT_TRUE(temporary.isValid());
+    QSettings legacy(temporary.filePath("legacy.ini"), QSettings::IniFormat);
+    QSettings target(temporary.filePath("reliquary.ini"),
+                     QSettings::IniFormat);
+    legacy.setValue("ui/language", "tr");
+    legacy.setValue("ui/onboardingVersion", 1);
+    legacy.setValue("videoSet/recentManifests",
+                    QStringList{"C:/legacy/set_manifest.json"});
+    legacy.setValue("encoding/reliabilityProfileId", 1);
+    target.setValue("ui/language", "en");
+    legacy.sync();
+    target.sync();
+
+    EXPECT_EQ(vidstorex::branding::copyMissingSettings(legacy, target), 3);
+    EXPECT_EQ(target.value("ui/language").toString(), "en");
+    EXPECT_EQ(target.value("ui/onboardingVersion").toInt(), 1);
+    EXPECT_EQ(target.value("videoSet/recentManifests").toStringList(),
+              QStringList{"C:/legacy/set_manifest.json"});
+    EXPECT_EQ(target.value("encoding/reliabilityProfileId").toInt(), 1);
+    EXPECT_EQ(vidstorex::branding::copyMissingSettings(legacy, target), 0);
+}
+
+TEST(ProductBranding, IntroContainsOnlyNameAndLocalizedMeaningAndCanSkip) {
+    bool finished = false;
+    QPointer<BrandIntroOverlay> intro = new BrandIntroOverlay(
+        QString::fromLatin1(vidstorex::branding::kDefinitionEnglish));
+    intro->setFinishedCallback([&finished]() { finished = true; });
+    intro->resize(1280, 720);
+    intro->show();
+    QApplication::processEvents();
+    auto *name = intro->findChild<QLabel *>("brandIntroName");
+    auto *definition = intro->findChild<QLabel *>("brandIntroDefinition");
+    ASSERT_NE(name, nullptr);
+    ASSERT_NE(definition, nullptr);
+    EXPECT_EQ(name->text(), "RELIQUARY");
+    EXPECT_EQ(definition->text(),
+              QString::fromLatin1(vidstorex::branding::kDefinitionEnglish));
+    EXPECT_FALSE(intro->accessibleDescription().contains("data",
+                                                         Qt::CaseInsensitive));
+    EXPECT_GE(BrandIntroOverlay::totalDurationMs(), 3000);
+    EXPECT_LE(BrandIntroOverlay::totalDurationMs(), 4000);
+    QKeyEvent skip(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(intro, &skip);
+    QApplication::processEvents();
+    EXPECT_TRUE(finished);
+}
 
 TEST(UiVisualIdentity, LightPaletteHasReadablePrimaryAction) {
     QPalette palette;

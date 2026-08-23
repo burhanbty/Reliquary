@@ -961,7 +961,7 @@ void write_reports(const std::filesystem::path &set_root, const SetPlan &plan,
     {
         SafeOutputFile safe(reports / "set_report.md");
         std::ofstream out(safe.partial_path());
-        out << "# VidStoreX Video Set report\n\n"
+        out << "# Reliquary Video Set report\n\n"
             << "- Status: **" << status << "**\n- Set ID: `" << id_hex(plan.set_id)
             << "`\n- Source: `" << plan.original_filename << "` (" << plan.original_file_size
             << " bytes)\n- Source SHA-256: `" << digest_hex_lower(plan.original_file_sha256)
@@ -1028,7 +1028,7 @@ void write_manual_workflow_files(const std::filesystem::path &set_root,
             out << '|' << p.part_index + 1 << '|' << p.part_index / batch + 1 << "|`"
                 << id_hex(p.part_id).substr(0, 12) << "`|`" << digest_hex_lower(p.chunk_sha256).substr(0, 16)
                 << "`|`videos/" << p.expected_video_filename << "`|" << p.actual_output_bytes
-                << '|' << p.actual_duration_seconds << "|VidStoreX " << id_hex(plan.set_id).substr(0, 8)
+                << '|' << p.actual_duration_seconds << "|Reliquary " << id_hex(plan.set_id).substr(0, 8)
                 << " part " << p.part_index + 1 << " of " << plan.parts.size() << "|\n";
         out.close(); safe.commit();
     }
@@ -1040,7 +1040,7 @@ void write_manual_workflow_files(const std::filesystem::path &set_root,
             out << id_hex(plan.set_id) << ',' << p.part_index + 1 << ',' << p.part_index / batch + 1 << ','
                 << id_hex(p.part_id) << ',' << digest_hex_lower(p.chunk_sha256) << ',' << q(p.expected_video_filename)
                 << ',' << p.actual_output_bytes << ',' << p.actual_duration_seconds << ','
-                << q("VidStoreX " + id_hex(plan.set_id).substr(0, 8) + " part " +
+                << q("Reliquary " + id_hex(plan.set_id).substr(0, 8) + " part " +
                      std::to_string(p.part_index + 1) + " of " + std::to_string(plan.parts.size())) << '\n';
         out.close(); safe.commit();
     }

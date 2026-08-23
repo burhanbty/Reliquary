@@ -2,7 +2,7 @@
 
 YouTube Sync is an optional experimental feature available under
 **Advanced → Experimental → YouTube Sync**. It is not required for normal
-VidStoreX use. Instant Playlist Recovery and the manual Video Set
+Reliquary use. Instant Playlist Recovery and the manual Video Set
 upload/download workflow do not require Google API configuration and continue
 to work when Sync is unavailable.
 
@@ -13,13 +13,13 @@ to work when Sync is unavailable.
 3. Configure the OAuth consent screen, its users, and the required publishing
    or verification state for your intended audience.
 4. Create an OAuth client of type **Desktop app**.
-5. Download the client JSON to a private local location. In VidStoreX, open
+5. Download the client JSON to a private local location. In Reliquary, open
    **Advanced → Experimental → YouTube Sync** and choose that file there.
 6. Never commit the downloaded file, its client values, tokens, DPAPI blobs, or
    generated `youtube_sync_state.json` files. The repository contains only
    `config/youtube_oauth_client.example.json`.
 
-VidStoreX uses the installed-app Authorization Code flow, an ephemeral
+Reliquary uses the installed-app Authorization Code flow, an ephemeral
 `127.0.0.1` callback listener, PKCE S256, and a random CSRF `state`. It requests
 `https://www.googleapis.com/auth/youtube` because automatic sync must upload
 videos and also create/manage the playlist made for the set. The system browser
@@ -30,7 +30,7 @@ Windows DPAPI; access and refresh tokens are never stored in QSettings.
 
 Google states that videos uploaded through `videos.insert` by unverified API
 projects created after 28 July 2020 are restricted to **Private** viewing until
-the project passes the required audit. VidStoreX records both requested and
+the project passes the required audit. Reliquary records both requested and
 actual privacy and will not call a Private upload “Unlisted.” It also does not
 offer cookie, password, or browser-session workarounds. Complete the official
 YouTube API audit/compliance process if the restriction must be lifted.
@@ -39,7 +39,7 @@ YouTube API audit/compliance process if the restriction must be lifted.
 
 The current default `videos.insert` bucket permits 100 upload calls per day.
 Playlist creation and playlist item insertion currently cost 50 units each
-from the general daily allocation, while `videos.list` costs 1 unit. VidStoreX
+from the general daily allocation, while `videos.list` costs 1 unit. Reliquary
 shows the 100-part threshold only as information: a project may have a different
 quota. Quota errors preserve local sidecar state so Sync can be resumed later.
 
@@ -47,7 +47,7 @@ quota. Quota errors preserve local sidecar state so Sync can be resumed later.
 
 At any time you can use the existing workflow: open the generated videos,
 upload them manually, wait for 1080p processing, create a playlist, paste its
-URL into VidStoreX, download with yt-dlp, scan embedded metadata, and recover.
+URL into Reliquary, download with yt-dlp, scan embedded metadata, and recover.
 Cancelling Sync does not delete already uploaded videos or playlists.
 
 Official references:

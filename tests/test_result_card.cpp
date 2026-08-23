@@ -162,6 +162,23 @@ TEST(ResultCardRenderer, RecoveryIsDeterministicOpaqueBrandCanvas) {
     EXPECT_NE(image.pixelColor(20, 4), image.pixelColor(20, 20));
 }
 
+TEST(ResultCardRenderer, ReliquaryBrandAndArtifactNameReplaceLegacyProductCopy) {
+    const auto model = result_card::makeRecoveryModel(
+        recoveryEvidence(), QStringLiteral("en_US"));
+    ASSERT_TRUE(model.has_value());
+    const QString text = result_card::Renderer::visibleText(*model);
+    EXPECT_TRUE(text.contains(QStringLiteral("Reliquary")));
+    EXPECT_TRUE(text.contains(QStringLiteral("Created with Reliquary")));
+    EXPECT_FALSE(text.contains(QStringLiteral("VidStoreX")));
+    EXPECT_TRUE(result_card::suggestedFileName(*model).startsWith(
+        QStringLiteral("Reliquary_")));
+    QFile source(QStringLiteral(VIDSTOREX_SOURCE_DIR) +
+                 QStringLiteral("/src/result_card.cpp"));
+    ASSERT_TRUE(source.open(QIODevice::ReadOnly | QIODevice::Text));
+    EXPECT_FALSE(QString::fromUtf8(source.readAll()).contains(
+        QStringLiteral("QStringLiteral(\"VIDSTOREX\")")));
+}
+
 TEST(ResultCardRenderer, BrandDarkIsIndependentOfApplicationLightPalette) {
     const auto model = result_card::makeRecoveryModel(
         recoveryEvidence(), QStringLiteral("en_US"));

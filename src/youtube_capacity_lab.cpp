@@ -2967,7 +2967,7 @@ void generate_boundary_upload(
                     ? "Warning" : "Pass")
             << "|" << test_case.capacity.expected_duration_seconds
             << "|" << test_case.candidate_size
-            << "|VidStoreX Boundary "
+            << "|Reliquary Boundary "
             << test_case.boundary_case_id << " "
             << test_case.boundary_density_gain << "x|\n";
     }
@@ -2978,7 +2978,7 @@ void generate_boundary_upload(
         csv << "order,case_id,config_id,payload_instance_id,title,file,duration,resolution,local_sha\n";
         std::size_t order = 1;
         for (const auto &c : manifest.cases) {
-            const auto title = "VidStoreX 1-bit " + c.case_id + " " +
+            const auto title = "Reliquary 1-bit " + c.case_id + " " +
                 std::to_string(c.config.block_width) + "x" +
                 std::to_string(c.config.block_height);
             titles << title << "\n";

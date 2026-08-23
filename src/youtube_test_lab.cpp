@@ -766,7 +766,7 @@ void transcode_h264(
 
         AVDictionary *metadata = nullptr;
         const std::string comment =
-            "VidStoreX YouTube Test Lab suite=" + suite_id +
+            "Reliquary YouTube Test Lab suite=" + suite_id +
             " case=" + case_id;
         av_dict_set(&metadata, "comment", comment.c_str(), 0);
         output_format->metadata = metadata;
@@ -3814,7 +3814,7 @@ void write_reports(const SuiteManifest &manifest,
         });
     write_atomic_text(reports_directory / "report.md",
         [&](std::ostream &out) {
-            out << "# VidStoreX YouTube Test Lab Report\n\n"
+            out << "# Reliquary YouTube Test Lab Report\n\n"
                 << "Suite: `" << manifest.suite_id << "`  \n"
                 << "Created: " << manifest.created_at << "  \n"
                 << "Preset: " << manifest.preset << "\n\n"

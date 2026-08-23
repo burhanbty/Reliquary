@@ -92,8 +92,8 @@ TEST(UiLanguage, TurkishCatalogCoversCriticalUserInterface) {
         {"Store the videos", QString::fromUtf8("Videoları saklayın")},
         {"Paste the playlist. Get your file back.",
          QString::fromUtf8("Playlist bağlantısını yapıştırın, dosyanızı geri alın")},
-        {"Start Using VidStoreX",
-         QString::fromUtf8("VidStoreX'i Kullanmaya Başla")},
+        {"Start Using Reliquary",
+         QString::fromUtf8("Reliquary'yi Kullanmaya Başla")},
         {"Show Getting Started Again",
          QString::fromUtf8("Başlangıç Rehberini Tekrar Göster")}};
     for (auto it = critical.cbegin(); it != critical.cend(); ++it) {

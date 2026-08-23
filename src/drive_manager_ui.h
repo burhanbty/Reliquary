@@ -66,6 +66,7 @@ class VidStoreXOnboardingProgress;
 class VidStoreXBlockProgress;
 class VidStoreXPartGrid;
 class VidStoreXProcessingFlow;
+class BrandIntroOverlay;
 class QAction;
 
 class WorkerThread : public QThread {
@@ -172,6 +173,7 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private
 slots:
@@ -307,6 +309,10 @@ private:
     void retranslateUserInterface();
 
     void showOnboarding();
+
+    void showBrandIntro();
+
+    void completeBrandIntro();
 
     void setOnboardingPage(int page);
 
@@ -490,6 +496,7 @@ private:
     QWidget *capacityLabPage = nullptr;
     QWidget *youtubeSyncPage = nullptr;
     QWidget *onboardingPage = nullptr;
+    BrandIntroOverlay *brandIntroOverlay = nullptr;
     QStackedWidget *onboardingStack = nullptr;
     VidStoreXOnboardingProgress *onboardingProgress = nullptr;
     QVector<QLabel *> onboardingTitles;
@@ -503,8 +510,10 @@ private:
     QLabel *settingsOnboardingDescription = nullptr;
     QLabel *settingsAboutHeading = nullptr;
     QLabel *settingsAboutVersion = nullptr;
+    QLabel *settingsAboutDefinition = nullptr;
     QLabel *settingsAboutAuthor = nullptr;
     QPushButton *settingsLinkedInButton = nullptr;
+    QLabel *settingsLinkedInUrl = nullptr;
     QLabel *onboardingAuthorLabel = nullptr;
     QPushButton *onboardingLinkedInButton = nullptr;
     QAction *gettingStartedAction = nullptr;

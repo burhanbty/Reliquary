@@ -1,11 +1,11 @@
-# VidStoreX
+# Reliquary
 
-VidStoreX is an experimental C++ application that encodes files into video
+Reliquary is an experimental C++ application that encodes files into video
 frames and reconstructs the original data without loss. It combines FFmpeg,
 Qt 6, libsodium, CMake, and vcpkg to explore data-to-video storage and
 recovery through both graphical and command-line interfaces.
 
-VidStoreX is a research and engineering project. It is not a replacement for
+Reliquary is a research and engineering project. It is not a replacement for
 an efficient, general-purpose archive or backup tool.
 
 ## Current Status
@@ -35,11 +35,11 @@ an efficient, general-purpose archive or backup tool.
 
 ## User interface / Kullanıcı arayüzü
 
-VidStoreX includes a three-step first-run guide that explains creation, manual video upload, and playlist-based recovery.
+Reliquary includes a short first-launch brand introduction followed by a three-step guide that explains creation, manual video upload, and playlist-based recovery.
 
-VidStoreX visualizes file creation and recovery using live part-level progress derived from the actual processing state.
+Reliquary visualizes file creation and recovery using live part-level progress derived from the actual processing state.
 
-Verified operations can be exported as privacy-conscious VidStoreX result cards.
+Verified operations can be exported as privacy-conscious Reliquary result cards.
 
 The desktop app opens on a card-based Video Set home screen with separate
 Create, Recover, Recent, Advanced, and Settings paths. Resilient is always
@@ -57,7 +57,7 @@ Ayarlar'dan değiştirilebilir. Seçilen dil sonraki açılış için kaydedilir
 
 The desktop interface uses a **Digital Archive / Signal Grid** visual
 language. Small block-and-data glyphs show the file-to-video and
-video-to-file direction, while the VidStoreX Signal Rail represents verified
+video-to-file direction, while the Reliquary Signal Rail represents verified
 data moving through the workflow. A palette-derived graphite surface system
 and one signal-amber accent keep primary actions, status, and focus clear in
 both light and dark system palettes without changing the native title bar.
@@ -71,7 +71,7 @@ controls available. OAuth-based YouTube Sync is available only under
 
 ## Encoding Modes
 
-VidStoreX has two explicitly different storage modes. Decode does not require
+Reliquary has two explicitly different storage modes. Decode does not require
 a mode selection: the first decoded frame is inspected for the versioned Fast
 Local magic, and videos without it continue through the legacy resilient
 decoder.
@@ -109,13 +109,13 @@ decryption authentication, total size, and SHA-256 while writing to a unique
 same-directory partial file. Only a completely verified output is atomically
 committed.
 
-## Improvements Introduced in VidStoreX
+## Improvements Introduced in Reliquary
 
 ### YouTube Test Lab
 
 The separate **YouTube Test Lab** measures how much Resilient-mode data can
 be recovered after a lossy processing roundtrip. It does not alter the
-VidStoreX packet format, and it does not support Fast Local: **Fast Local is
+Reliquary packet format, and it does not support Fast Local: **Fast Local is
 not designed for lossy YouTube processing.**
 
 The GUI has a dedicated Test Lab tab. The CLI exposes the same workflow:
@@ -171,7 +171,7 @@ YUV 4:2:0, MP4 upload candidate with FFmpeg. The candidate is immediately
 reopened and checked for valid H.264/YUV420P metadata, resolution, 30 FPS,
 at least 60 decoded frames, at least 1.95 seconds of reported duration,
 monotonic PTS/DTS, a valid final timestamp, complete decoder flush, and a
-written MP4 trailer. VidStoreX then decodes the embedded payload and compares
+written MP4 trailer. Reliquary then decodes the embedded payload and compares
 its SHA-256. A candidate is marked ready only if every container, timestamp,
 decode, and exact-recovery check succeeds. The 2-second value is a tested
 starting threshold, not a guarantee that YouTube will accept or process a
@@ -199,7 +199,7 @@ The real YouTube workflow remains deliberately manual:
 4. Download your own processed video.
 5. Import it in the Test Lab tab or pass it to `testlab analyze`.
 
-VidStoreX performs no YouTube login, API upload, or automatic download.
+Reliquary performs no YouTube login, API upload, or automatic download.
 Filename case-ID detection is attempted; `--case` or GUI selection handles
 renamed downloads. Imported videos are inspected through the linked FFmpeg
 libraries, with no required `ffprobe.exe` process.
@@ -235,8 +235,8 @@ media_storage testlab analyze-folder --suite C:\vsx-lab\youtube_test_lab\<suite>
 ```
 
 The v3 manifest distinguishes filesystem creation/modified timestamps,
-VidStoreX's `imported_at_utc`, and `analyzed_at_utc`. Filesystem time is only
-a file timestamp; VidStoreX does not claim it is the actual YouTube download
+Reliquary's `imported_at_utc`, and `analyzed_at_utc`. Filesystem time is only
+a file timestamp; Reliquary does not claim it is the actual YouTube download
 time. Sessions group initial, 24-hour, 7-day, and 30-day observations while
 reports keep unique cases and unique observations as separate counts.
 
@@ -476,7 +476,7 @@ exact passes in at least two differently labelled sessions.
 
 ### Performance profiling
 
-VidStoreX adds a shared performance-reporting system for GUI and CLI
+Reliquary adds a shared performance-reporting system for GUI and CLI
 operations:
 
 - Monotonic measurements based on `std::chrono::steady_clock`
@@ -497,14 +497,14 @@ The previous calculation passed `5.00` into an API that expected a ratio.
 Instead of 5%, the value was therefore interpreted as `5x`, producing
 approximately 500% repair packets.
 
-VidStoreX centralizes percentage-to-ratio conversion at the CLI and GUI
+Reliquary centralizes percentage-to-ratio conversion at the CLI and GUI
 boundaries. The default is now 5% (`0.05` internally), and validation rejects
 negative values, NaN, infinity, percentages above 500%, and packet-count
 overflow.
 
 ### Reliability profiles
 
-VidStoreX provides three named profiles plus a custom range:
+Reliquary provides three named profiles plus a custom range:
 
 - **Local / Fast:** 5%
 - **Balanced:** 20%
@@ -930,12 +930,12 @@ Coverage includes:
 
 ## Upstream Project and Credits
 
-VidStoreX is based on and forked from
+Reliquary is based on and forked from
 [yt-media-storage](https://github.com/PulseBeat02/yt-media-storage) by
 [Brandon Li (PulseBeat02)](https://brandonli.me/). The upstream authorship
 and copyright notices remain in the source files.
 
-VidStoreX is distributed under the **GNU General Public License, version 3 or
+Reliquary is distributed under the **GNU General Public License, version 3 or
 later (GPL-3.0-or-later)**. See [LICENSE.txt](LICENSE.txt) for the complete
 license text. Existing copyright and third-party notices are retained in the
 repository.
@@ -995,7 +995,7 @@ the final file is written only to the selected output folder.
 
 #### Experimental YouTube Sync
 
-VidStoreX contains an experimental OAuth-based YouTube upload integration. It
+Reliquary contains an experimental OAuth-based YouTube upload integration. It
 is optional, appears only under Advanced / Experimental, and is not required
 for the standard workflow. YouTube Sync uses an installed-app OAuth flow and
 the official YouTube Data API v3 to create a playlist, upload each part with
@@ -1003,7 +1003,7 @@ the resumable protocol, track processing, and optionally download processed
 copies for the existing embedded scan. **It requires a configured YouTube Data
 API project.**
 API project restrictions can force requested Unlisted uploads to actual Private
-until required audit/compliance steps are completed; VidStoreX displays that
+until required audit/compliance steps are completed; Reliquary displays that
 actual state and does not attempt authenticated-cookie workarounds. The manual
 upload, playlist paste, yt-dlp download, and recovery workflow remains supported.
 See [YouTube Sync setup](docs/YOUTUBE_SYNC_SETUP.md).
@@ -1035,7 +1035,7 @@ envelopes alone. Missing, corrupt, or conflicting parts never produce a final
 file. Identical exact duplicates are reported and one is selected safely.
 
 Defaults are a 600-second target, a configurable 1500 MiB actual-video cap,
-and 10% reserve. These are conservative VidStoreX project defaults, not
+and 10% reserve. These are conservative Reliquary project defaults, not
 official YouTube limits or a delivery guarantee. Planning uses the production
 packet/frame-capacity and repair calculations. The first full part measures
 actual container size; if it exceeds the hard cap, all ranges, hashes, IDs,
@@ -1045,7 +1045,7 @@ part locally roundtrips exactly.
 
 ### Real YouTube validation
 
-VidStoreX Video Sets were validated through a real YouTube roundtrip using
+Reliquary Video Sets were validated through a real YouTube roundtrip using
 the verified High Capacity profile.
 
 - Source payload: 32 MiB (33,554,432 bytes)
@@ -1138,11 +1138,11 @@ video files are never moved, deleted, or automatically uploaded.
 Typical CLI flow:
 
 ```powershell
-build\Release\media_storage.exe set-plan "D:\archive\large-file.rar" "D:\VidStoreX Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500
-build\Release\media_storage.exe set-encode "D:\archive\large-file.rar" "D:\VidStoreX Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500 --resume
-build\Release\media_storage.exe set-status --manifest "D:\VidStoreX Sets\large-file_AB12CD34\set_manifest.json"
-build\Release\media_storage.exe set-inspect "D:\VidStoreX Sets\large-file_AB12CD34\returned"
-build\Release\media_storage.exe set-recover "D:\VidStoreX Sets\large-file_AB12CD34\returned" "D:\Recovered" --resume
+build\Release\media_storage.exe set-plan "D:\archive\large-file.rar" "D:\Reliquary Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500
+build\Release\media_storage.exe set-encode "D:\archive\large-file.rar" "D:\Reliquary Sets" --reliability-profile high-capacity --target-duration-seconds 600 --max-video-size-mib 1500 --resume
+build\Release\media_storage.exe set-status --manifest "D:\Reliquary Sets\large-file_AB12CD34\set_manifest.json"
+build\Release\media_storage.exe set-inspect "D:\Reliquary Sets\large-file_AB12CD34\returned"
+build\Release\media_storage.exe set-recover "D:\Reliquary Sets\large-file_AB12CD34\returned" "D:\Recovered" --resume
 ```
 
 The set directory includes `upload_checklist.md`, `upload_checklist.csv`,

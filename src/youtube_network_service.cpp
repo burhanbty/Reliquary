@@ -74,8 +74,8 @@ void YouTubeNetworkService::acceptCallback() {
                 attempt_.state);
         } else callback.error = "invalid callback request";
         const QByteArray html = callback.accepted
-            ? "<h1>VidStoreX connected</h1><p>You may close this window.</p>"
-            : "<h1>VidStoreX authorization failed</h1><p>Return to the app.</p>";
+            ? "<h1>Reliquary connected</h1><p>You may close this window.</p>"
+            : "<h1>Reliquary authorization failed</h1><p>Return to the app.</p>";
         socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: " +
                       QByteArray::number(html.size()) + "\r\n\r\n" + html);
         socket->disconnectFromHost();

@@ -105,6 +105,8 @@ if (TARGET media_storage_gui)
             "${CMAKE_SOURCE_DIR}/src/visual_components.h"
             "${CMAKE_SOURCE_DIR}/src/app_branding.cpp"
             "${CMAKE_SOURCE_DIR}/src/app_branding.h"
+            "${CMAKE_SOURCE_DIR}/src/brand_intro.cpp"
+            "${CMAKE_SOURCE_DIR}/src/brand_intro.h"
     )
     target_include_directories(media_storage_ui_visual_identity_tests PRIVATE
             "${CMAKE_SOURCE_DIR}/src")
@@ -261,12 +263,21 @@ if (TARGET media_storage_gui)
     )
     set_tests_properties(
             GUI.FirstRunOnboardingE2E PROPERTIES TIMEOUT 90)
+    add_test(
+            NAME GUI.SettingsMigrationE2E
+            COMMAND $<TARGET_FILE:media_storage_gui>
+                    --settings-migration-smoke-root
+                    "${CMAKE_CURRENT_BINARY_DIR}/gui_settings_migration"
+    )
+    set_tests_properties(
+            GUI.SettingsMigrationE2E PROPERTIES TIMEOUT 20)
     if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
         set_tests_properties(
                 GUI.LaunchSmoke
                 GUI.CloseDuringEstimate
                 GUI.VideoSetAssistantE2E
                 GUI.FirstRunOnboardingE2E
+                GUI.SettingsMigrationE2E
                 PROPERTIES ENVIRONMENT
                 "QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>")
     endif ()

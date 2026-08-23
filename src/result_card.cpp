@@ -1,4 +1,5 @@
 #include "result_card.h"
+#include "app_branding.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -51,7 +52,7 @@ namespace {
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Match"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "%1 / %2 parts verified"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "%1 / %2 videos created"),
-    QT_TRANSLATE_NOOP("VidStoreXResultCard", "Created with VidStoreX"),
+    QT_TRANSLATE_NOOP("VidStoreXResultCard", "Created with Reliquary"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Most Reliable"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Fewer Videos"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Show file name"),
@@ -67,7 +68,7 @@ namespace {
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Result card could not be saved."),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "Image copied"),
     QT_TRANSLATE_NOOP("VidStoreXResultCard", "PNG Image (*.png)"),
-    QT_TRANSLATE_NOOP("VidStoreXResultCard", "VidStoreX result card preview")};
+    QT_TRANSLATE_NOOP("VidStoreXResultCard", "Reliquary result card preview")};
 
 QString t(const char *source) {
     return QCoreApplication::translate("VidStoreXResultCard", source);
@@ -272,7 +273,8 @@ std::optional<Model> makeRecoveryModel(const RecoveryEvidence &evidence,
 QString Renderer::visibleText(const Model &model,
                               const PrivacyOptions &privacy) {
     QStringList lines;
-    lines << QStringLiteral("VidStoreX") << t("Digital Archive Report");
+    lines << QString::fromLatin1(vidstorex::branding::kProductName)
+          << t("Digital Archive Report");
     if (model.type == Type::FileRecoveredExact)
         lines << t("Verified Recovery") << t("Your file was recovered exactly");
     else
@@ -299,9 +301,11 @@ QString Renderer::visibleText(const Model &model,
     lines << QLocale(model.localeName).toString(
         model.timestamp, QLocale::ShortFormat);
     lines << (model.appVersion.isEmpty()
-        ? QStringLiteral("VidStoreX")
-        : QStringLiteral("VidStoreX v%1").arg(model.appVersion));
-    lines << t("Created with VidStoreX");
+        ? QString::fromLatin1(vidstorex::branding::kProductName)
+        : QStringLiteral("%1 v%2")
+              .arg(QString::fromLatin1(vidstorex::branding::kProductName),
+                   model.appVersion));
+    lines << t("Created with Reliquary");
     return lines.join('\n');
 }
 
@@ -350,15 +354,18 @@ QImage Renderer::render(const Model &model, const PrivacyOptions &privacy) {
     painter.setFont(font(base, 34, QFont::Black, true));
     painter.setPen(theme.text);
     painter.drawText(QRectF(166, 55, 500, 44), Qt::AlignVCenter,
-                     QStringLiteral("VIDSTOREX"));
+                     QString::fromLatin1(
+                         vidstorex::branding::kProductName).toUpper());
     painter.setFont(font(base, 17, QFont::DemiBold, true));
     painter.setPen(theme.muted);
     painter.drawText(QRectF(168, 99, 500, 28), Qt::AlignVCenter,
                      t("Digital Archive Report").toUpper());
 
     const QString version = model.appVersion.isEmpty()
-        ? QStringLiteral("VidStoreX")
-        : QStringLiteral("VidStoreX v%1").arg(model.appVersion);
+        ? QString::fromLatin1(vidstorex::branding::kProductName)
+        : QStringLiteral("%1 v%2")
+              .arg(QString::fromLatin1(vidstorex::branding::kProductName),
+                   model.appVersion);
     painter.setFont(font(base, 17, QFont::DemiBold));
     painter.setPen(theme.secondary);
     painter.drawText(QRectF(1110, 70, 418, 35),
@@ -482,12 +489,12 @@ QImage Renderer::render(const Model &model, const PrivacyOptions &privacy) {
     painter.drawText(QRectF(72, 838, 600, 30), Qt::AlignVCenter, timestamp);
     painter.drawText(QRectF(930, 838, 598, 30),
                      Qt::AlignRight | Qt::AlignVCenter,
-                     t("Created with VidStoreX"));
+                     t("Created with Reliquary"));
     return image;
 }
 
 QString suggestedFileName(const Model &model) {
-    return QStringLiteral("VidStoreX_%1_%2.png")
+    return QStringLiteral("Reliquary_%1_%2.png")
         .arg(safeStem(model.fileName),
              model.type == Type::FileRecoveredExact
                 ? QStringLiteral("recovered")
@@ -573,7 +580,7 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
     preview_->setObjectName(QStringLiteral("resultCardPreviewImage"));
     preview_->setAlignment(Qt::AlignCenter);
     preview_->setMinimumHeight(300);
-    preview_->setAccessibleName(t("VidStoreX result card preview"));
+    preview_->setAccessibleName(t("Reliquary result card preview"));
     preview_->setAccessibleDescription(Renderer::accessibleSummary(model_));
     root->addWidget(preview_, 1);
 

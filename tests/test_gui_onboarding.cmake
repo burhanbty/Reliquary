@@ -18,6 +18,11 @@ foreach(SCALE IN ITEMS 1.0 1.25 1.5)
             "Onboarding qwindows E2E failed at ${SCALE}: ${GUI_RESULT}\n${GUI_OUTPUT}\n${GUI_ERROR}")
     endif ()
     foreach(SCREENSHOT IN ITEMS
+            brand-intro-initial.png
+            brand-intro-name.png
+            brand-intro-definition-1280x720.png
+            brand-intro-definition-1366x768.png
+            brand-intro-definition-1920x1080.png
             onboarding-1280x720.png
             onboarding-1366x768.png
             onboarding-1920x1080.png

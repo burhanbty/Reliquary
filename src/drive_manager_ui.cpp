@@ -16,6 +16,7 @@
 
 #include "drive_manager_ui.h"
 #include "app_branding.h"
+#include "brand_intro.h"
 #include "instant_recovery.h"
 #include "youtube_auth.h"
 #include "youtube_sync_controller.h"
@@ -96,7 +97,7 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Advanced / Experimental / YouTube Sync"),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal VidStoreX use. Most users should upload Video Set videos manually and use the playlist link for recovery."),
+        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal Reliquary use. Most users should upload Video Set videos manually and use the playlist link for recovery."),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Open"),
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Technical tools and experiments are kept separate from the normal Create and Recover workflow."),
@@ -113,7 +114,7 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Technical tools, experiments and low-level controls."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "VidStoreX is reading the source and calculating real part capacity."),
+        "Reliquary is reading the source and calculating real part capacity."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Reading and hashing the source file"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Video Set plan is ready"),
@@ -133,7 +134,7 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Put all videos in one playlist and copy its link."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "VidStoreX never signs in and never uploads automatically."),
+        "Reliquary never signs in and never uploads automatically."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "VERIFIED BLOCKS → FULL-FILE SHA-256 → EXACT OUTPUT"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Turn your file into videos"),
@@ -141,11 +142,11 @@ namespace {
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Paste the playlist. Get your file back."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "Choose a file and let VidStoreX turn it into a resilient Video Set."),
+        "Choose a file and let Reliquary turn it into a resilient Video Set."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "Upload the videos created by VidStoreX and place them in a single YouTube playlist."),
+        "Upload the videos created by Reliquary and place them in a single YouTube playlist."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
-        "VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file."),
+        "Reliquary downloads the videos, identifies the correct parts and rebuilds the original file."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Large files can be split across multiple videos automatically."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
@@ -486,7 +487,7 @@ DriveManagerUI::DriveManagerUI(QWidget *parent)
     loadSettings();
     uiTranslator = new QTranslator(this);
     setUiLanguage(uiLanguage, false);
-    setWindowTitle(QStringLiteral("VidStoreX"));
+    setWindowTitle(QString::fromLatin1(vidstorex::branding::kProductName));
     setMinimumSize(1024, 640);
 
     setupUI();
@@ -494,7 +495,11 @@ DriveManagerUI::DriveManagerUI(QWidget *parent)
     setupStatusBar();
     connectSignals();
     retranslateUserInterface();
-    if (QSettings().value("ui/onboardingVersion", 0).toInt() < 1)
+    if (QSettings().value("ui/brandIntroVersion", 0).toInt() <
+        vidstorex::branding::kBrandIntroVersion)
+        showBrandIntro();
+    else if (QSettings().value("ui/onboardingVersion", 0).toInt() <
+             vidstorex::branding::kOnboardingVersion)
         showOnboarding();
 
     preflightDebounceTimer = new QTimer(this);
@@ -1094,16 +1099,16 @@ void DriveManagerUI::setupUI() {
         videoSetAssistantCancelButton->setEnabled(false);
         videoSetAssistantScanButton->setEnabled(true);
         videoSetLog->append(
-            "The VidStoreX backend could not be started: " +
+            "The Reliquary backend could not be started: " +
             videoSetProcess->errorString());
         if (videoSetAssistantOperation) {
             const auto id = videoSetOperationProgress.view().operation_id;
             (void) videoSetOperationProgress.fail(
                 id, QDateTime::currentMSecsSinceEpoch(), -1,
-                "The VidStoreX backend could not be started.",
+                "The Reliquary backend could not be started.",
                 "Keep the media_storage executable beside the GUI, then retry.");
             videoSetWorkflow.fail(
-                "The VidStoreX backend could not be started.",
+                "The Reliquary backend could not be started.",
                 "Keep the media_storage executable beside the GUI, then retry.");
             updateVideoSetAssistant();
             renderVideoSetActivity();
@@ -2109,6 +2114,10 @@ void DriveManagerUI::setupSettingsPage() {
     settingsAboutHeading->setProperty("sectionTitle", true);
     settingsAboutVersion = new QLabel();
     settingsAboutVersion->setObjectName("settingsAboutVersion");
+    settingsAboutDefinition = new QLabel();
+    settingsAboutDefinition->setObjectName("settingsAboutDefinition");
+    settingsAboutDefinition->setWordWrap(true);
+    settingsAboutDefinition->setProperty("muted", true);
     settingsAboutAuthor = new QLabel();
     settingsAboutAuthor->setObjectName("settingsAboutAuthor");
     settingsLinkedInButton = new QPushButton();
@@ -2116,10 +2125,15 @@ void DriveManagerUI::setupSettingsPage() {
     settingsLinkedInButton->setProperty(
         "externalUrl", vidstorex::branding::linkedInUrl().toString());
     settingsLinkedInButton->setProperty("vsxRole", "secondary");
+    settingsLinkedInUrl = new QLabel(QStringLiteral("linkedin.com/in/burhanbty"));
+    settingsLinkedInUrl->setObjectName("settingsLinkedInUrl");
+    settingsLinkedInUrl->setProperty("muted", true);
     aboutLayout->addWidget(settingsAboutHeading, 0, 0, 1, 2);
     aboutLayout->addWidget(settingsAboutVersion, 1, 0, 1, 2);
-    aboutLayout->addWidget(settingsAboutAuthor, 2, 0);
-    aboutLayout->addWidget(settingsLinkedInButton, 2, 1, Qt::AlignRight);
+    aboutLayout->addWidget(settingsAboutDefinition, 2, 0, 1, 2);
+    aboutLayout->addWidget(settingsAboutAuthor, 3, 0, 1, 2);
+    aboutLayout->addWidget(settingsLinkedInButton, 4, 0);
+    aboutLayout->addWidget(settingsLinkedInUrl, 4, 1, Qt::AlignRight);
     layout->addWidget(aboutCard);
     layout->addStretch();
 
@@ -2147,13 +2161,13 @@ void DriveManagerUI::setupSettingsPage() {
     auto *youtubeWarning = new QLabel(
         "<b>Experimental feature</b><br>"
         "YouTube Sync requires a Google Cloud project and OAuth configuration. "
-        "It is not required for normal VidStoreX use. Most users should upload "
+        "It is not required for normal Reliquary use. Most users should upload "
         "Video Set videos manually and use the playlist link for recovery.");
     youtubeWarning->setObjectName("experimentalYouTubeSyncWarning");
     youtubeWarning->setWordWrap(true);
     youtubeWarning->setProperty("vsxSurface", "raised");
     youtubeWarning->setProperty("i18nSource",
-        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal VidStoreX use. Most users should upload Video Set videos manually and use the playlist link for recovery.");
+        "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal Reliquary use. Most users should upload Video Set videos manually and use the playlist link for recovery.");
     youtubeLayout->addWidget(youtubeWarning);
 
     auto *youtubeCard = new QFrame();
@@ -2428,7 +2442,7 @@ void DriveManagerUI::setupSettingsPage() {
                 return;
             }
             youtubeSyncConnectionLabel->setText(tr(
-                "VidStoreX needs permission to upload Video Set videos and manage the playlist created for this set."));
+                "Reliquary needs permission to upload Video Set videos and manage the playlist created for this set."));
             if (!youtubeNetworkService->beginAuthorization(config))
                 youtubeSyncConnectionLabel->setText(tr(
                     "The system browser or local callback listener could not be opened."));
@@ -2557,9 +2571,9 @@ void DriveManagerUI::setupOnboardingPage() {
         "Store the videos",
         "Paste the playlist. Get your file back."};
     const QStringList descriptions{
-        "Choose a file and let VidStoreX turn it into a resilient Video Set.",
-        "Upload the videos created by VidStoreX and place them in a single YouTube playlist.",
-        "VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file."};
+        "Choose a file and let Reliquary turn it into a resilient Video Set.",
+        "Upload the videos created by Reliquary and place them in a single YouTube playlist.",
+        "Reliquary downloads the videos, identifies the correct parts and rebuilds the original file."};
     const QStringList supporting{
         "Large files can be split across multiple videos automatically.",
         "Upload the videos\nUse Unlisted when possible\nWait for 1080p processing\nPlace all parts in one playlist",
@@ -2689,6 +2703,44 @@ void DriveManagerUI::showOnboarding() {
     onboardingSkipButton->setFocus(Qt::OtherFocusReason);
 }
 
+void DriveManagerUI::showBrandIntro() {
+    if (brandIntroOverlay) return;
+    const QString definition = uiLanguage ==
+            QLatin1String(vidstorex_ui::kTurkishLanguage)
+        ? QString::fromUtf8(vidstorex::branding::kDefinitionTurkish)
+        : QString::fromLatin1(vidstorex::branding::kDefinitionEnglish);
+    try {
+        brandIntroOverlay = new BrandIntroOverlay(definition, this);
+        brandIntroOverlay->setGeometry(rect());
+        brandIntroOverlay->setFinishedCallback(
+            [this]() { completeBrandIntro(); });
+        brandIntroOverlay->show();
+        brandIntroOverlay->raise();
+        QTimer::singleShot(0, brandIntroOverlay, [this]() {
+            if (brandIntroOverlay) brandIntroOverlay->start();
+        });
+    } catch (...) {
+        qWarning() << "Reliquary brand intro could not be initialized; "
+                      "continuing without it";
+        if (brandIntroOverlay) brandIntroOverlay->deleteLater();
+        brandIntroOverlay = nullptr;
+        completeBrandIntro();
+    }
+}
+
+void DriveManagerUI::completeBrandIntro() {
+    brandIntroOverlay = nullptr;
+    QSettings settings;
+    settings.setValue("ui/brandIntroVersion",
+                      vidstorex::branding::kBrandIntroVersion);
+    settings.sync();
+    if (settings.value("ui/onboardingVersion", 0).toInt() <
+        vidstorex::branding::kOnboardingVersion)
+        showOnboarding();
+    else
+        showVideoSetHome();
+}
+
 void DriveManagerUI::setOnboardingPage(const int page) {
     if (!onboardingStack) return;
     const int resolved = qBound(0, page, onboardingStack->count() - 1);
@@ -2699,7 +2751,7 @@ void DriveManagerUI::setOnboardingPage(const int page) {
         .arg(resolved + 1));
     onboardingBackButton->setVisible(resolved > 0);
     onboardingNextButton->setText(
-        resolved == 2 ? tr("Start Using VidStoreX") : tr("Continue"));
+        resolved == 2 ? tr("Start Using Reliquary") : tr("Continue"));
     onboardingNextButton->setAccessibleName(onboardingNextButton->text());
     onboardingNextButton->setAccessibleDescription(resolved == 2
         ? tr("Complete Getting Started and open Home.")
@@ -2709,7 +2761,8 @@ void DriveManagerUI::setOnboardingPage(const int page) {
 
 void DriveManagerUI::completeOnboarding() {
     QSettings settings;
-    settings.setValue("ui/onboardingVersion", 1);
+    settings.setValue("ui/onboardingVersion",
+                      vidstorex::branding::kOnboardingVersion);
     settings.sync();
     showVideoSetHome();
 }
@@ -2725,7 +2778,8 @@ void DriveManagerUI::setupApplicationNavigation() {
     layout->setSpacing(vidstorex_ui::Spacing::Xs);
 
     auto *brandRow = new QHBoxLayout();
-    brandLabel = new QLabel(QStringLiteral("VidStoreX"));
+    brandLabel = new QLabel(
+        QString::fromLatin1(vidstorex::branding::kProductName));
     brandLabel->setObjectName("brandLabel");
     brandLabel->setProperty("brand", true);
     brandSubtitleLabel = new QLabel();
@@ -3084,7 +3138,7 @@ void DriveManagerUI::setUiLanguage(const QString &language,
 }
 
 void DriveManagerUI::retranslateUserInterface() {
-    setWindowTitle(QStringLiteral("VidStoreX"));
+    setWindowTitle(QString::fromLatin1(vidstorex::branding::kProductName));
     if (!centralWidget) return;
 
     const auto translateStored = [this](QObject *root) {
@@ -3153,18 +3207,21 @@ void DriveManagerUI::retranslateUserInterface() {
     settingsShowOnboardingButton->setText(tr(
         "Show Getting Started Again"));
     showAdvancedToolsCheckBox->setText(tr("Show Advanced tools"));
-    settingsAboutHeading->setText(tr("About VidStoreX"));
-    settingsAboutVersion->setText(tr("Version %1").arg(
+    settingsAboutHeading->setText(
+        QString::fromLatin1(vidstorex::branding::kProductName));
+    settingsAboutVersion->setText(QStringLiteral("v%1").arg(
         QString::fromLatin1(ms_version())));
-    settingsAboutAuthor->setText(tr("Created by %1 (%2)")
+    settingsAboutDefinition->setText(tr(
+        "A container for preserving something precious."));
+    settingsAboutAuthor->setText(tr("Made by %1 • %2")
         .arg(QString::fromUtf8(vidstorex::branding::kAuthorName),
              QString::fromLatin1(vidstorex::branding::kAuthorAlias)));
-    settingsLinkedInButton->setText(tr("LinkedIn profile"));
+    settingsLinkedInButton->setText(QStringLiteral("LinkedIn"));
     settingsLinkedInButton->setAccessibleName(tr(
         "Open Burhan Talha Yazıcı's LinkedIn profile"));
     onboardingSkipButton->setText(tr("Skip"));
     onboardingBackButton->setText(tr("Back"));
-    onboardingAuthorLabel->setText(tr("Created by %1 (%2)")
+    onboardingAuthorLabel->setText(tr("Made by %1 • %2")
         .arg(QString::fromUtf8(vidstorex::branding::kAuthorName),
              QString::fromLatin1(vidstorex::branding::kAuthorAlias)));
     onboardingLinkedInButton->setText(tr("LinkedIn"));
@@ -3274,12 +3331,12 @@ void DriveManagerUI::retranslateUserInterface() {
         tr("Create a resilient Video Set or recover an exact original."),
         tr("Choose the file you want to turn into videos. Any file type is supported; the source is never moved, modified, or deleted."),
         tr("Choose how you want to balance reliability and video count."),
-        tr("VidStoreX calculates real packet, frame, repair, and capacity values before creating any video."),
+        tr("Reliquary calculates real packet, frame, repair, and capacity values before creating any video."),
         tr("Each completed part is decoded and checked locally before it is accepted."),
-        tr("Upload your VidStoreX videos to YouTube and add them to one playlist."),
+        tr("Upload your Reliquary videos to YouTube and add them to one playlist."),
         tr("Paste the playlist link, or choose the returned videos manually."),
         tr("Select a set, manifest, video, or returned-video folder. Recovery starts only when you choose Recover."),
-        tr("VidStoreX verifies every part and the final full-file SHA-256 before publishing the recovered file."),
+        tr("Reliquary verifies every part and the final full-file SHA-256 before publishing the recovered file."),
         tr("Recovery is successful only when the final SHA-256 matches.")};
     for (int index = 0; index < videoSetAssistantPageHeadings.size() &&
                             index < headings.size(); ++index)
@@ -3543,7 +3600,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     activityDetails->addWidget(videoSetActivityCurrentItem, 1);
     activityLayout->addLayout(activityDetails);
     videoSetActivityWatchdog = new QLabel(
-        "This is taking longer than usual. VidStoreX is still working; no action is required.");
+        "This is taking longer than usual. Reliquary is still working; no action is required.");
     videoSetActivityWatchdog->setObjectName("videoSetActivityWatchdog");
     videoSetActivityWatchdog->setWordWrap(true);
     videoSetActivityWatchdog->setVisible(false);
@@ -4051,7 +4108,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     // 5: Upload guide
     auto *upload = makePage(
         "5. Upload to YouTube",
-        "Upload your VidStoreX videos to YouTube and add them to one playlist.");
+        "Upload your Reliquary videos to YouTube and add them to one playlist.");
     upload->setObjectName("videoSetAssistantUploadPage");
     auto *uploadLayout = pageLayout(upload);
     videoSetUploadInstructionsLabel = new QLabel(
@@ -4060,7 +4117,7 @@ void DriveManagerUI::setupVideoSetAssistant(
         "3. Wait until 1080p processing finishes for every video.\n"
         "4. Put all videos into one playlist.\n"
         "5. Copy the playlist link and return here.\n\n"
-        "VidStoreX never signs in to your account and never uploads automatically.");
+        "Reliquary never signs in to your account and never uploads automatically.");
     videoSetUploadInstructionsLabel->setWordWrap(true);
     videoSetUploadInstructionsLabel->setVisible(false);
     auto *instructionRow = new QHBoxLayout();
@@ -4119,11 +4176,11 @@ void DriveManagerUI::setupVideoSetAssistant(
     syncActions->addStretch();
     syncLayout->addLayout(syncActions);
     auto *uploadPrivacy = new QLabel(
-        "Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.");
+        "Upload the videos manually. You can recover your file later by pasting the playlist link into Reliquary.");
     uploadPrivacy->setObjectName("videoSetUploadPrivacyNotice");
     uploadPrivacy->setProperty("muted", true);
     uploadPrivacy->setProperty("i18nSource",
-        "Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.");
+        "Upload the videos manually. You can recover your file later by pasting the playlist link into Reliquary.");
     uploadLayout->addWidget(uploadPrivacy);
     auto *uploadActions = new QHBoxLayout();
     videoSetOpenVideosButton = new QPushButton("Open Videos Folder");
@@ -4143,7 +4200,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     // 6: Download
     auto *download = makePage(
         "6. Download YouTube's processed copies",
-        "Paste the playlist link. VidStoreX calls yt-dlp directly without PowerShell, cookies, login, or shell command construction.");
+        "Paste the playlist link. Reliquary calls yt-dlp directly without PowerShell, cookies, login, or shell command construction.");
     download->setObjectName("videoSetAssistantDownloadPage");
     auto *downloadLayout = pageLayout(download);
     auto *downloadForm = new QGridLayout();
@@ -4715,7 +4772,7 @@ void DriveManagerUI::setupVideoSetAssistant(
             url.toStdString());
         videoSetInstantRecoverButton->setEnabled(valid);
         videoSetInstantRecoveryStatus->setText(valid
-            ? tr("Ready. VidStoreX will download, identify one complete set, recover it, and verify the full-file SHA-256.")
+            ? tr("Ready. Reliquary will download, identify one complete set, recover it, and verify the full-file SHA-256.")
             : tr("Paste a valid YouTube playlist link containing list=."));
     });
     connect(videoSetInstantRecoverButton, &QPushButton::clicked,
@@ -5099,7 +5156,7 @@ void DriveManagerUI::startVideoSetProcess(
             type = OperationType::Plan;
             phase = OperationPhase::HashingSource;
             title = "Calculating the Video Set plan";
-            description = "VidStoreX is reading the source and calculating real part capacity.";
+            description = "Reliquary is reading the source and calculating real part capacity.";
         } else if (videoSetActiveCommand == "set-encode") {
             type = OperationType::Encode;
             title = "Creating and verifying videos";
@@ -5108,7 +5165,7 @@ void DriveManagerUI::startVideoSetProcess(
             type = OperationType::Scan;
             phase = OperationPhase::DiscoveringFiles;
             title = "Scanning downloaded videos";
-            description = "VidStoreX is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.";
+            description = "Reliquary is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.";
         } else if (videoSetActiveCommand == "set-recover") {
             type = OperationType::Recover;
             title = "Recovering the original file";
@@ -5190,11 +5247,11 @@ void DriveManagerUI::renderVideoSetActivity() {
                 video_set_workflow::OperationState::Completed) {
                 title = tr("Video Set plan is ready");
                 description = tr(
-                    "VidStoreX read the source and calculated the real part capacity.");
+                    "Reliquary read the source and calculated the real part capacity.");
             } else {
                 title = tr("Calculating the Video Set plan");
                 description = tr(
-                    "VidStoreX is reading the source and calculating real part capacity.");
+                    "Reliquary is reading the source and calculating real part capacity.");
             }
             break;
         case video_set_workflow::OperationType::Encode:
@@ -5220,14 +5277,14 @@ void DriveManagerUI::renderVideoSetActivity() {
             break;
         case video_set_workflow::OperationType::Scan:
             title = tr("Scanning downloaded videos");
-            description = tr("VidStoreX is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.");
+            description = tr("Reliquary is checking the videos and reading their embedded Video Set information. The original file is not being rebuilt yet.");
             break;
         case video_set_workflow::OperationType::Recover:
         case video_set_workflow::OperationType::FinalHash:
         case video_set_workflow::OperationType::Finalize:
             if (operation.phase == video_set_workflow::OperationPhase::CheckingFullFile) {
                 title = tr("Final verification is in progress");
-                description = tr("VidStoreX is checking that the recovered file is exactly identical to the original file.");
+                description = tr("Reliquary is checking that the recovered file is exactly identical to the original file.");
             } else {
                 title = tr("Your file is being rebuilt");
                 description = tr("Verified parts are being decoded and written back into the original file.");
@@ -6245,7 +6302,7 @@ void DriveManagerUI::startYouTubeSync() {
             youtubeNetworkService->execute(
                 youtube_sync::create_playlist_request(
                     youtube_endpoint_set(), youtubeSyncAccessToken.toStdString(),
-                    "VidStoreX - Set " + setId.substr(0, 8),
+                    "Reliquary - Set " + setId.substr(0, 8),
                     youtubeRuntimeSyncState.requested_privacy));
         } else {
             continueYouTubeUpload();
@@ -6676,7 +6733,7 @@ void DriveManagerUI::startVideoSetDownload() {
     const QString executable = findYtDlpExecutable();
     if (executable.isEmpty()) {
         videoSetDownloadStatusLabel->setText(
-            "yt-dlp was not found. Select the executable or download videos manually. VidStoreX does not install it automatically.");
+            "yt-dlp was not found. Select the executable or download videos manually. Reliquary does not install it automatically.");
         videoSetSelectYtDlpButton->setFocus();
         return;
     }
@@ -6711,7 +6768,7 @@ void DriveManagerUI::startVideoSetDownload() {
         video_set_workflow::OperationPhase::Preparing,
         QDateTime::currentMSecsSinceEpoch(),
         "Downloading processed videos",
-        "VidStoreX is downloading YouTube's processed copies into this set's returned folder.");
+        "Reliquary is downloading YouTube's processed copies into this set's returned folder.");
     videoSetDownloadProgress->setRange(0, 0);
     videoSetDownloadButton->setEnabled(false);
     videoSetAssistantCancelButton->setEnabled(true);
@@ -7060,6 +7117,14 @@ void DriveManagerUI::changeEvent(QEvent *event) {
     if ((event->type() == QEvent::PaletteChange ||
          event->type() == QEvent::ApplicationPaletteChange) && centralWidget)
         vidstorex_ui::applyTheme(centralWidget);
+}
+
+void DriveManagerUI::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
+    if (brandIntroOverlay) {
+        brandIntroOverlay->setGeometry(rect());
+        brandIntroOverlay->raise();
+    }
 }
 
 void DriveManagerUI::setupMenuBar() {

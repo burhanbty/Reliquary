@@ -27,7 +27,9 @@
 #include <QDialog>
 #include <QFile>
 #include <QFrame>
+#include <QGraphicsEffect>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QListWidget>
 #include <QPainter>
 #include <QPixmap>
@@ -47,6 +49,7 @@
 #include <memory>
 
 #include "drive_manager_ui.h"
+#include "app_branding.h"
 #include "ui_theme.h"
 #include "visual_components.h"
 #include "youtube_auth.h"
@@ -342,6 +345,7 @@ int main(int argc, char *argv[]) {
     QString youtubeSyncSmokeRoot;
     QString youtubeSyncManifest;
     QString onboardingSmokeRoot;
+    QString settingsMigrationSmokeRoot;
     for (int i = 1; i < argc; ++i) {
         const QString argument = QString::fromLocal8Bit(argv[i]);
         if (argument == "--smoke-test") {
@@ -371,6 +375,9 @@ int main(int argc, char *argv[]) {
             instantRecoveryFixtureVideos = QString::fromLocal8Bit(argv[++i]);
         } else if (argument == "--onboarding-smoke-root" && i + 1 < argc) {
             onboardingSmokeRoot = QString::fromLocal8Bit(argv[++i]);
+        } else if (argument == "--settings-migration-smoke-root" &&
+                   i + 1 < argc) {
+            settingsMigrationSmokeRoot = QString::fromLocal8Bit(argv[++i]);
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
         } else if (argument == "--youtube-sync-smoke-root" && i + 1 < argc) {
             youtubeSyncSmokeRoot = QString::fromLocal8Bit(argv[++i]);
@@ -381,7 +388,9 @@ int main(int argc, char *argv[]) {
     }
     const bool isolatedUiRun = !videoSetAssistantSmokeRoot.isEmpty() ||
         !instantRecoverySmokeRoot.isEmpty() || !youtubeSyncSmokeRoot.isEmpty() ||
-        !onboardingSmokeRoot.isEmpty() || smokeTest || closeDuringEstimate;
+        !onboardingSmokeRoot.isEmpty() ||
+        !settingsMigrationSmokeRoot.isEmpty() || smokeTest ||
+        closeDuringEstimate;
     if (isolatedUiRun) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(
@@ -390,6 +399,8 @@ int main(int argc, char *argv[]) {
                 ? QDir(videoSetAssistantSmokeRoot).filePath("settings")
                 : !onboardingSmokeRoot.isEmpty()
                 ? QDir(onboardingSmokeRoot).filePath("settings")
+                : !settingsMigrationSmokeRoot.isEmpty()
+                ? QDir(settingsMigrationSmokeRoot).filePath("settings")
                 : !instantRecoverySmokeRoot.isEmpty()
                 ? QDir(instantRecoverySmokeRoot).filePath("settings")
                 : !youtubeSyncSmokeRoot.isEmpty()
@@ -416,52 +427,85 @@ int main(int argc, char *argv[]) {
     }
 #endif
     
-    // Set application properties
-    QApplication::setApplicationName("YouTube Media Storage");
-    QApplication::setApplicationDisplayName("VidStoreX");
-    QApplication::setApplicationVersion("1.0");
-    QApplication::setOrganizationName("Media Storage");
+    // Set application properties and preserve every legacy user setting.
+    QApplication::setOrganizationName(
+        vidstorex::branding::kOrganizationName);
     QApplication::setOrganizationDomain("brandonli.me");
+    if (!settingsMigrationSmokeRoot.isEmpty()) {
+        QSettings legacy(
+            QSettings::defaultFormat(), QSettings::UserScope,
+            QString::fromLatin1(vidstorex::branding::kOrganizationName),
+            QString::fromLatin1(
+                vidstorex::branding::kLegacyApplicationName));
+        QSettings target(
+            QSettings::defaultFormat(), QSettings::UserScope,
+            QString::fromLatin1(vidstorex::branding::kOrganizationName),
+            QString::fromLatin1(vidstorex::branding::kProductName));
+        legacy.clear();
+        target.clear();
+        legacy.setValue("ui/language", "tr");
+        legacy.setValue("ui/onboardingVersion", 1);
+        legacy.setValue("videoSet/recentManifests",
+                        QStringList{"legacy-set-manifest"});
+        legacy.setValue("ui/defaultVideoSetOutputFolder",
+                        QDir(settingsMigrationSmokeRoot)
+                            .filePath("legacy-output"));
+        legacy.setValue("encoding/reliabilityProfileId", 1);
+        target.setValue("ui/language", "en");
+        legacy.sync();
+        target.sync();
+    }
+    const int migratedSettings = vidstorex::branding::migrateLegacySettings();
+    QApplication::setApplicationName(vidstorex::branding::kProductName);
+    QApplication::setApplicationDisplayName(
+        vidstorex::branding::kProductName);
+    QApplication::setApplicationVersion(ms_version());
+    if (migratedSettings > 0)
+        qInfo() << "Preserved" << migratedSettings
+                << "legacy settings during the Reliquary migration";
     if (isolatedUiRun) {
         QSettings settings;
-        settings.clear();
-        settings.setValue("ui/language",
-                          onboardingSmokeRoot.isEmpty() ? "en" : "tr");
-        settings.setValue("ui/rememberRecentSets", true);
-        settings.setValue("ui/showAdvancedTools", true);
-        if (onboardingSmokeRoot.isEmpty())
-            settings.setValue("ui/onboardingVersion", 1);
-        else {
-            settings.setValue("ui/defaultVideoSetOutputFolder",
-                              QDir(onboardingSmokeRoot)
-                                  .filePath("preserved-output"));
-            settings.setValue("videoSet/recentManifests",
-                              QStringList{"preserved-recent-manifest"});
-            settings.setValue("encoding/reliabilityProfileId", 1);
-            settings.setValue("onboarding/stateSentinel",
-                              "preserve-user-state");
-        }
-        if (!instantRecoveryFakeYtDlp.isEmpty())
-            settings.setValue("videoSet/ytdlpPath",
-                              instantRecoveryFakeYtDlp);
+        if (settingsMigrationSmokeRoot.isEmpty()) {
+            settings.clear();
+            settings.setValue("ui/language",
+                              onboardingSmokeRoot.isEmpty() ? "en" : "tr");
+            settings.setValue("ui/rememberRecentSets", true);
+            settings.setValue("ui/showAdvancedTools", true);
+            if (onboardingSmokeRoot.isEmpty()) {
+                settings.setValue("ui/onboardingVersion", 1);
+                settings.setValue("ui/brandIntroVersion", 1);
+            } else {
+                settings.setValue("ui/defaultVideoSetOutputFolder",
+                                  QDir(onboardingSmokeRoot)
+                                      .filePath("preserved-output"));
+                settings.setValue("videoSet/recentManifests",
+                                  QStringList{"preserved-recent-manifest"});
+                settings.setValue("encoding/reliabilityProfileId", 1);
+                settings.setValue("onboarding/stateSentinel",
+                                  "preserve-user-state");
+            }
+            if (!instantRecoveryFakeYtDlp.isEmpty())
+                settings.setValue("videoSet/ytdlpPath",
+                                  instantRecoveryFakeYtDlp);
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
-        if (!youtubeSyncSmokeRoot.isEmpty()) {
-            settings.setValue("videoSet/recentManifests",
-                              QStringList{youtubeSyncManifest});
-            settings.setValue("youtube/connected", true);
-            settings.setValue("youtube/defaultPrivacy", "unlisted");
-            settings.setValue("youtube/privacyFriendlyTitles", true);
-            settings.setValue("youtube/autoDownload", false);
-            youtube_sync::TokenRecord token;
-            token.access_token = "gui-e2e-access";
-            token.refresh_token = "gui-e2e-refresh";
-            token.expires_at_epoch_seconds =
-                QDateTime::currentSecsSinceEpoch() + 3600;
-            auto store = youtube_sync::make_platform_credential_store();
-            store->save("youtube-oauth",
-                        youtube_sync::serialize_token_record(token));
-        }
+            if (!youtubeSyncSmokeRoot.isEmpty()) {
+                settings.setValue("videoSet/recentManifests",
+                                  QStringList{youtubeSyncManifest});
+                settings.setValue("youtube/connected", true);
+                settings.setValue("youtube/defaultPrivacy", "unlisted");
+                settings.setValue("youtube/privacyFriendlyTitles", true);
+                settings.setValue("youtube/autoDownload", false);
+                youtube_sync::TokenRecord token;
+                token.access_token = "gui-e2e-access";
+                token.refresh_token = "gui-e2e-refresh";
+                token.expires_at_epoch_seconds =
+                    QDateTime::currentSecsSinceEpoch() + 3600;
+                auto store = youtube_sync::make_platform_credential_store();
+                store->save("youtube-oauth",
+                            youtube_sync::serialize_token_record(token));
+            }
 #endif
+        }
     }
     
     app.setWindowIcon(vidStoreXApplicationIcon());
@@ -475,11 +519,135 @@ int main(int argc, char *argv[]) {
         QApplication::setStyle("Fusion");
     }
 
-    if (!onboardingSmokeRoot.isEmpty()) {
+    if (!settingsMigrationSmokeRoot.isEmpty()) {
         auto *first = new DriveManagerUI();
         first->resize(1280, 720);
         first->show();
         QTimer::singleShot(0, &app, [&, first]() {
+            auto *intro = first->findChild<QWidget *>("brandIntroOverlay");
+            auto *home = first->findChild<QWidget *>(
+                "videoSetAssistantWelcomePage");
+            if (!intro || !intro->isVisible() ||
+                intro->geometry() != first->rect()) {
+                qCritical() << "Migrated legacy user did not receive brand intro";
+                first->close();
+                app.exit(127);
+                return;
+            }
+            first->grab().save(QDir(settingsMigrationSmokeRoot)
+                                   .filePath("settings-migration-intro.png"));
+            QKeyEvent skip(QEvent::KeyPress, Qt::Key_Enter, Qt::NoModifier);
+            QApplication::sendEvent(intro, &skip);
+            QApplication::processEvents();
+            const QSettings settings;
+            if (!home || !home->isVisible() ||
+                settings.value("ui/brandIntroVersion").toInt() != 1 ||
+                settings.value("ui/onboardingVersion").toInt() != 1 ||
+                settings.value("ui/language").toString() != "en" ||
+                settings.value("videoSet/recentManifests").toStringList() !=
+                    QStringList{"legacy-set-manifest"} ||
+                settings.value("encoding/reliabilityProfileId").toInt() != 1 ||
+                qApp->applicationName() != QStringLiteral("Reliquary") ||
+                qApp->applicationDisplayName() != QStringLiteral("Reliquary") ||
+                first->windowTitle() != QStringLiteral("Reliquary")) {
+                qCritical() << "Legacy settings migration invariant failed";
+                first->close();
+                app.exit(128);
+                return;
+            }
+            first->grab().save(QDir(settingsMigrationSmokeRoot)
+                                   .filePath("settings-migration-home.png"));
+            first->close();
+            delete first;
+            auto *second = new DriveManagerUI();
+            second->resize(1280, 720);
+            second->show();
+            QApplication::processEvents();
+            auto *secondIntro = second->findChild<QWidget *>(
+                "brandIntroOverlay");
+            auto *secondHome = second->findChild<QWidget *>(
+                "videoSetAssistantWelcomePage");
+            if (secondIntro || !secondHome || !secondHome->isVisible()) {
+                qCritical() << "Migrated user restart did not open Home directly";
+                second->close();
+                app.exit(129);
+                return;
+            }
+            second->close();
+            qInfo() << "Legacy settings migration qwindows E2E complete";
+            app.exit(0);
+        });
+        return app.exec();
+    }
+
+    if (!onboardingSmokeRoot.isEmpty()) {
+        auto *first = new DriveManagerUI();
+        first->resize(1280, 720);
+        first->show();
+        QTimer::singleShot(50, &app, [&, first]() {
+            auto *intro = first->findChild<QWidget *>("brandIntroOverlay");
+            auto *name = first->findChild<QLabel *>("brandIntroName");
+            auto *definition = first->findChild<QLabel *>(
+                "brandIntroDefinition");
+            if (!intro || !intro->isVisible() || !name || !definition ||
+                name->text() != QStringLiteral("RELIQUARY") ||
+                definition->text() != QString::fromUtf8(
+                    "Değerli bir şeyi korumak için kullanılan muhafaza.") ||
+                definition->text().contains(QStringLiteral("veriniz"),
+                                             Qt::CaseInsensitive)) {
+                qCritical() << "Reliquary initial brand intro invariant failed";
+                first->close();
+                app.exit(108);
+                return;
+            }
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("brand-intro-initial.png"));
+        });
+        QTimer::singleShot(900, &app, [&, first]() {
+            auto *name = first->findChild<QLabel *>("brandIntroName");
+            auto *definition = first->findChild<QLabel *>(
+                "brandIntroDefinition");
+            if (!name || !definition || !name->graphicsEffect() ||
+                !definition->graphicsEffect() ||
+                name->graphicsEffect()->property("opacity").toDouble() < 0.95 ||
+                definition->graphicsEffect()->property("opacity").toDouble() > 0.05) {
+                qCritical() << "Reliquary name did not precede the definition";
+                first->close();
+                app.exit(109);
+                return;
+            }
+            first->grab().save(QDir(onboardingSmokeRoot)
+                                   .filePath("brand-intro-name.png"));
+        });
+        QTimer::singleShot(1700, &app, [&, first]() {
+            auto *name = first->findChild<QLabel *>("brandIntroName");
+            auto *definition = first->findChild<QLabel *>(
+                "brandIntroDefinition");
+            if (!name || !definition || !name->graphicsEffect() ||
+                !definition->graphicsEffect() ||
+                name->graphicsEffect()->property("opacity").toDouble() < 0.95 ||
+                definition->graphicsEffect()->property("opacity").toDouble() < 0.95) {
+                qCritical() << "Reliquary definition fade-in invariant failed";
+                first->close();
+                app.exit(110);
+                return;
+            }
+            for (const QSize size : {QSize(1280, 720), QSize(1366, 768),
+                                     QSize(1920, 1080)}) {
+                first->resize(size);
+                QApplication::processEvents();
+                if (definition->sizeHint().width() > definition->width()) {
+                    qCritical() << "Reliquary definition clipped at" << size;
+                    first->close();
+                    app.exit(107);
+                    return;
+                }
+                first->grab().save(QDir(onboardingSmokeRoot).filePath(
+                    QStringLiteral("brand-intro-definition-%1x%2.png")
+                        .arg(size.width()).arg(size.height())));
+            }
+        });
+        QTimer::singleShot(3400, &app, [&, first]() {
             const auto fail = [&](const int code, const QString &message) {
                 qCritical().noquote() << message;
                 QFile diagnostic(QDir(onboardingSmokeRoot).filePath(
@@ -605,7 +773,7 @@ int main(int argc, char *argv[]) {
             QApplication::processEvents();
             if (stack->currentIndex() != 2 ||
                 next->text() != QString::fromUtf8(
-                    "VidStoreX'i Kullanmaya Başla")) {
+                    "Reliquary'yi Kullanmaya Başla")) {
                 fail(116, "Onboarding page 3/start action failed");
                 return;
             }
@@ -625,6 +793,7 @@ int main(int argc, char *argv[]) {
             const QSettings completed;
             if (!home || !home->isVisible() ||
                 completed.value("ui/onboardingVersion").toInt() != 1 ||
+                completed.value("ui/brandIntroVersion").toInt() != 1 ||
                 completed.value("onboarding/stateSentinel").toString() !=
                     "preserve-user-state" ||
                 completed.value("videoSet/recentManifests").toStringList() !=
@@ -688,6 +857,37 @@ int main(int argc, char *argv[]) {
             secondSkip->click();
             second->close();
             delete second;
+
+            QSettings().setValue("ui/brandIntroVersion", 0);
+            QSettings().setValue("ui/onboardingVersion", 1);
+            auto *legacyUser = new DriveManagerUI();
+            legacyUser->resize(1280, 720);
+            legacyUser->show();
+            QApplication::processEvents();
+            auto *legacyIntro = legacyUser->findChild<QWidget *>(
+                "brandIntroOverlay");
+            auto *legacyHome = legacyUser->findChild<QWidget *>(
+                "videoSetAssistantWelcomePage");
+            if (!legacyIntro || !legacyIntro->isVisible() ||
+                legacyIntro->geometry() != legacyUser->rect()) {
+                qCritical() << "Legacy user did not receive one brand intro";
+                legacyUser->close();
+                app.exit(125);
+                return;
+            }
+            QKeyEvent skipIntro(QEvent::KeyPress, Qt::Key_Space,
+                                Qt::NoModifier);
+            QApplication::sendEvent(legacyIntro, &skipIntro);
+            QApplication::processEvents();
+            if (!legacyHome || !legacyHome->isVisible() ||
+                QSettings().value("ui/brandIntroVersion").toInt() != 1) {
+                qCritical() << "Brand intro keyboard skip did not open Home";
+                legacyUser->close();
+                app.exit(126);
+                return;
+            }
+            legacyUser->close();
+            delete legacyUser;
 
             QSettings().setValue("ui/onboardingVersion", 0);
             auto *versionZero = new DriveManagerUI();
@@ -1093,7 +1293,7 @@ int main(int argc, char *argv[]) {
             recoverChoice->focusPolicy() == Qt::NoFocus ||
             assistantScroll->isAncestorOf(activityPanel) ||
             technicalLog->document()->maximumBlockCount() != 5000 ||
-            homeHeading->text() == QStringLiteral("VidStoreX") ||
+            homeHeading->text() == QStringLiteral("Reliquary") ||
             (!homeHeading->text().contains("safely") &&
              !homeHeading->text().contains(QString::fromUtf8("güvenle"))) ||
             !trustLabel->text().contains("YouTube") ||
@@ -1144,7 +1344,7 @@ int main(int argc, char *argv[]) {
         }
         int visibleBrandLabels = 0;
         for (auto *label : window.findChildren<QLabel *>())
-            if (label->isVisible() && label->text() == QStringLiteral("VidStoreX"))
+            if (label->isVisible() && label->text() == QStringLiteral("Reliquary"))
                 ++visibleBrandLabels;
         if (strongHomeActions != 2 || visibleBrandLabels != 1 ||
             createChoice->property("vsxRole").toString() !=
@@ -1409,6 +1609,14 @@ int main(int argc, char *argv[]) {
             "settingsNavigationButton");
         auto *settingsAuthor = window.findChild<QLabel *>(
             "settingsAboutAuthor");
+        auto *settingsAboutHeading = window.findChild<QLabel *>(
+            "settingsAboutHeading");
+        auto *settingsAboutVersion = window.findChild<QLabel *>(
+            "settingsAboutVersion");
+        auto *settingsAboutDefinition = window.findChild<QLabel *>(
+            "settingsAboutDefinition");
+        auto *settingsLinkedInUrl = window.findChild<QLabel *>(
+            "settingsLinkedInUrl");
         auto *settingsLinkedIn = window.findChild<QPushButton *>(
             "settingsLinkedInButton");
         auto *advancedNavigation = window.findChild<QToolButton *>(
@@ -1476,7 +1684,9 @@ int main(int argc, char *argv[]) {
             !activityParts || !activitySource || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
-            !settingsAuthor || !settingsLinkedIn ||
+            !settingsAuthor || !settingsAboutHeading ||
+            !settingsAboutVersion || !settingsAboutDefinition ||
+            !settingsLinkedInUrl || !settingsLinkedIn ||
             !advancedNavigation || !homeHeading || !trustLabel ||
             !classicTools || !successRail || !capacityHeading ||
             !capacityAction || !landingAction || !testLabAction ||
@@ -1495,7 +1705,7 @@ int main(int argc, char *argv[]) {
         QApplication::processEvents();
         int visibleBrands = 0;
         for (auto *label : window.findChildren<QLabel *>())
-            if (label->isVisible() && label->text() == QStringLiteral("VidStoreX"))
+            if (label->isVisible() && label->text() == QStringLiteral("Reliquary"))
                 ++visibleBrands;
         if (window.property("uiLanguage").toString() != "tr" ||
             homeHeading->text() != QString::fromUtf8(
@@ -1624,6 +1834,16 @@ int main(int argc, char *argv[]) {
             oauthConfig->isVisible() || syncCard->isVisible() ||
             !settingsAuthor->text().contains(
                 QString::fromUtf8("Burhan Talha Yazıcı")) ||
+            settingsAboutHeading->text() != QStringLiteral("Reliquary") ||
+            settingsAboutVersion->text() != QStringLiteral("v1.4.0") ||
+            settingsAboutDefinition->text() != QString::fromUtf8(
+                "Değerli bir şeyi korumak için kullanılan muhafaza.") ||
+            settingsAuthor->text() != QString::fromUtf8(
+                "Burhan Talha Yazıcı • BTY tarafından geliştirildi") ||
+            settingsLinkedInUrl->text() !=
+                QStringLiteral("linkedin.com/in/burhanbty") ||
+            settingsAboutDefinition->text().contains(
+                QString::fromUtf8("dosyalarınızı"), Qt::CaseInsensitive) ||
             settingsLinkedIn->property("externalUrl").toString() !=
                 QStringLiteral("https://www.linkedin.com/in/burhanbty")) {
             qCritical() << "Turkish Settings sections failed";
@@ -1637,7 +1857,7 @@ int main(int argc, char *argv[]) {
             !youtubeSyncHeading->text().contains(
                 QString::fromUtf8("Deneysel")) ||
             !youtubeSyncWarning->text().contains(
-                QString::fromUtf8("normal VidStoreX"), Qt::CaseInsensitive)) {
+                QString::fromUtf8("normal Reliquary"), Qt::CaseInsensitive)) {
             qCritical() << "Turkish Experimental YouTube Sync separation failed";
             return 68;
         }
@@ -1647,11 +1867,25 @@ int main(int argc, char *argv[]) {
         QApplication::processEvents();
         if (!youtubeSyncHeading->text().contains("Experimental") ||
             !youtubeSyncWarning->text().contains(
-                "not required for normal VidStoreX use",
+                "not required for normal Reliquary use",
                 Qt::CaseInsensitive)) {
             qCritical() << "English Experimental YouTube Sync separation failed";
             return 69;
         }
+        settingsNavigation->click();
+        QApplication::processEvents();
+        if (settingsAboutHeading->text() != QStringLiteral("Reliquary") ||
+            settingsAboutVersion->text() != QStringLiteral("v1.4.0") ||
+            settingsAboutDefinition->text() != QStringLiteral(
+                "A container for preserving something precious.") ||
+            settingsAuthor->text() != QStringLiteral(
+                "Made by Burhan Talha Yazıcı • BTY") ||
+            settingsAboutDefinition->text().contains(
+                QStringLiteral("files"), Qt::CaseInsensitive)) {
+            qCritical() << "English Reliquary About structure failed";
+            return 70;
+        }
+        window.grab().save(QDir(root).filePath("e2e-settings-en.png"));
         if (qEnvironmentVariableIntValue(
                 "VIDSTOREX_UI_AUDIT_ONLY") == 1)
             return 0;
