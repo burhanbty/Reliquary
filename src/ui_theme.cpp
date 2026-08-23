@@ -27,36 +27,51 @@ ThemeTokens themeTokens(const QPalette &palette) {
     const QColor window = palette.color(QPalette::Window);
     const QColor base = palette.color(QPalette::Base);
     const QColor text = palette.color(QPalette::WindowText);
-    const QColor anchor = result.dark ? QColor("#E3A94B")
-                                      : QColor("#A85E08");
-    result.surfaceBase = mix(base, window, result.dark ? 0.16 : 0.09);
-    result.surfacePage = mix(window, base, result.dark ? 0.24 : 0.34);
-    result.surfaceRaised = mix(base, result.dark ? QColor("#FFFFFF")
-                                                : QColor("#FFF8EA"),
-                               result.dark ? 0.045 : 0.22);
-    result.surfaceRecent = mix(result.surfaceRaised, window,
-                               result.dark ? 0.55 : 0.28);
-    result.surfaceHover = mix(result.surfaceRaised, anchor,
-                              result.dark ? 0.07 : 0.055);
-    result.surfaceSelected = mix(result.surfaceRaised, anchor,
-                                 result.dark ? 0.15 : 0.11);
+    if (result.dark) {
+        result.surfaceBase = QColor("#1A1A1A");
+        result.surfacePage = QColor("#1F1F1F");
+        result.surfaceRaised = QColor("#242424");
+        result.surfaceRecent = QColor("#212121");
+        result.surfaceHover = QColor("#2B2923");
+        result.surfaceSelected = QColor("#332C1E");
+        result.textPrimary = QColor("#F2EEE6");
+        result.textSecondary = QColor("#CBC5BB");
+        result.textMuted = QColor("#ACA69C");
+        result.accent = QColor("#E3A72F");
+        result.accentHover = QColor("#F0B429");
+        result.accentPressed = QColor("#D4A017");
+        result.onAccent = QColor("#1B160C");
+        result.success = QColor("#62B989");
+        result.warning = result.accent;
+        result.error = QColor("#D97872");
+        result.info = result.textSecondary;
+        result.surfaceTrust = QColor("#23251F");
+        result.border = QColor("#3A3936");
+        result.borderStrong = QColor("#777169");
+        return result;
+    }
+
+    const QColor anchor("#A85E08");
+    result.surfaceBase = mix(base, window, 0.09);
+    result.surfacePage = mix(window, base, 0.34);
+    result.surfaceRaised = mix(base, QColor("#FFF8EA"), 0.22);
+    result.surfaceRecent = mix(result.surfaceRaised, window, 0.28);
+    result.surfaceHover = mix(result.surfaceRaised, anchor, 0.055);
+    result.surfaceSelected = mix(result.surfaceRaised, anchor, 0.11);
     result.textPrimary = text;
-    result.textSecondary = mix(text, window, result.dark ? 0.28 : 0.34);
-    result.textMuted = mix(text, window, result.dark ? 0.48 : 0.54);
+    result.textSecondary = mix(text, window, 0.34);
+    result.textMuted = mix(text, window, 0.54);
     result.accent = anchor;
-    result.accentHover = result.dark ? anchor.lighter(112)
-                                     : anchor.darker(108);
-    result.accentPressed = result.dark ? anchor.darker(112)
-                                       : anchor.darker(122);
-    result.onAccent = result.dark ? QColor("#1D160C") : QColor("#FFFFFF");
-    result.success = result.dark ? QColor("#62B989") : QColor("#237A4B");
-    result.warning = result.dark ? QColor("#E5AD4F") : QColor("#9A5B05");
-    result.error = result.dark ? QColor("#E17A75") : QColor("#A63D39");
-    result.info = result.dark ? QColor("#72AFC2") : QColor("#36778C");
-    result.surfaceTrust = mix(result.surfacePage, result.success,
-                              result.dark ? 0.10 : 0.07);
-    result.border = mix(text, window, result.dark ? 0.78 : 0.82);
-    result.borderStrong = mix(text, window, result.dark ? 0.58 : 0.65);
+    result.accentHover = anchor.darker(108);
+    result.accentPressed = anchor.darker(122);
+    result.onAccent = QColor("#FFFFFF");
+    result.success = QColor("#237A4B");
+    result.warning = QColor("#9A5B05");
+    result.error = QColor("#A63D39");
+    result.info = QColor("#36778C");
+    result.surfaceTrust = mix(result.surfacePage, result.success, 0.07);
+    result.border = mix(text, window, 0.82);
+    result.borderStrong = mix(text, window, 0.65);
     return result;
 }
 
@@ -64,9 +79,28 @@ QString applicationStyleSheet(const QPalette &palette) {
     const ThemeTokens t = themeTokens(palette);
     return QString(R"CSS(
         QWidget { font-size: 13px; }
-        QMainWindow, QWidget#centralWidget { background: palette(window); }
+        QMainWindow, QWidget#centralWidget { background: %22; color: %5; }
         QScrollArea#videoSetAssistantScrollArea QWidget#qt_scrollarea_viewport,
-        QWidget#videoSetAssistantWelcomePage { background: %22; }
+        QStackedWidget#videoSetAssistantStack,
+        QWidget#videoSetAssistantWelcomePage,
+        QWidget#videoSetAssistantSourcePage,
+        QWidget#videoSetAssistantModePage,
+        QWidget#videoSetAssistantPlanPage,
+        QWidget#videoSetAssistantProgressPage,
+        QWidget#videoSetAssistantUploadPage,
+        QWidget#videoSetAssistantDownloadPage,
+        QWidget#videoSetAssistantRecoverPage,
+        QWidget#videoSetAssistantRecoveryProgressPage,
+        QWidget#videoSetAssistantDonePage,
+        QWidget#settingsPage,
+        QWidget#onboardingPage,
+        QWidget#classicToolsContent,
+        QWidget#testLabContent,
+        QWidget#capacityLabContent,
+        QWidget#advancedLandingContent,
+        QWidget#experimentalYouTubeSyncContent {
+            background: %22;
+        }
         QFrame#applicationHeader {
             background: %1; border: 0; border-bottom: 1px solid %13;
         }
@@ -104,26 +138,51 @@ QString applicationStyleSheet(const QPalette &palette) {
         QGroupBox[vsxRole="profileCard"]::title {
             subcontrol-origin: margin; left: 16px; padding: 0 4px; color: %5;
         }
-        QGroupBox[vsxRole="profileCard"] QRadioButton { color: %5; }
+        QGroupBox[vsxRole="profileCard"] QRadioButton {
+            color: %5; background: transparent; border: 0; padding: 0;
+        }
+        QGroupBox[vsxRole="profileCard"] {
+            background: %2; border-color: %13;
+        }
         QGroupBox[vsxRole="profileCard"][selected="true"] {
             background: %4; border: 2px solid %8;
         }
-        QFrame#videoSetRecentGroup { background: %23; }
-        QFrame#videoSetTrustStrip { background: %24; border-color: %18; }
+        QFrame[vsxRole="actionCard"] { border-color: %14; }
+        QFrame#videoSetRecentGroup { background: %23; border-color: %14; }
+        QFrame#videoSetTrustStrip {
+            background: %24; border: 1px solid %13;
+            border-left: 3px solid %8;
+        }
         QListWidget#videoSetRecentList {
             background: transparent; border: 0; border-radius: 0;
         }
         QListWidget#videoSetRecentList::item {
-            background: %2; border: 0; border-radius: 8px; margin-bottom: 6px;
+            background: %2; border: 1px solid %13; border-radius: 8px;
+            margin-bottom: 6px;
             padding: 0;
         }
         QListWidget#videoSetRecentList::item:hover { background: %3; }
         QListWidget#videoSetRecentList::item:selected { background: %4; color: %5; }
+        QListWidget#videoSetRecentList QFrame {
+            background: transparent; border: 0; border-left: 3px solid %8;
+        }
         QLabel[recentTitle="true"] { font-size: 14px; font-weight: 700; color: %5; }
         QLabel[recentMeta="true"] { font-size: 12px; color: %7; }
         QLabel[vsxRole="dropZone"] {
-            background: %1; border: 2px dashed %14; border-radius: 10px;
+            background: %1; border: 2px dashed %8; border-radius: 10px;
             padding: 18px; color: %6;
+        }
+        QLabel#videoSetAssistantSourceInfo,
+        QLabel#videoSetAssistantPlanSummary {
+            background: %2; border: 1px solid %13;
+            border-left: 3px solid %8; border-radius: 8px;
+            padding: 10px 12px; color: %6;
+        }
+        QWidget#videoSetLiveDataPath {
+            background: %1; border: 1px solid %13; border-radius: 8px;
+        }
+        QWidget#videoSetAssistantStepper {
+            background: %1; border: 1px solid %13; border-radius: 8px;
         }
         QPushButton, QToolButton {
             min-height: 30px; padding: 2px 12px; border-radius: 6px;
@@ -132,8 +191,19 @@ QString applicationStyleSheet(const QPalette &palette) {
         QPushButton:hover, QToolButton:hover { background: %3; border-color: %14; }
         QPushButton:pressed, QToolButton:pressed { background: %4; }
         QPushButton:focus, QToolButton:focus, QComboBox:focus,
-        QLineEdit:focus, QListWidget:focus, QRadioButton:focus {
+        QLineEdit:focus, QListWidget:focus {
             border: 2px solid %8;
+        }
+        QRadioButton::indicator {
+            width: 13px; height: 13px; background: %1;
+            border: 1px solid %14; border-radius: 7px;
+        }
+        QRadioButton::indicator:hover { border: 2px solid %8; }
+        QRadioButton::indicator:checked {
+            background: %1; border: 4px solid %8;
+        }
+        QRadioButton::indicator:disabled {
+            background: %1; border-color: %13;
         }
         QPushButton[vsxRole="primary"] {
             min-height: 36px; padding: 2px 17px; background: %8;
@@ -171,6 +241,10 @@ QString applicationStyleSheet(const QPalette &palette) {
         QLabel[vsxState="warning"] { color: %16; background: %19; }
         QLabel[vsxState="error"] { color: %17; background: %20; }
         QLabel[vsxState="info"] { color: %12; background: %21; }
+        QLabel#videoSetTrustLabel {
+            color: %8; background: transparent; border: 0;
+            border-radius: 0; padding: 0; font-weight: 700;
+        }
         QFrame[metricCard="true"] {
             background: %1; border: 1px solid %13; border-radius: 8px;
         }
@@ -186,6 +260,11 @@ QString applicationStyleSheet(const QPalette &palette) {
         QListWidget::item { padding: 10px 8px; border-bottom: 1px solid %13; }
         QListWidget::item:hover { background: %3; }
         QListWidget::item:selected { background: %4; color: %5; }
+        QTableWidget#videoSetAssistantPlanTable QHeaderView::section {
+            background: %2; color: %6; border: 0;
+            border-right: 1px solid %13; border-bottom: 1px solid %14;
+            padding: 7px;
+        }
         QProgressBar { min-height: 12px; border: 0; border-radius: 6px; background: %3; text-align: center; }
         QProgressBar::chunk { border-radius: 6px; background: %8; }
         QScrollArea { background: transparent; }
