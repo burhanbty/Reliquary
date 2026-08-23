@@ -312,3 +312,23 @@ TEST(ResultCardPreview, HasAccessiblePrivacyAndActionControls) {
     EXPECT_EQ(dialog.renderedImage().size(), QSize(1600, 900));
     dialog.close();
 }
+
+TEST(ResultCardPreview, DesktopDialogRemainsUsableAndBounded) {
+    const auto model = result_card::makeRecoveryModel(
+        recoveryEvidence(), QStringLiteral("en_US"));
+    ASSERT_TRUE(model.has_value());
+    result_card::PreviewDialog dialog(*model);
+    dialog.show();
+    QApplication::processEvents();
+    auto *preview = dialog.findChild<QLabel *>("resultCardPreviewImage");
+    auto *save = dialog.findChild<QPushButton *>("resultCardSavePngButton");
+    ASSERT_NE(preview, nullptr);
+    ASSERT_NE(save, nullptr);
+    EXPECT_LE(dialog.width(), 1024);
+    EXPECT_LE(dialog.height(), 700);
+    EXPECT_GE(dialog.minimumWidth(), 620);
+    EXPECT_GE(dialog.minimumHeight(), 390);
+    EXPECT_GE(preview->height(), 180);
+    EXPECT_FALSE(preview->geometry().intersects(save->geometry()));
+    dialog.close();
+}

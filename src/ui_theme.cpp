@@ -21,6 +21,36 @@ QString css(const QColor &color) {
 
 namespace vidstorex_ui {
 
+ResponsiveMode responsiveModeForViewport(const int width, const int height) {
+    if (width < 1320 || height < 740) return ResponsiveMode::Compact;
+    if (width >= 1800 && height >= 900) return ResponsiveMode::Wide;
+    return ResponsiveMode::Normal;
+}
+
+DensityMetrics densityMetrics(const ResponsiveMode mode) {
+    switch (mode) {
+        case ResponsiveMode::Compact:
+            return {14, Layout::ContentMaxWidth, 10, 14, 10,
+                    32, 34, 8, 34, 52, 150};
+        case ResponsiveMode::Wide:
+            return {24, Layout::ContentMaxWidth, 18, 20, 14,
+                    36, 38, 12, 40, 60, 220};
+        case ResponsiveMode::Normal:
+            return {20, Layout::ContentMaxWidth, 14, 18, 12,
+                    34, 36, 10, 38, 58, 190};
+    }
+    return densityMetrics(ResponsiveMode::Normal);
+}
+
+QString responsiveModeName(const ResponsiveMode mode) {
+    switch (mode) {
+        case ResponsiveMode::Compact: return QStringLiteral("compact");
+        case ResponsiveMode::Wide: return QStringLiteral("wide");
+        case ResponsiveMode::Normal: return QStringLiteral("normal");
+    }
+    return QStringLiteral("normal");
+}
+
 ThemeTokens themeTokens(const QPalette &palette) {
     ThemeTokens result;
     result.dark = palette.color(QPalette::Window).lightness() < 128;

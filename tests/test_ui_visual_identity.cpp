@@ -377,6 +377,56 @@ TEST(UiVisualIdentity, LayoutTokensKeepHomeAndRecentBounded) {
     EXPECT_GE(vidstorex_ui::Layout::HeroPadding, 18);
 }
 
+TEST(UiVisualIdentity, ResponsiveDensityModesAreSimpleOrderedAndBounded) {
+    using vidstorex_ui::ResponsiveMode;
+    EXPECT_EQ(vidstorex_ui::responsiveModeForViewport(1280, 720),
+              ResponsiveMode::Compact);
+    EXPECT_EQ(vidstorex_ui::responsiveModeForViewport(1366, 768),
+              ResponsiveMode::Normal);
+    EXPECT_EQ(vidstorex_ui::responsiveModeForViewport(1600, 900),
+              ResponsiveMode::Normal);
+    EXPECT_EQ(vidstorex_ui::responsiveModeForViewport(1920, 1080),
+              ResponsiveMode::Wide);
+    const auto compact = vidstorex_ui::densityMetrics(ResponsiveMode::Compact);
+    const auto normal = vidstorex_ui::densityMetrics(ResponsiveMode::Normal);
+    const auto wide = vidstorex_ui::densityMetrics(ResponsiveMode::Wide);
+    EXPECT_LE(compact.pageMargin, normal.pageMargin);
+    EXPECT_LE(normal.pageMargin, wide.pageMargin);
+    EXPECT_LE(compact.cardPadding, normal.cardPadding);
+    EXPECT_LE(normal.cardPadding, wide.cardPadding);
+    EXPECT_GE(compact.buttonHeight, 32);
+    EXPECT_LE(wide.pageMaxWidth, 1500);
+    EXPECT_GE(wide.pageMaxWidth, 1300);
+    EXPECT_LT(compact.tableMinHeight, wide.tableMinHeight);
+}
+
+TEST(UiVisualIdentity, LiveDataPathHasCompactTerminalPresentation) {
+    VidStoreXProcessingFlow flow;
+    flow.setParts({VidStoreXPartState::Verified});
+    const QSize normalHint = flow.sizeHint();
+    const QImage normal = render(flow, normalHint);
+    flow.setPresentationMode(
+        VidStoreXProcessingFlow::PresentationMode::Compact);
+    const QSize compactHint = flow.sizeHint();
+    const QImage compact = render(flow, compactHint);
+    EXPECT_LT(compactHint.height(), normalHint.height());
+    EXPECT_GE(compactHint.height(), 58);
+    EXPECT_GT(unique_opaque_colors(normal), 4);
+    EXPECT_GT(unique_opaque_colors(compact), 4);
+    EXPECT_EQ(flow.presentationMode(),
+              VidStoreXProcessingFlow::PresentationMode::Compact);
+}
+
+TEST(UiVisualIdentity, StepperUsesCompactHeightWithoutClipping) {
+    VidStoreXStepper stepper;
+    stepper.setSteps({"File", "Mode", "Create", "YouTube", "Done"}, 1);
+    stepper.setProperty("densityMode", "compact");
+    const QImage compact = render(stepper, stepper.sizeHint());
+    EXPECT_EQ(stepper.sizeHint().height(), 52);
+    EXPECT_LE(stepper.minimumSizeHint().width(), 420);
+    EXPECT_GT(unique_opaque_colors(compact), 4);
+}
+
 TEST(UiVisualIdentity, AdvancedColumnsStackWithoutOverlapping) {
     VidStoreXResponsiveColumns columns;
     auto *first = new QLabel("Search space");

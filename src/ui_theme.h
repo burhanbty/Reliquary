@@ -36,6 +36,28 @@ struct Layout final {
     static constexpr int RecentVisibleRows = 4;
 };
 
+enum class ResponsiveMode { Compact, Normal, Wide };
+
+// Application-wide logical-pixel geometry.  Pages consume these values instead
+// of growing their own unrelated margins and minimum heights.
+struct DensityMetrics final {
+    int pageMargin;
+    int pageMaxWidth;
+    int sectionGap;
+    int cardPadding;
+    int compactCardPadding;
+    int controlHeight;
+    int buttonHeight;
+    int formRowGap;
+    int navigationHeight;
+    int wizardActionHeight;
+    int tableMinHeight;
+};
+
+[[nodiscard]] ResponsiveMode responsiveModeForViewport(int width, int height);
+[[nodiscard]] DensityMetrics densityMetrics(ResponsiveMode mode);
+[[nodiscard]] QString responsiveModeName(ResponsiveMode mode);
+
 struct ThemeTokens final {
     bool dark = false;
     QColor surfaceBase;

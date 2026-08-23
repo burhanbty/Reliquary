@@ -1365,7 +1365,9 @@ int main(int argc, char *argv[]) {
                     (button->width() < button->minimumSizeHint().width() ||
                      button->height() < button->minimumSizeHint().height())) {
                     qCritical() << "Critical control is clipped at" << size
-                                << button->objectName();
+                                << button->objectName() << "actual"
+                                << button->size() << "minimum hint"
+                                << button->minimumSizeHint();
                     return 14;
                 }
             }
@@ -2096,7 +2098,11 @@ int main(int argc, char *argv[]) {
                     if (activityTitle->text() !=
                             QStringLiteral("Video Set plan is ready") ||
                         !activityElapsed->text().startsWith(
-                            QStringLiteral("Duration:"))) {
+                            QStringLiteral("Duration:")) ||
+                        !activityPanel->property("terminalOperation").toBool() ||
+                        activityFlow->presentationMode() !=
+                            VidStoreXProcessingFlow::PresentationMode::Compact ||
+                        activityPanel->height() > 280) {
                         fail(78, "Completed plan does not use terminal wording");
                         return;
                     }
@@ -2361,6 +2367,9 @@ int main(int argc, char *argv[]) {
                 !progressContinue->isEnabled()) {
                 if (activityPanel->isHidden() || activityFlow->isHidden() ||
                     activityFlow->mode() != VidStoreXProcessingFlow::Mode::Create ||
+                    activityFlow->presentationMode() !=
+                        VidStoreXProcessingFlow::PresentationMode::Normal ||
+                    activityPanel->property("terminalOperation").toBool() ||
                     activitySource->text().contains(source,
                         Qt::CaseInsensitive) ||
                     activitySource->text().isEmpty() ||

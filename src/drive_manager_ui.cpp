@@ -167,6 +167,8 @@ constexpr int kRecentPage = 10;
         "Recovery is marked successful only after the reconstructed file is verified.")};
 
 QScrollArea *advancedScrollPage(QWidget *content, const QString &name) {
+    content->setProperty("responsivePage", true);
+    content->setProperty("technicalPage", true);
     auto *scroll = new QScrollArea();
     scroll->setObjectName(name);
     scroll->setWidgetResizable(true);
@@ -188,12 +190,14 @@ void configureAdvancedControl(QWidget *widget) {
 
 void configureWideTable(QTableWidget *table, const int minimumHeight) {
     if (!table) return;
+    table->setProperty("responsiveTable", true);
     table->setMinimumHeight(minimumHeight);
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     table->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     table->horizontalHeader()->setSectionsMovable(false);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     table->horizontalHeader()->setMinimumSectionSize(64);
+    table->horizontalHeader()->setStretchLastSection(true);
     table->verticalHeader()->setVisible(false);
 }
 
@@ -2024,11 +2028,13 @@ void DriveManagerUI::setupUI() {
     mainLayout->addWidget(mainTabs, 1);
     mainTabs->tabBar()->hide();
     mainTabs->setCurrentWidget(videoSetPage);
+    updateResponsiveLayout(size());
 }
 
 void DriveManagerUI::setupSettingsPage() {
     settingsPage = new QWidget();
     settingsPage->setObjectName("settingsPage");
+    settingsPage->setProperty("responsivePage", true);
     auto *layout = new QVBoxLayout(settingsPage);
     layout->setContentsMargins(24, 18, 24, 18);
     layout->setSpacing(14);
@@ -2156,6 +2162,8 @@ void DriveManagerUI::setupSettingsPage() {
     youtubeSyncPage = youtubeScroll;
     auto *youtubeContent = new QWidget();
     youtubeContent->setObjectName("experimentalYouTubeSyncContent");
+    youtubeContent->setProperty("responsivePage", true);
+    youtubeContent->setProperty("technicalPage", true);
     auto *youtubeLayout = new QVBoxLayout(youtubeContent);
     youtubeLayout->setContentsMargins(24, 18, 24, 24);
     youtubeLayout->setSpacing(14);
@@ -2550,6 +2558,7 @@ void DriveManagerUI::setupSettingsPage() {
 void DriveManagerUI::setupOnboardingPage() {
     onboardingPage = new QWidget();
     onboardingPage->setObjectName("onboardingPage");
+    onboardingPage->setProperty("responsivePage", true);
     auto *outer = new QVBoxLayout(onboardingPage);
     outer->setContentsMargins(24, 14, 24, 18);
     outer->addStretch(1);
@@ -2560,7 +2569,7 @@ void DriveManagerUI::setupOnboardingPage() {
     card->setObjectName("onboardingCard");
     card->setProperty("vsxSurface", "raised");
     card->setMaximumWidth(920);
-    card->setMinimumWidth(760);
+    card->setMinimumWidth(520);
     card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *cardLayout = new QVBoxLayout(card);
     cardLayout->setContentsMargins(36, 24, 36, 26);
@@ -3837,6 +3846,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     const auto makePage = [this](const QString &title,
                                  const QString &description) {
         auto *page = new QWidget();
+        page->setProperty("responsivePage", true);
         auto *layout = new QVBoxLayout(page);
         layout->setContentsMargins(24, 16, 24, 18);
         layout->setSpacing(10);
@@ -3903,6 +3913,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetWelcomePage->installEventFilter(this);
     auto *welcomeLayout = pageLayout(welcome);
     auto *choiceLayout = new QHBoxLayout();
+    choiceLayout->setObjectName("videoSetHomeChoiceLayout");
     videoSetCreateCard = new QFrame();
     videoSetCreateCard->setObjectName("videoSetCreateCard");
     videoSetCreateCard->setProperty("card", true);
@@ -4150,6 +4161,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     modeLayout->setAlignment(Qt::AlignTop);
     videoSetProfileCards = new QButtonGroup(this);
     auto *profileCardsLayout = new QHBoxLayout();
+    profileCardsLayout->setObjectName("videoSetProfileCardsLayout");
     videoSetResilientCard = new QGroupBox("Most Reliable");
     videoSetResilientCard->setObjectName("videoSetResilientCard");
     videoSetResilientCard->setProperty("card", true);
@@ -4728,6 +4740,8 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetTechnicalLogButton->setText("Show technical log");
     videoSetTechnicalLogButton->setCheckable(true);
     videoSetTechnicalLogButton->setArrowType(Qt::RightArrow);
+    videoSetTechnicalLogButton->setToolButtonStyle(
+        Qt::ToolButtonTextBesideIcon);
     activityLayout->addWidget(videoSetTechnicalLogButton);
     videoSetLog->setObjectName("videoSetTechnicalLog");
     videoSetLog->setVisible(false);
@@ -5631,6 +5645,10 @@ void DriveManagerUI::renderVideoSetActivity() {
     const auto &operation = videoSetOperationProgress.view();
     const bool hasOperation = operation.state !=
         video_set_workflow::OperationState::Idle;
+    const bool terminal = operation.state ==
+            video_set_workflow::OperationState::Completed ||
+        operation.state == video_set_workflow::OperationState::Failed ||
+        operation.state == video_set_workflow::OperationState::Cancelled;
     const bool planMatches = operation.state ==
             video_set_workflow::OperationState::Completed
         ? currentVideoSetPlanMatches()
@@ -5641,6 +5659,11 @@ void DriveManagerUI::renderVideoSetActivity() {
     videoSetActivityPanel->setVisible(visible);
     updateWizardActionBarVisibility();
     if (!hasOperation) return;
+    videoSetActivityPanel->setProperty("terminalOperation", terminal);
+    videoSetActivityPanel->setMinimumHeight(terminal ? 0 : 235);
+    videoSetActivityPanel->setMaximumHeight(terminal
+        ? qMax(220, QFontMetrics(videoSetActivityPanel->font()).height() * 11)
+        : QWIDGETSIZE_MAX);
     if (operation.operation_type == video_set_workflow::OperationType::Download)
         videoSetActivityPanel->setProperty("observedDownload", true);
 
@@ -5709,6 +5732,9 @@ void DriveManagerUI::renderVideoSetActivity() {
         title = tr("Operation cancelled");
     videoSetActivityTitle->setText(title);
     videoSetActivityDescription->setText(description);
+    videoSetActivityDescription->setVisible(
+        !terminal || operation.state !=
+            video_set_workflow::OperationState::Completed);
     videoSetActivityIcon->setText(
         operation.state == video_set_workflow::OperationState::Completed
             ? QString::fromUtf8("✓") : operation.state == video_set_workflow::OperationState::Failed
@@ -5780,6 +5806,9 @@ void DriveManagerUI::renderVideoSetActivity() {
             ? VidStoreXProcessingFlow::Mode::Verify
             : VidStoreXProcessingFlow::Mode::Recover;
     videoSetActivityFlow->setMode(flowMode);
+    videoSetActivityFlow->setPresentationMode(terminal
+        ? VidStoreXProcessingFlow::PresentationMode::Compact
+        : VidStoreXProcessingFlow::PresentationMode::Normal);
     videoSetActivityFlow->setParts(partStates);
     const bool realFileProgress = operation.operation_type ==
             video_set_workflow::OperationType::Recover &&
@@ -5914,15 +5943,12 @@ void DriveManagerUI::renderVideoSetActivity() {
             itemBaseName, Qt::ElideMiddle, 360));
     videoSetActivityCurrentItem->setToolTip(fullItem);
     videoSetActivityCurrentItem->setAccessibleName(itemBaseName);
+    videoSetActivityCurrentItem->setVisible(!terminal && !itemBaseName.isEmpty());
     const auto formatDuration = [](const double seconds) {
         const auto rounded = static_cast<qint64>((std::max)(0.0, seconds));
         return QString("%1:%2").arg(rounded / 60)
             .arg(rounded % 60, 2, 10, QLatin1Char('0'));
     };
-    const bool terminal = operation.state ==
-            video_set_workflow::OperationState::Completed ||
-        operation.state == video_set_workflow::OperationState::Failed ||
-        operation.state == video_set_workflow::OperationState::Cancelled;
     videoSetActivityElapsed->setText(terminal
         ? tr("Duration: %1").arg(formatDuration(operation.elapsed_seconds))
         : tr("Elapsed: %1").arg(formatDuration(operation.elapsed_seconds)));
@@ -7540,17 +7566,6 @@ void DriveManagerUI::openRecentVideoSet(const QString &manifestPath) {
 }
 
 bool DriveManagerUI::eventFilter(QObject *object, QEvent *event) {
-    if (object == videoSetWelcomePage && event->type() == QEvent::Resize) {
-        auto *resize = static_cast<QResizeEvent *>(event);
-        auto *layout = qobject_cast<QVBoxLayout *>(
-            videoSetWelcomePage->layout());
-        if (layout) {
-            const int side = qMax(24,
-                (resize->size().width() -
-                 vidstorex_ui::Layout::ContentMaxWidth) / 2);
-            layout->setContentsMargins(side, 16, side, 18);
-        }
-    }
     if (object == videoSetSourceDropLabel) {
         if (event->type() == QEvent::DragEnter) {
             auto *drag = static_cast<QDragEnterEvent *>(event);
@@ -7572,6 +7587,150 @@ bool DriveManagerUI::eventFilter(QObject *object, QEvent *event) {
         }
     }
     return QMainWindow::eventFilter(object, event);
+}
+
+void DriveManagerUI::updateResponsiveLayout(const QSize &viewport) {
+    if (!centralWidget || viewport.isEmpty()) return;
+    const auto mode = vidstorex_ui::responsiveModeForViewport(
+        viewport.width(), viewport.height());
+    const auto density = vidstorex_ui::densityMetrics(mode);
+    const QString modeName = vidstorex_ui::responsiveModeName(mode);
+    centralWidget->setProperty("densityMode", modeName);
+    if (centralWidget->layout()) {
+        const int outer = mode == vidstorex_ui::ResponsiveMode::Compact
+            ? vidstorex_ui::Spacing::Sm : vidstorex_ui::Spacing::Md;
+        centralWidget->layout()->setContentsMargins(outer, outer, outer, outer);
+        centralWidget->layout()->setSpacing(
+            mode == vidstorex_ui::ResponsiveMode::Compact
+                ? vidstorex_ui::Spacing::Sm : vidstorex_ui::Spacing::Md);
+    }
+
+    const auto applyPage = [&](QWidget *page) {
+        if (!page || !page->layout()) return;
+        const bool technical = page->property("technicalPage").toBool();
+        const int maximum = technical ? 1680 : density.pageMaxWidth;
+        const int available = page->width() > 0
+            ? page->width() : viewport.width();
+        const int side = qMax(density.pageMargin,
+                              (available - maximum) / 2);
+        const int vertical = mode == vidstorex_ui::ResponsiveMode::Compact
+            ? density.compactCardPadding : density.pageMargin;
+        page->layout()->setContentsMargins(side, vertical, side, vertical);
+        page->layout()->setSpacing(density.sectionGap);
+        page->setProperty("densityMode", modeName);
+    };
+
+    if (videoSetPage && videoSetPage->layout()) {
+        const int side = qMax(density.pageMargin,
+            (videoSetPage->width() - density.pageMaxWidth) / 2);
+        videoSetPage->layout()->setContentsMargins(
+            side, density.compactCardPadding, side,
+            density.compactCardPadding);
+        videoSetPage->layout()->setSpacing(
+            mode == vidstorex_ui::ResponsiveMode::Compact
+                ? vidstorex_ui::Spacing::Xs : vidstorex_ui::Spacing::Sm);
+        videoSetPage->setProperty("densityMode", modeName);
+    }
+    for (auto *page : centralWidget->findChildren<QWidget *>())
+        if (page->property("responsivePage").toBool()) applyPage(page);
+
+    if (applicationHeader && applicationHeader->layout()) {
+        applicationHeader->layout()->setContentsMargins(
+            density.pageMargin, vidstorex_ui::Spacing::Xs,
+            density.pageMargin, vidstorex_ui::Spacing::Xs);
+        applicationHeader->layout()->setSpacing(vidstorex_ui::Spacing::Xs);
+        applicationHeader->setProperty("densityMode", modeName);
+    }
+    if (brandSubtitleLabel)
+        brandSubtitleLabel->setVisible(viewport.width() >= 1180);
+    if (auto *rail = applicationHeader
+            ? applicationHeader->findChild<QWidget *>("brandSignalRail")
+            : nullptr)
+        rail->setVisible(viewport.width() >= 1080);
+
+    const int fontControlHeight = qMax(
+        density.controlHeight, QFontMetrics(font()).height() + 12);
+    const int fontButtonHeight = qMax(
+        density.buttonHeight, QFontMetrics(font()).height() + 14);
+    for (auto *button : centralWidget->findChildren<QPushButton *>()) {
+        const int semanticHeight = button->property("nav").toBool()
+            ? qMax(density.navigationHeight, fontButtonHeight)
+            : fontButtonHeight;
+        button->setMinimumHeight(qMax(semanticHeight,
+                                      button->sizeHint().height()));
+    }
+    for (auto *button : centralWidget->findChildren<QToolButton *>()) {
+        const int semanticHeight = button->property("nav").toBool()
+            ? qMax(density.navigationHeight, fontButtonHeight)
+            : fontButtonHeight;
+        button->setMinimumHeight(qMax(semanticHeight,
+                                      button->sizeHint().height()));
+    }
+    for (auto *editor : centralWidget->findChildren<QLineEdit *>())
+        editor->setMinimumHeight(fontControlHeight);
+    for (auto *combo : centralWidget->findChildren<QComboBox *>())
+        combo->setMinimumHeight(fontControlHeight);
+    for (auto *spin : centralWidget->findChildren<QSpinBox *>())
+        spin->setMinimumHeight(fontControlHeight);
+    for (auto *spin : centralWidget->findChildren<QDoubleSpinBox *>())
+        spin->setMinimumHeight(fontControlHeight);
+
+    for (auto *table : centralWidget->findChildren<QTableWidget *>()) {
+        if (table->property("responsiveTable").toBool() ||
+            table == videoSetAssistantPlanTable || table == videoSetPlanTable)
+            table->setMinimumHeight(density.tableMinHeight);
+    }
+
+    const QStringList paddedCards{
+        "settingsCard", "settingsAboutCard", "onboardingCard",
+        "videoSetCreateCard", "videoSetRecoverCard", "videoSetRecentGroup",
+        "videoSetRecentFullGroup", "videoSetActivityPanel",
+        "experimentalYouTubeSyncSettingsCard"};
+    for (const auto &name : paddedCards) {
+        auto *card = centralWidget->findChild<QWidget *>(name);
+        if (!card || !card->layout()) continue;
+        const int padding = name == QStringLiteral("videoSetActivityPanel")
+            ? density.compactCardPadding : density.cardPadding;
+        card->layout()->setContentsMargins(padding, padding,
+                                           padding, padding);
+        card->layout()->setSpacing(
+            name == QStringLiteral("videoSetActivityPanel")
+                ? vidstorex_ui::Spacing::Xs : density.formRowGap);
+    }
+
+    if (videoSetWizardActionBar) {
+        videoSetWizardActionBar->setMinimumHeight(
+            density.wizardActionHeight);
+        videoSetWizardActionBar->setMaximumHeight(
+            density.wizardActionHeight + 14);
+        if (videoSetWizardActionBar->layout())
+            videoSetWizardActionBar->layout()->setContentsMargins(
+                density.compactCardPadding, vidstorex_ui::Spacing::Sm,
+                density.compactCardPadding, vidstorex_ui::Spacing::Sm);
+    }
+    if (videoSetAssistantScrollArea)
+        videoSetAssistantScrollArea->setMinimumHeight(
+            mode == vidstorex_ui::ResponsiveMode::Compact ? 140 : 180);
+    if (videoSetStepIndicator) {
+        videoSetStepIndicator->setProperty("densityMode", modeName);
+        videoSetStepIndicator->updateGeometry();
+    }
+
+    const auto updateBoxDirection = [&](const char *name,
+                                         const int breakpoint) {
+        auto *layout = videoSetPage
+            ? videoSetPage->findChild<QBoxLayout *>(name) : nullptr;
+        if (!layout) return;
+        layout->setDirection(videoSetAssistantStack &&
+                             videoSetAssistantStack->width() < breakpoint
+            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+        layout->setSpacing(density.sectionGap);
+    };
+    updateBoxDirection("videoSetHomeChoiceLayout", 900);
+    updateBoxDirection("videoSetProfileCardsLayout", 900);
+
+    if (videoSetActivityPanel && videoSetActivityPanel->isVisible())
+        renderVideoSetActivity();
 }
 
 void DriveManagerUI::closeEvent(QCloseEvent *event) {
@@ -7608,6 +7767,7 @@ void DriveManagerUI::changeEvent(QEvent *event) {
 
 void DriveManagerUI::resizeEvent(QResizeEvent *event) {
     QMainWindow::resizeEvent(event);
+    updateResponsiveLayout(event->size());
     if (brandIntroOverlay) {
         brandIntroOverlay->setGeometry(rect());
         brandIntroOverlay->raise();

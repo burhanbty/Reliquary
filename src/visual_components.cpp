@@ -255,6 +255,14 @@ void VidStoreXProcessingFlow::setMode(const Mode mode) {
     mode_ = mode;
     update();
 }
+void VidStoreXProcessingFlow::setPresentationMode(
+    const PresentationMode mode) {
+    if (presentationMode_ == mode) return;
+    presentationMode_ = mode;
+    setMinimumHeight(mode == PresentationMode::Compact ? 58 : 78);
+    updateGeometry();
+    update();
+}
 void VidStoreXProcessingFlow::setParts(
     const QVector<VidStoreXPartState> &parts) {
     parts_ = parts;
@@ -268,22 +276,33 @@ void VidStoreXProcessingFlow::setFileProgress(const quint64 value,
     fileDeterminate_ = determinate && maximum != 0;
     update();
 }
-QSize VidStoreXProcessingFlow::sizeHint() const { return {620, 92}; }
-QSize VidStoreXProcessingFlow::minimumSizeHint() const { return {360, 78}; }
+QSize VidStoreXProcessingFlow::sizeHint() const {
+    return presentationMode_ == PresentationMode::Compact
+        ? QSize(620, 68) : QSize(620, 92);
+}
+QSize VidStoreXProcessingFlow::minimumSizeHint() const {
+    return presentationMode_ == PresentationMode::Compact
+        ? QSize(320, 58) : QSize(360, 78);
+}
 
 void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
     const auto t = vidstorex_ui::themeTokens(palette());
-    constexpr qreal logicalWidth = 620.0, logicalHeight = 92.0;
+    constexpr qreal logicalWidth = 620.0;
+    const bool compact = presentationMode_ == PresentationMode::Compact;
+    const qreal logicalHeight = compact ? 68.0 : 92.0;
     const qreal scale = qMin(width() / logicalWidth, height() / logicalHeight);
     if (scale <= 0) return;
     p.translate((width() - logicalWidth * scale) / 2,
                 (height() - logicalHeight * scale) / 2);
     p.scale(scale, scale);
     const bool reverse = mode_ == Mode::Recover || mode_ == Mode::Verify;
-    const QRectF left(10, 20, 118, 54), middle(220, 20, 180, 54),
-                 right(492, 20, 118, 54);
+    const qreal boxTop = compact ? 12.0 : 20.0;
+    const qreal boxHeight = compact ? 44.0 : 54.0;
+    const QRectF left(10, boxTop, 118, boxHeight),
+                 middle(220, boxTop, 180, boxHeight),
+                 right(492, boxTop, 118, boxHeight);
     const auto box = [&](const QRectF &r, const QString &label,
                          const bool file, const bool partBox = false) {
         p.setPen(QPen(t.borderStrong, 2)); p.setBrush(t.surfaceRaised);
@@ -316,17 +335,21 @@ void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
     box(middle, midLabel, false, true);
     box(right, rightLabel, reverse);
     p.setPen(QPen(t.accent, 3, Qt::SolidLine, Qt::SquareCap));
+    const qreal arrowY = compact ? 34.0 : 47.0;
     const auto arrow = [&](qreal x1, qreal x2) {
-        p.drawLine(QPointF(x1, 47), QPointF(x2, 47));
-        p.drawLine(QPointF(x2, 47), QPointF(x2 - 7, 40));
-        p.drawLine(QPointF(x2, 47), QPointF(x2 - 7, 54));
+        p.drawLine(QPointF(x1, arrowY), QPointF(x2, arrowY));
+        p.drawLine(QPointF(x2, arrowY), QPointF(x2 - 7, arrowY - 7));
+        p.drawLine(QPointF(x2, arrowY), QPointF(x2 - 7, arrowY + 7));
     };
     arrow(143, 204); arrow(415, 476);
     if (!parts_.isEmpty()) {
         const bool aggregated = parts_.size() > 40;
         const int visible = aggregated ? 20 : qMin(40, parts_.size());
         const qreal gap = parts_.size() <= 12 ? 4.0 : 2.0;
-        const qreal cell = qMin(parts_.size() <= 12 ? 24.0 : 8.0,
+        const qreal preferredCell = parts_.size() == 1
+            ? (compact ? 28.0 : 34.0)
+            : parts_.size() <= 12 ? (compact ? 19.0 : 24.0) : 8.0;
+        const qreal cell = qMin(preferredCell,
             (middle.width() - 20.0 - gap * (visible - 1)) / visible);
         const qreal total = visible * cell + (visible - 1) * gap;
         const qreal x0 = middle.center().x() - total / 2.0;
@@ -675,8 +698,14 @@ void VidStoreXStepper::setSteps(const QStringList &steps, const int active,
     update();
 }
 
-QSize VidStoreXStepper::sizeHint() const { return {720, 58}; }
-QSize VidStoreXStepper::minimumSizeHint() const { return {460, 54}; }
+QSize VidStoreXStepper::sizeHint() const {
+    return property("densityMode").toString() == QStringLiteral("compact")
+        ? QSize(640, 52) : QSize(720, 58);
+}
+QSize VidStoreXStepper::minimumSizeHint() const {
+    return property("densityMode").toString() == QStringLiteral("compact")
+        ? QSize(420, 48) : QSize(460, 54);
+}
 
 void VidStoreXStepper::paintEvent(QPaintEvent *) {
     QPainter p(this);

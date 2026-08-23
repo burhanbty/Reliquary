@@ -300,6 +300,8 @@ private:
 
     void setupOnboardingPage();
 
+    void updateResponsiveLayout(const QSize &viewport);
+
     void applySemanticVisualRoles();
 
     void updateNavigationVisuals();

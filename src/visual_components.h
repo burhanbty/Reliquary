@@ -65,12 +65,17 @@ private:
 class VidStoreXProcessingFlow final : public QWidget {
 public:
     enum class Mode { Create, Download, Scan, Recover, Verify };
+    enum class PresentationMode { Normal, Compact };
 
     explicit VidStoreXProcessingFlow(QWidget *parent = nullptr);
     void setMode(Mode mode);
+    void setPresentationMode(PresentationMode mode);
     void setParts(const QVector<VidStoreXPartState> &parts);
     void setFileProgress(quint64 value, quint64 maximum, bool determinate);
     [[nodiscard]] Mode mode() const noexcept { return mode_; }
+    [[nodiscard]] PresentationMode presentationMode() const noexcept {
+        return presentationMode_;
+    }
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
 
@@ -79,6 +84,7 @@ protected:
 
 private:
     Mode mode_ = Mode::Create;
+    PresentationMode presentationMode_ = PresentationMode::Normal;
     QVector<VidStoreXPartState> parts_;
     quint64 fileValue_ = 0;
     quint64 fileMaximum_ = 0;

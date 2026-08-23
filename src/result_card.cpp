@@ -549,10 +549,10 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
     : QDialog(parent), model_(std::move(model)) {
     setObjectName(QStringLiteral("resultCardPreviewDialog"));
     setModal(true);
-    setMinimumSize(720, 480);
-    QSize dialogSize(900, 600);
+    setMinimumSize(620, 390);
+    QSize dialogSize(860, 560);
     if (const auto *screen = QApplication::primaryScreen()) {
-        const QSize safe = screen->availableGeometry().size() - QSize(64, 64);
+        const QSize safe = screen->availableGeometry().size() - QSize(48, 48);
         dialogSize = dialogSize.boundedTo(safe).expandedTo(minimumSize());
     }
     resize(dialogSize);
@@ -570,8 +570,8 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
         "QLabel#resultCardExportStatus[vsxState=\"error\"] { color: #E07A67; }"));
 
     auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(20, 18, 20, 18);
-    root->setSpacing(12);
+    root->setContentsMargins(16, 14, 16, 14);
+    root->setSpacing(10);
     title_ = new QLabel();
     title_->setObjectName(QStringLiteral("resultCardPreviewTitle"));
     title_->setProperty("pageTitle", true);
@@ -579,7 +579,7 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
     preview_ = new QLabel();
     preview_->setObjectName(QStringLiteral("resultCardPreviewImage"));
     preview_->setAlignment(Qt::AlignCenter);
-    preview_->setMinimumHeight(300);
+    preview_->setMinimumHeight(180);
     preview_->setAccessibleName(t("Reliquary result card preview"));
     preview_->setAccessibleDescription(Renderer::accessibleSummary(model_));
     root->addWidget(preview_, 1);
