@@ -64,8 +64,6 @@ class VidStoreXStepper;
 class VidStoreXFlowIllustration;
 class VidStoreXOnboardingProgress;
 class VidStoreXBlockProgress;
-class VidStoreXPartGrid;
-class VidStoreXProcessingFlow;
 class BrandIntroOverlay;
 class QAction;
 
@@ -349,8 +347,6 @@ private:
 
     void renderVideoSetActivity();
 
-    void setVideoSetDataPathExpanded(bool expanded);
-
     [[nodiscard]] video_set_workflow::PresentationPage
     currentOperationPresentationPage() const noexcept;
 
@@ -601,10 +597,6 @@ private:
     QWidget *videoSetPage = nullptr;
     QFrame *videoSetWorkflowArea = nullptr;
     QWidget *videoSetWorkflowMain = nullptr;
-    QFrame *videoSetDataPathDrawer = nullptr;
-    QWidget *videoSetDataPathPanel = nullptr;
-    QToolButton *videoSetDataPathToggle = nullptr;
-    QLabel *videoSetDataPathTitle = nullptr;
     QWidget *videoSetWelcomePage = nullptr;
     QWidget *videoSetRecentPage = nullptr;
     QLabel *videoSetRecentPageTitle = nullptr;
@@ -697,8 +689,6 @@ private:
     QLabel *videoSetActivityTitle = nullptr;
     QLabel *videoSetActivityDescription = nullptr;
     QLabel *videoSetActivitySourceSummary = nullptr;
-    VidStoreXProcessingFlow *videoSetActivityFlow = nullptr;
-    VidStoreXPartGrid *videoSetActivityPartGrid = nullptr;
     QLabel *videoSetActivityProgressLabel = nullptr;
     VidStoreXBlockProgress *videoSetActivityProgress = nullptr;
     QLabel *videoSetActivityCounter = nullptr;

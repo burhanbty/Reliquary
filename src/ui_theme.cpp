@@ -239,22 +239,6 @@ QString applicationStyleSheet(const QPalette &palette) {
             border-left: 3px solid %8; border-radius: 8px;
             padding: 10px 12px; color: %6;
         }
-        QWidget#videoSetLiveDataPath {
-            background: %1; border: 1px solid %13; border-radius: 8px;
-        }
-        QFrame#videoSetDataPathDrawer {
-            background: %2; border: 1px solid %13; border-radius: 8px;
-        }
-        QFrame#videoSetDataPathDrawer[overlay="true"] {
-            background: %2; border-left: 2px solid %8;
-        }
-        QToolButton#videoSetDataPathToggle {
-            min-width: 40px; max-width: 40px; padding: 0;
-            border: 0; border-right: 1px solid %13; border-radius: 0;
-            color: %8; font-size: 18px; font-weight: 700;
-        }
-        QToolButton#videoSetDataPathToggle:checked { background: %4; }
-        QWidget#videoSetDataPathPanel { background: %2; }
         QWidget#videoSetAssistantStepper {
             background: %1; border: 1px solid %13; border-radius: 5px;
         }

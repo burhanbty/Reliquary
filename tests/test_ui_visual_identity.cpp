@@ -452,22 +452,11 @@ TEST(UiVisualIdentity, LiveDataPathHasCompactTerminalPresentation) {
               VidStoreXProcessingFlow::PresentationMode::Compact);
 }
 
-TEST(UiVisualIdentity, WorkflowTaskColumnAndDataPathRailStayWithinContract) {
+TEST(UiVisualIdentity, WorkflowTaskColumnStaysWithinBoundedContract) {
     EXPECT_GE(vidstorex_ui::Layout::WorkflowTaskMaxWidth, 1100);
     EXPECT_LE(vidstorex_ui::Layout::WorkflowTaskMaxWidth, 1320);
     EXPECT_LE(vidstorex_ui::Layout::WorkflowTaskMaxWidth,
               vidstorex_ui::Layout::ContentMaxWidth);
-
-    VidStoreXProcessingFlow flow;
-    QVector<VidStoreXPartState> parts(64, VidStoreXPartState::Verified);
-    parts[17] = VidStoreXPartState::Active;
-    parts[51] = VidStoreXPartState::Missing;
-    flow.setParts(parts);
-    const QSize hint = flow.sizeHint();
-    EXPECT_GT(hint.height(), hint.width());
-    EXPECT_GE(hint.width(), 220);
-    EXPECT_LE(hint.width(), 280);
-    EXPECT_GT(unique_opaque_colors(render(flow, hint)), 4);
 }
 
 TEST(UiVisualIdentity, StepperUsesCompactHeightWithoutClipping) {
@@ -533,6 +522,10 @@ TEST(UiVisualIdentity, GuiSourceDeclaresIdentityAndRecentPrivacyContract) {
     EXPECT_TRUE(source.contains("new VidStoreXRecentEntry"));
     EXPECT_TRUE(source.contains("Copy manifest location"));
     EXPECT_TRUE(source.contains("setFixedHeight(listHeight)"));
+    EXPECT_FALSE(source.contains("videoSetDataPathDrawer"));
+    EXPECT_FALSE(source.contains("videoSetDataPathToggle"));
+    EXPECT_FALSE(source.contains("videoSetDataPathPanel"));
+    EXPECT_FALSE(source.contains("videoSetLiveDataPath"));
     EXPECT_FALSE(source.contains("new QGroupBox(\"Create a Video Set\")"));
     EXPECT_FALSE(source.contains(
         "display = manifest.absolutePath() +"));

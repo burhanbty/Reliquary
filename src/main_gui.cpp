@@ -37,7 +37,6 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSet>
-#include <QShortcut>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -1055,8 +1054,6 @@ int main(int argc, char *argv[]) {
             "videoSetActivityTitle");
         auto *activityDescription = window.findChild<QLabel *>(
             "videoSetActivityDescription");
-        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
-            window.findChild<QWidget *>("videoSetLiveDataPath"));
         auto *activityDetailsButton = window.findChild<QToolButton *>(
             "videoSetActivityDetailsToggle");
         auto *activityDetails = window.findChild<QWidget *>(
@@ -1068,7 +1065,7 @@ int main(int argc, char *argv[]) {
         auto *language = window.findChild<QComboBox *>("uiLanguageCombo");
         if (!recoverNavigation || !playlist || !output || !start ||
             !status || !success || !resultCard || !activityPanel || !activityTitle ||
-            !activityDescription || !activityFlow || !activityDetailsButton ||
+            !activityDescription || !activityDetailsButton ||
             !activityDetails || !applicationHeader || !workflowStepper ||
             !language) {
             qCritical() << "Instant Recovery widgets were not found";
@@ -1104,7 +1101,7 @@ int main(int argc, char *argv[]) {
         QObject::connect(timer, &QTimer::timeout, &window,
             [&app, &window, status, success, recovered, timer, elapsed,
              observedPhases, activityPanel, activityTitle,
-             activityDescription, activityFlow, instantRecoverySmokeRoot,
+             activityDescription, instantRecoverySmokeRoot,
              resultCard, activityDetailsButton, activityDetails,
              applicationHeader, workflowStepper, playlist, output, start]() {
             *elapsed += 100;
@@ -1116,8 +1113,6 @@ int main(int argc, char *argv[]) {
                     .filePath(filename));
             };
             if (activityPanel->property("observedDownload").toBool() &&
-                activityFlow->mode() ==
-                    VidStoreXProcessingFlow::Mode::Download &&
                 !observedPhases->contains("download")) {
                 const auto substantiallyVisible = [&window](QWidget *widget) {
                     const QRect rect(widget->mapTo(&window, QPoint()),
@@ -1137,7 +1132,6 @@ int main(int argc, char *argv[]) {
                         activityPanel->height() >= window.height() / 4 ||
                         activityDetailsButton->isChecked() ||
                         activityDetails->isVisible() ||
-                        activityFlow->isVisible() ||
                         !substantiallyVisible(playlist) ||
                         !substantiallyVisible(output) ||
                         !substantiallyVisible(start) ||
@@ -1157,7 +1151,7 @@ int main(int argc, char *argv[]) {
                     language->setCurrentIndex(language->findData("en"));
             }
             if (activityPanel->property("observedScan").toBool() &&
-                activityFlow->mode() == VidStoreXProcessingFlow::Mode::Scan) {
+                !observedPhases->contains("scan")) {
                 if (!activityDescription->text().contains(
                         "not being rebuilt yet", Qt::CaseInsensitive)) {
                     qCritical() << "Instant scan implied file rebuilding";
@@ -1165,13 +1159,11 @@ int main(int argc, char *argv[]) {
                 }
                 savePhase("scan", "instant-scan.png");
             }
-            if (activityPanel->property("observedRecovery").toBool() &&
-                activityFlow->mode() == VidStoreXProcessingFlow::Mode::Recover)
+            if (activityPanel->property("observedRecovery").toBool())
                 savePhase("recover", "instant-recover.png");
             if (activityPanel->property("observedFinalHash").toBool() &&
-                (activityFlow->mode() == VidStoreXProcessingFlow::Mode::Verify ||
-                 activityTitle->text().contains("verification",
-                                                Qt::CaseInsensitive)))
+                activityTitle->text().contains("verification",
+                                               Qt::CaseInsensitive))
                 savePhase("verify", "instant-verify.png");
             if (success->isVisible() && success->text().contains(
                     "recovered exactly", Qt::CaseInsensitive)) {
@@ -1280,14 +1272,10 @@ int main(int argc, char *argv[]) {
             "videoSetActivityTitle");
         auto *activityProgress = static_cast<VidStoreXBlockProgress *>(
             window.findChild<QWidget *>("videoSetBlockProgress"));
-        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
-            window.findChild<QWidget *>("videoSetLiveDataPath"));
         auto *activityDetailsButton = window.findChild<QToolButton *>(
             "videoSetActivityDetailsToggle");
         auto *activityDetails = window.findChild<QWidget *>(
             "videoSetActivityDetails");
-        auto *activityParts = static_cast<VidStoreXPartGrid *>(
-            window.findChild<QWidget *>("videoSetPartGrid"));
         auto *technicalToggle = window.findChild<QToolButton *>(
             "videoSetTechnicalLogToggle");
         auto *technicalLog = window.findChild<QTextEdit *>(
@@ -1340,8 +1328,7 @@ int main(int argc, char *argv[]) {
             !recoverChoice || !resilientChoice || !highCapacityChoice ||
             !advancedToggle || !advancedPanel || !classicTools ||
             !activityPanel || !activityTitle || !activityProgress ||
-            !activityFlow || !activityDetailsButton || !activityDetails ||
-            !activityParts ||
+            !activityDetailsButton || !activityDetails ||
             !technicalToggle || !technicalLog || !homeNavigation ||
             !settingsNavigation || !language || !settingsLanguage ||
             !settingsPage || !advancedNavigation || !trustLabel ||
@@ -1670,12 +1657,6 @@ int main(int argc, char *argv[]) {
             "videoSetWorkflowArea");
         auto *workflowMain = window.findChild<QWidget *>(
             "videoSetWorkflowMain");
-        auto *dataPathDrawer = window.findChild<QFrame *>(
-            "videoSetDataPathDrawer");
-        auto *dataPathToggle = window.findChild<QToolButton *>(
-            "videoSetDataPathToggle");
-        auto *dataPathPanel = window.findChild<QWidget *>(
-            "videoSetDataPathPanel");
         auto *sourceBack = window.findChild<QPushButton *>(
             "videoSetAssistantSourceBack");
         auto *modeBack = window.findChild<QPushButton *>(
@@ -1694,14 +1675,10 @@ int main(int argc, char *argv[]) {
             "videoSetBlockProgressLabel");
         auto *activityProgress = static_cast<VidStoreXBlockProgress *>(
             window.findChild<QWidget *>("videoSetBlockProgress"));
-        auto *activityFlow = static_cast<VidStoreXProcessingFlow *>(
-            window.findChild<QWidget *>("videoSetLiveDataPath"));
         auto *activityDetailsButton = window.findChild<QToolButton *>(
             "videoSetActivityDetailsToggle");
         auto *activityDetails = window.findChild<QWidget *>(
             "videoSetActivityDetails");
-        auto *activityParts = static_cast<VidStoreXPartGrid *>(
-            window.findChild<QWidget *>("videoSetPartGrid"));
         auto *activitySource = window.findChild<QLabel *>(
             "videoSetProcessingSummary");
         auto *activityLog = window.findChild<QTextEdit *>(
@@ -1806,13 +1783,12 @@ int main(int argc, char *argv[]) {
             !recoveryOutput || !scan || !recover || !scanSummary ||
             !success || !successDetails || !recent || !recentFull ||
             !recentNavigation || !recentPage || !actionBar ||
-            !workflowArea || !workflowMain || !dataPathDrawer ||
-            !dataPathToggle || !dataPathPanel || !sourceBack || !modeBack ||
+            !workflowArea || !workflowMain || !sourceBack || !modeBack ||
             !planBack || !activityPanel || !activityTitle ||
             !activityDescription || !activityElapsed ||
             !activityProgressLabel || !activityProgress ||
-            !activityFlow || !activityDetailsButton || !activityDetails ||
-            !activityParts || !activitySource || !activityLog || !language ||
+            !activityDetailsButton || !activityDetails ||
+            !activitySource || !activityLog || !language ||
             !homeNavigation || !brandSubtitle || !resilientCard ||
             !highCapacityCard || !recoverChoice || !settingsNavigation ||
             !settingsAuthor || !settingsAboutHeading ||
@@ -1833,6 +1809,13 @@ int main(int argc, char *argv[]) {
             !syncCard || !openVideos || !openYouTube || !uploadNotice) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
+        }
+        if (window.findChild<QWidget *>("videoSetDataPathDrawer") ||
+            window.findChild<QWidget *>("videoSetDataPathToggle") ||
+            window.findChild<QWidget *>("videoSetDataPathPanel") ||
+            window.findChild<QWidget *>("videoSetLiveDataPath")) {
+            qCritical() << "Removed Data Path presentation is still present";
+            return 132;
         }
 
         language->setCurrentIndex(language->findData("tr"));
@@ -1948,19 +1931,16 @@ int main(int argc, char *argv[]) {
         for (const auto &[size, suffix] : homeSizes) {
             window.resize(size);
             QApplication::processEvents();
+            const int leftGutter = workflowMain->geometry().left();
+            const int rightGutter = workflowArea->width() -
+                workflowMain->geometry().right() - 1;
             if (stack->currentIndex() != 1 || !activityPanel->isHidden() ||
                 applicationHeader->height() > 76 ||
                 workflowStepper->height() > 50 ||
-                sourceHeading->mapTo(&window, QPoint()).x() > 80 ||
-                dataPathToggle->isChecked() ||
-                dataPathPanel->isVisible() ||
-                dataPathDrawer->width() < 32 ||
-                dataPathDrawer->width() > 44 ||
-                dataPathDrawer->geometry().right() !=
-                    workflowArea->rect().right() ||
                 workflowMain->width() >
                     vidstorex_ui::Layout::WorkflowTaskMaxWidth ||
                 workflowMain->width() < 1100 ||
+                qAbs(leftGutter - rightGutter) > 1 ||
                 !actionIsPinnedAndVisible(sourceContinue) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-create-step1-" + suffix + ".png"))) {
@@ -1970,78 +1950,14 @@ int main(int argc, char *argv[]) {
                     << "activityHidden" << activityPanel->isHidden()
                     << "header" << applicationHeader->height()
                     << "stepper" << workflowStepper->height()
-                    << "headingX" << sourceHeading->mapTo(&window, QPoint()).x()
-                    << "drawer" << dataPathDrawer->geometry()
                     << "workflowArea" << workflowArea->rect()
-                    << "drawerChecked" << dataPathToggle->isChecked()
-                    << "panelVisible" << dataPathPanel->isVisible()
                     << "workflowMain" << workflowMain->geometry()
+                    << "gutters" << leftGutter << rightGutter
                     << "pinned" << actionIsPinnedAndVisible(sourceContinue)
                     << "windowMinHint" << window.minimumSizeHint();
                 return 86;
             }
         }
-        const auto drawerDoesNotCoverFooter = [&]() {
-            const QRect drawerRect(dataPathDrawer->mapTo(&window, QPoint()),
-                                   dataPathDrawer->size());
-            const QRect footerRect(actionBar->mapTo(&window, QPoint()),
-                                   actionBar->size());
-            return !drawerRect.intersects(footerRect);
-        };
-        window.resize(1366, 768);
-        dataPathToggle->click();
-        QApplication::processEvents();
-        if (!dataPathToggle->isChecked() || !dataPathPanel->isVisible() ||
-            !activityFlow->isVisible() ||
-            dataPathDrawer->width() < 220 || dataPathDrawer->width() > 280 ||
-            !dataPathDrawer->property("overlay").toBool() ||
-            dataPathDrawer->geometry().right() !=
-                workflowArea->rect().right() ||
-            activityDetails->isAncestorOf(activityFlow) ||
-            !dataPathPanel->isAncestorOf(activityFlow) ||
-            !drawerDoesNotCoverFooter() ||
-            !window.grab().save(QDir(root).filePath(
-                "e2e-data-path-expanded-create-1366x768.png"))) {
-            qCritical() << "Compact Data Path overlay audit failed";
-            return 132;
-        }
-        QKeyEvent drawerEscape(QEvent::KeyPress, Qt::Key_Escape,
-                               Qt::NoModifier);
-        QWidget *escapeTarget = QApplication::focusWidget();
-        if (!escapeTarget) escapeTarget = &window;
-        QApplication::sendEvent(escapeTarget, &drawerEscape);
-        QKeyEvent drawerEscapeRelease(QEvent::KeyRelease, Qt::Key_Escape,
-                                      Qt::NoModifier);
-        QApplication::sendEvent(escapeTarget, &drawerEscapeRelease);
-        QApplication::processEvents();
-        if (dataPathToggle->isChecked()) {
-            auto *escapeShortcut = window.findChild<QShortcut *>(
-                "videoSetDataPathEscapeShortcut");
-            if (escapeShortcut)
-                QMetaObject::invokeMethod(escapeShortcut, "activated",
-                                          Qt::DirectConnection);
-            QApplication::processEvents();
-        }
-        if (dataPathToggle->isChecked() || dataPathPanel->isVisible() ||
-            dataPathDrawer->width() < 32 || dataPathDrawer->width() > 44) {
-            qCritical() << "Escape did not collapse the Data Path drawer";
-            return 133;
-        }
-        window.resize(1600, 900);
-        dataPathToggle->click();
-        QApplication::processEvents();
-        if (!dataPathToggle->isChecked() || !dataPathPanel->isVisible() ||
-            dataPathDrawer->property("overlay").toBool() ||
-            dataPathDrawer->width() < 220 || dataPathDrawer->width() > 280 ||
-            workflowMain->geometry().right() >= dataPathDrawer->geometry().left() ||
-            !drawerDoesNotCoverFooter() ||
-            !window.grab().save(QDir(root).filePath(
-                "e2e-data-path-expanded-create-1600x900.png"))) {
-            qCritical() << "Wide Data Path inline audit failed";
-            return 134;
-        }
-        dataPathToggle->click();
-        QApplication::processEvents();
         sourceContinue->click();
         QApplication::processEvents();
         for (const auto &[size, suffix] : homeSizes) {
@@ -2062,15 +1978,20 @@ int main(int argc, char *argv[]) {
         for (const auto &[size, suffix] : homeSizes) {
             window.resize(size);
             QApplication::processEvents();
+            const int leftGutter = workflowMain->geometry().left();
+            const int rightGutter = workflowArea->width() -
+                workflowMain->geometry().right() - 1;
             if (stack->currentIndex() != 7 || !activityPanel->isHidden() ||
                 applicationHeader->height() > 76 ||
                 workflowStepper->height() > 50 ||
-                recoverHeading->mapTo(&window, QPoint()).x() > 80 ||
+                qAbs(leftGutter - rightGutter) > 1 ||
                 !substantiallyVisibleInWorkflow(instantPlaylistEdit) ||
                 !actionIsPinnedAndVisible(scan) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-recover-initial-" + suffix + ".png"))) {
-                qCritical() << "Recover pinned action audit failed" << suffix;
+                qCritical() << "Recover pinned action audit failed" << suffix
+                            << "workflowMain" << workflowMain->geometry()
+                            << "gutters" << leftGutter << rightGutter;
                 return 88;
             }
         }
@@ -2331,12 +2252,9 @@ int main(int argc, char *argv[]) {
                         !activityElapsed->text().startsWith(
                             QStringLiteral("Duration:")) ||
                         !activityPanel->property("terminalOperation").toBool() ||
-                        activityFlow->presentationMode() !=
-                            VidStoreXProcessingFlow::PresentationMode::Compact ||
                         activityPanel->height() > 130 ||
                         activityDetailsButton->isChecked() ||
-                        activityDetails->isVisible() ||
-                        activityFlow->isVisible()) {
+                        activityDetails->isVisible()) {
                         fail(78, "Completed plan does not use terminal wording");
                         return;
                     }
@@ -2379,7 +2297,6 @@ int main(int argc, char *argv[]) {
                             activityPanel->isHidden() ||
                             activityPanel->height() > 130 ||
                             activityDetails->isVisible() ||
-                            activityFlow->isVisible() ||
                             applicationHeader->height() > 76 ||
                             workflowStepper->height() > 50 ||
                             !actionIsPinnedAndVisible(createVideos) ||
@@ -2660,8 +2577,6 @@ int main(int argc, char *argv[]) {
                 }
                 if (!state->activeDownloadCaptured &&
                     activityPanel->property("observedDownload").toBool() &&
-                    activityFlow->mode() ==
-                        VidStoreXProcessingFlow::Mode::Download &&
                     !activityPanel->property("terminalOperation").toBool()) {
                     const QList<QPair<QSize, QString>> downloadSizes{
                         {{1366, 768}, "1366x768"},
@@ -2678,7 +2593,6 @@ int main(int argc, char *argv[]) {
                             activityPanel->height() >= window.height() / 4 ||
                             activityDetailsButton->isChecked() ||
                             activityDetails->isVisible() ||
-                            activityFlow->isVisible() ||
                             !substantiallyVisibleInWorkflow(playlistEdit) ||
                             !actionBar->isVisible() ||
                             !window.rect().contains(actionRect) ||
@@ -2714,31 +2628,24 @@ int main(int argc, char *argv[]) {
                 !state->testedActiveLanguageSwitch &&
                 stack->currentIndex() == 4 &&
                 !progressContinue->isEnabled()) {
-                if (activityPanel->isHidden() || activityFlow->isVisible() ||
+                if (activityPanel->isHidden() ||
                     activityDetails->isVisible() ||
                     activityDetailsButton->isChecked() ||
                     activityPanel->height() > 130 ||
-                    activityFlow->mode() != VidStoreXProcessingFlow::Mode::Create ||
-                    activityFlow->presentationMode() !=
-                        VidStoreXProcessingFlow::PresentationMode::Compact ||
                     activityPanel->property("terminalOperation").toBool() ||
                     activitySource->text().contains(source,
                         Qt::CaseInsensitive) ||
                     activitySource->text().isEmpty() ||
                     activityProgress->accessibleDescription().isEmpty()) {
                     fail(71, QString(
-                        "Create Live Data Path or consumer source summary is "
-                        "invalid (panelHidden=%1 flowVisible=%2 detailsVisible=%3 "
-                        "detailsChecked=%4 panelHeight=%5 flowMode=%6 "
-                        "presentation=%7 terminal=%8 sourceEmpty=%9 "
-                        "sourceContainsPath=%10 accessibleEmpty=%11 source=%12)")
+                        "Create activity or consumer source summary is invalid "
+                        "(panelHidden=%1 detailsVisible=%2 detailsChecked=%3 "
+                        "panelHeight=%4 terminal=%5 sourceEmpty=%6 "
+                        "sourceContainsPath=%7 accessibleEmpty=%8 source=%9)")
                         .arg(activityPanel->isHidden())
-                        .arg(activityFlow->isVisible())
                         .arg(activityDetails->isVisible())
                         .arg(activityDetailsButton->isChecked())
                         .arg(activityPanel->height())
-                        .arg(static_cast<int>(activityFlow->mode()))
-                        .arg(static_cast<int>(activityFlow->presentationMode()))
                         .arg(activityPanel->property("terminalOperation").toBool())
                         .arg(activitySource->text().isEmpty())
                         .arg(activitySource->text().contains(
@@ -2793,9 +2700,7 @@ int main(int argc, char *argv[]) {
                         return;
                     }
                 }
-                if (activityFlow->mode() !=
-                        VidStoreXProcessingFlow::Mode::Scan ||
-                    activityProgress->state() ==
+                if (activityProgress->state() ==
                         VidStoreXBlockProgress::State::Success &&
                     !recover->isEnabled()) {
                     fail(46, "Scan processing visualization state is invalid");
@@ -3041,18 +2946,9 @@ int main(int argc, char *argv[]) {
                     fail(43, "Recover remained enabled with a missing part");
                     return;
                 }
-                if (!activityParts->parts().contains(
-                        VidStoreXPartState::Missing) ||
-                    activityFlow->mode() !=
-                        VidStoreXProcessingFlow::Mode::Scan ||
-                    !window.grab().save(QDir(root).filePath(
+                if (!window.grab().save(QDir(root).filePath(
                         "e2e-missing-part-tr.png"))) {
-                    fail(72, QString(
-                        "Missing part was not represented in the processing grid "
-                        "(parts=%1 mode=%2 summary=%3)")
-                        .arg(activityParts->parts().size())
-                        .arg(static_cast<int>(activityFlow->mode()))
-                        .arg(scanSummary->text()));
+                    fail(72, "Missing-part workflow screenshot was not saved");
                     return;
                 }
                 if (state->sourceVideoFiles.isEmpty() ||
@@ -3083,11 +2979,9 @@ int main(int argc, char *argv[]) {
                     fail(51, "Recover remained enabled with a corrupt part");
                     return;
                 }
-                if (!activityParts->parts().contains(
-                        VidStoreXPartState::Corrupt) ||
-                    !window.grab().save(QDir(root).filePath(
+                if (!window.grab().save(QDir(root).filePath(
                         "e2e-corrupt-part-tr.png"))) {
-                    fail(73, "Corrupt part was not represented in the processing grid");
+                    fail(73, "Corrupt-part workflow screenshot was not saved");
                     return;
                 }
                 if (QSettings().value("ui/language").toString() != "tr") {

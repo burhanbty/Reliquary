@@ -71,7 +71,6 @@
 #include <QTabBar>
 #include <QMenu>
 #include <QKeyEvent>
-#include <QShortcut>
 
 #include <chrono>
 #include <cmath>
@@ -134,13 +133,6 @@ constexpr int kRecentPage = 10;
     QT_TRANSLATE_NOOP("DriveManagerUI", "Plan completed"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Details"),
     QT_TRANSLATE_NOOP("DriveManagerUI", "Hide details"),
-    QT_TRANSLATE_NOOP("DriveManagerUI", "Data Path"),
-    QT_TRANSLATE_NOOP("DriveManagerUI", "Show Data Path"),
-    QT_TRANSLATE_NOOP("DriveManagerUI", "Hide Data Path"),
-    QT_TRANSLATE_NOOP("DriveManagerUI",
-        "Data Path is expanded on the right side."),
-    QT_TRANSLATE_NOOP("DriveManagerUI",
-        "Data Path is collapsed on the right side."),
     QT_TRANSLATE_NOOP("DriveManagerUI",
         "Drop one file here, or use Choose file below."),
     QT_TRANSLATE_NOOP("DriveManagerUI", "File:"),
@@ -3174,7 +3166,6 @@ void DriveManagerUI::showVideoSetCreate() {
     }
     videoSetWorkflow.reset();
     videoSetWorkflow.choose_create();
-    setVideoSetDataPathExpanded(false);
     videoSetCreateCompletedAt = {};
     videoSetHighCapacityRadio->setChecked(true);
     videoSetWorkflow.select_profile("high-capacity", "538F2B009FAB");
@@ -3227,7 +3218,6 @@ void DriveManagerUI::showVideoSetRecover() {
     }
     videoSetWorkflow.reset();
     videoSetWorkflow.choose_recover();
-    setVideoSetDataPathExpanded(false);
     videoSetRecoveryCompletedAt = {};
     videoSetRecoveredProfileName.clear();
     videoSetRecoveredSetId.clear();
@@ -3666,10 +3656,6 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetActivityDetailsButton->setText(
         videoSetActivityDetailsButton->isChecked()
             ? tr("Hide details") : tr("Details"));
-    if (videoSetDataPathTitle)
-        videoSetDataPathTitle->setText(tr("Data Path"));
-    if (videoSetDataPathToggle)
-        setVideoSetDataPathExpanded(videoSetDataPathToggle->isChecked());
     videoSetSuccessLabel->setText(tr("Your file was recovered exactly."));
     videoSetDownloadButton->setText(tr("Download Processed Videos"));
     videoSetOpenRecoveredButton->setText(tr("Open File Location"));
@@ -3822,9 +3808,8 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetWorkflowArea->setObjectName("videoSetWorkflowArea");
     videoSetWorkflowArea->setSizePolicy(QSizePolicy::Expanding,
                                          QSizePolicy::Expanding);
-    videoSetWorkflowArea->installEventFilter(this);
     auto *workflowAreaLayout = new QHBoxLayout(videoSetWorkflowArea);
-    workflowAreaLayout->setContentsMargins(0, 0, 40, 0);
+    workflowAreaLayout->setContentsMargins(0, 0, 0, 0);
     workflowAreaLayout->setSpacing(0);
     videoSetWorkflowMain = new QWidget();
     videoSetWorkflowMain->setObjectName("videoSetWorkflowMain");
@@ -3835,7 +3820,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(vidstorex_ui::Spacing::Sm);
     workflowAreaLayout->addWidget(videoSetWorkflowMain, 1);
-    workflowAreaLayout->setAlignment(videoSetWorkflowMain, Qt::AlignLeft);
+    workflowAreaLayout->setAlignment(videoSetWorkflowMain, Qt::AlignHCenter);
     pageRoot->insertWidget(2, videoSetWorkflowArea, 1);
 
     videoSetStepIndicator = new VidStoreXStepper();
@@ -3966,52 +3951,6 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetWizardActionStack->setObjectName("videoSetWizardActionStack");
     actionBarLayout->addWidget(videoSetWizardActionStack);
     pageRoot->insertWidget(3, videoSetWizardActionBar);
-
-    videoSetDataPathDrawer = new QFrame(videoSetWorkflowArea);
-    videoSetDataPathDrawer->setObjectName("videoSetDataPathDrawer");
-    videoSetDataPathDrawer->setProperty("expanded", false);
-    videoSetDataPathDrawer->setProperty("overlay", false);
-    videoSetDataPathDrawer->setSizePolicy(QSizePolicy::Fixed,
-                                          QSizePolicy::Expanding);
-    auto *drawerLayout = new QHBoxLayout(videoSetDataPathDrawer);
-    drawerLayout->setContentsMargins(0, 0, 0, 0);
-    drawerLayout->setSpacing(0);
-    videoSetDataPathToggle = new QToolButton();
-    videoSetDataPathToggle->setObjectName("videoSetDataPathToggle");
-    videoSetDataPathToggle->setText(QString::fromUtf8("▦"));
-    videoSetDataPathToggle->setCheckable(true);
-    videoSetDataPathToggle->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    videoSetDataPathToggle->setSizePolicy(QSizePolicy::Fixed,
-                                          QSizePolicy::Expanding);
-    videoSetDataPathToggle->setFixedWidth(40);
-    drawerLayout->addWidget(videoSetDataPathToggle);
-    videoSetDataPathPanel = new QWidget();
-    videoSetDataPathPanel->setObjectName("videoSetDataPathPanel");
-    auto *dataPathLayout = new QVBoxLayout(videoSetDataPathPanel);
-    dataPathLayout->setContentsMargins(14, 12, 12, 12);
-    dataPathLayout->setSpacing(8);
-    videoSetDataPathTitle = new QLabel();
-    videoSetDataPathTitle->setObjectName("videoSetDataPathTitle");
-    videoSetDataPathTitle->setProperty("sectionTitle", true);
-    dataPathLayout->addWidget(videoSetDataPathTitle);
-    videoSetActivityFlow = new VidStoreXProcessingFlow();
-    dataPathLayout->addWidget(videoSetActivityFlow, 1);
-    videoSetActivityPartGrid = new VidStoreXPartGrid();
-    videoSetActivityPartGrid->setVisible(false);
-    dataPathLayout->addWidget(videoSetActivityPartGrid);
-    videoSetDataPathPanel->setVisible(false);
-    drawerLayout->addWidget(videoSetDataPathPanel, 1);
-    connect(videoSetDataPathToggle, &QToolButton::toggled,
-            this, &DriveManagerUI::setVideoSetDataPathExpanded);
-    auto *closeDataPath = new QShortcut(QKeySequence(Qt::Key_Escape),
-                                        videoSetWorkflowArea);
-    closeDataPath->setObjectName("videoSetDataPathEscapeShortcut");
-    closeDataPath->setContext(Qt::WindowShortcut);
-    connect(closeDataPath, &QShortcut::activated, this, [this]() {
-        if (videoSetDataPathToggle && videoSetDataPathToggle->isChecked())
-            videoSetDataPathToggle->setChecked(false);
-    });
-    setVideoSetDataPathExpanded(false);
 
     const auto makePage = [this](const QString &title,
                                  const QString &description) {
@@ -5848,42 +5787,6 @@ void DriveManagerUI::handleVideoSetProgressOutput(const QString &text) {
     }
 }
 
-void DriveManagerUI::setVideoSetDataPathExpanded(const bool expanded) {
-    if (!videoSetWorkflowArea || !videoSetWorkflowMain ||
-        !videoSetDataPathDrawer || !videoSetDataPathPanel ||
-        !videoSetDataPathToggle)
-        return;
-    const QSignalBlocker blocker(videoSetDataPathToggle);
-    videoSetDataPathToggle->setChecked(expanded);
-    videoSetDataPathPanel->setVisible(expanded);
-    videoSetDataPathDrawer->setProperty("expanded", expanded);
-    const bool overlay = expanded &&
-        (videoSetWorkflowArea->width() < 1180 ||
-         videoSetWorkflowArea->height() < 650);
-    videoSetDataPathDrawer->setProperty("overlay", overlay);
-    const int drawerWidth = expanded ? 260 : 40;
-    videoSetDataPathDrawer->setGeometry(
-        qMax(0, videoSetWorkflowArea->width() - drawerWidth), 0,
-        drawerWidth, videoSetWorkflowArea->height());
-    if (auto *layout = qobject_cast<QHBoxLayout *>(
-            videoSetWorkflowArea->layout())) {
-        const int reserved = expanded && !overlay ? drawerWidth + 12 : 40;
-        layout->setContentsMargins(0, 0, reserved, 0);
-    }
-    videoSetDataPathToggle->setToolTip(expanded
-        ? tr("Hide Data Path") : tr("Show Data Path"));
-    videoSetDataPathToggle->setAccessibleName(videoSetDataPathToggle->toolTip());
-    videoSetDataPathToggle->setAccessibleDescription(expanded
-        ? tr("Data Path is expanded on the right side.")
-        : tr("Data Path is collapsed on the right side."));
-    videoSetDataPathDrawer->setAccessibleName(tr("Data Path"));
-    videoSetDataPathDrawer->setAccessibleDescription(
-        videoSetDataPathToggle->accessibleDescription());
-    videoSetDataPathDrawer->style()->unpolish(videoSetDataPathDrawer);
-    videoSetDataPathDrawer->style()->polish(videoSetDataPathDrawer);
-    videoSetDataPathDrawer->raise();
-}
-
 void DriveManagerUI::renderVideoSetActivity() {
     if (!videoSetActivityPanel) return;
     const auto &operation = videoSetOperationProgress.view();
@@ -6004,73 +5907,6 @@ void DriveManagerUI::renderVideoSetActivity() {
         completedParts = (std::max)(operation.scan.exact_parts,
                                     workflow.scan.exact_parts);
 
-    QVector<VidStoreXPartState> partStates(
-        static_cast<qsizetype>((std::min)(totalParts, uint64_t{5000})),
-        VidStoreXPartState::Pending);
-    for (uint64_t index = 0; index < (std::min)(completedParts, totalParts); ++index)
-        partStates[static_cast<qsizetype>(index)] =
-            operation.operation_type == video_set_workflow::OperationType::Scan ||
-            operation.operation_type == video_set_workflow::OperationType::Recover
-                ? VidStoreXPartState::Verified : VidStoreXPartState::Complete;
-    const bool currentMapsToPart = operation.operation_type !=
-        video_set_workflow::OperationType::Scan;
-    if (currentMapsToPart && operation.current_index > 0 &&
-        operation.current_index <= static_cast<uint64_t>(partStates.size()) &&
-        operation.is_busy)
-        partStates[static_cast<qsizetype>(operation.current_index - 1)] =
-            operation.state == video_set_workflow::OperationState::Cancelling
-                ? VidStoreXPartState::Cancelled : VidStoreXPartState::Active;
-    const auto markIndices = [&partStates](const std::vector<uint32_t> &indices,
-                                           const VidStoreXPartState state) {
-        for (const auto index : indices)
-            if (index < static_cast<uint32_t>(partStates.size()))
-                partStates[static_cast<qsizetype>(index)] = state;
-    };
-    markIndices(operation.scan.missing_parts, VidStoreXPartState::Missing);
-    markIndices(operation.scan.corrupt_parts, VidStoreXPartState::Corrupt);
-    markIndices(workflow.scan.missing_parts, VidStoreXPartState::Missing);
-    markIndices(workflow.scan.corrupt_parts, VidStoreXPartState::Corrupt);
-    if (operation.scan.conflict_count != 0 && !partStates.isEmpty()) {
-        qsizetype index = partStates.size() - 1;
-        while (index > 0 && partStates[index] != VidStoreXPartState::Pending) --index;
-        partStates[index] = VidStoreXPartState::Conflict;
-    }
-    if (operation.state == video_set_workflow::OperationState::Failed &&
-        operation.current_index > 0 &&
-        operation.current_index <= static_cast<uint64_t>(partStates.size()))
-        partStates[static_cast<qsizetype>(operation.current_index - 1)] =
-            VidStoreXPartState::Failed;
-    videoSetActivityPartGrid->setParts(partStates);
-    videoSetActivityPartGrid->setVisible(false);
-
-    VidStoreXProcessingFlow::Mode flowMode =
-        VidStoreXProcessingFlow::Mode::Create;
-    if (operation.operation_type == video_set_workflow::OperationType::Download)
-        flowMode = VidStoreXProcessingFlow::Mode::Download;
-    else if (operation.operation_type == video_set_workflow::OperationType::Scan)
-        flowMode = VidStoreXProcessingFlow::Mode::Scan;
-    else if (operation.operation_type == video_set_workflow::OperationType::Recover)
-        flowMode = operation.phase == video_set_workflow::OperationPhase::CheckingFullFile
-            ? VidStoreXProcessingFlow::Mode::Verify
-            : VidStoreXProcessingFlow::Mode::Recover;
-    videoSetActivityFlow->setMode(flowMode);
-    videoSetActivityFlow->setPresentationMode(
-        terminal || !detailsExpanded
-            ? VidStoreXProcessingFlow::PresentationMode::Compact
-            : VidStoreXProcessingFlow::PresentationMode::Normal);
-    videoSetActivityFlow->setParts(partStates);
-    const bool realFileProgress = operation.operation_type ==
-            video_set_workflow::OperationType::Recover &&
-        operation.progress_is_determinate && operation.progress_total != 0;
-    videoSetActivityFlow->setFileProgress(operation.progress_current,
-        operation.progress_total, realFileProgress);
-    videoSetActivityFlow->setAccessibleDescription(
-        flowMode == VidStoreXProcessingFlow::Mode::Create
-            ? tr("Live Data Path: file to parts to videos.")
-            : flowMode == VidStoreXProcessingFlow::Mode::Scan
-            ? tr("Live Data Path: videos are being checked; the original file is not being rebuilt yet.")
-            : tr("Live Data Path: videos to verified parts to the original file."));
-
     QString sourceSummary;
     if (!workflow.source_filename.empty()) {
         const QString sourceName = QFileInfo(QString::fromStdString(
@@ -6185,8 +6021,6 @@ void DriveManagerUI::renderVideoSetActivity() {
     videoSetActivityProgress->setVisible(!compactCompleted);
     videoSetActivityProgress->setAccessibleName(title);
     videoSetActivityProgress->setAccessibleDescription(counter);
-    videoSetActivityPartGrid->setAccessibleName(title);
-    videoSetActivityPartGrid->setAccessibleDescription(counter);
     videoSetActivityCounter->clear();
     const QString fullItem = QString::fromStdString(
         operation.current_item_name);
@@ -6745,8 +6579,6 @@ void DriveManagerUI::updateVideoSetAssistant() {
     const bool owningSurface =
         (view.path == video_set_workflow::Path::Create && createSurface) ||
         (view.path == video_set_workflow::Path::Recover && recoverSurface);
-    if (videoSetDataPathDrawer)
-        videoSetDataPathDrawer->setVisible(owningSurface);
     QString primaryMessage = translatedWorkflowText(view.primary_message);
     if (view.state == video_set_workflow::State::Planned)
         primaryMessage = tr("Your file will be divided into %1 videos.")
@@ -7833,10 +7665,6 @@ void DriveManagerUI::openRecentVideoSet(const QString &manifestPath) {
 }
 
 bool DriveManagerUI::eventFilter(QObject *object, QEvent *event) {
-    if (object == videoSetWorkflowArea && event->type() == QEvent::Resize) {
-        setVideoSetDataPathExpanded(
-            videoSetDataPathToggle && videoSetDataPathToggle->isChecked());
-    }
     if (object == videoSetSourceDropLabel) {
         if (event->type() == QEvent::DragEnter) {
             auto *drag = static_cast<QDragEnterEvent *>(event);
@@ -8043,8 +7871,6 @@ void DriveManagerUI::updateResponsiveLayout(const QSize &viewport) {
 
     if (videoSetActivityPanel && videoSetActivityPanel->isVisible())
         renderVideoSetActivity();
-    if (videoSetDataPathToggle)
-        setVideoSetDataPathExpanded(videoSetDataPathToggle->isChecked());
 }
 
 void DriveManagerUI::closeEvent(QCloseEvent *event) {
