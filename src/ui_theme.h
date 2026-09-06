@@ -29,7 +29,8 @@ struct Control final {
 };
 
 struct Layout final {
-    static constexpr int ContentMaxWidth = 1420;
+    static constexpr int ContentMaxWidth = 1280;
+    static constexpr int WorkflowTaskMaxWidth = 1240;
     static constexpr int WorkflowMaxWidth = 1880;
     static constexpr int HeroPadding = 18;
     static constexpr int SectionGap = 18;

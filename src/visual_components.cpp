@@ -117,33 +117,33 @@ void VidStoreXBlockProgress::setState(const State state) {
     update();
 }
 
-QSize VidStoreXBlockProgress::sizeHint() const { return {420, 18}; }
+QSize VidStoreXBlockProgress::sizeHint() const { return {420, 10}; }
 
 void VidStoreXBlockProgress::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setRenderHint(QPainter::Antialiasing, true);
     const auto t = vidstorex_ui::themeTokens(palette());
-    const int gap = 4;
-    const int count = qBound(8, width() / 54, 24);
-    const int blockWidth = qMax(4, (width() - gap * (count - 1)) / count);
-    const int totalWidth = count * blockWidth + (count - 1) * gap;
-    const int x0 = qMax(0, (width() - totalWidth) / 2);
-    const int h = qMax(6, height() - 4);
-    const int y = (height() - h) / 2;
-    int filled = 0;
-    if (state_ == State::Success) filled = count;
-    else if (state_ == State::Determinate && maximum_ != 0)
-        filled = static_cast<int>((value_ * count + maximum_ - 1) / maximum_);
-    for (int index = 0; index < count; ++index) {
-        QColor color = t.border;
-        if (state_ == State::Error) color = index < qMax(1, filled) ? t.error : t.border;
-        else if (state_ == State::Paused) color = index < filled ? t.textMuted : t.border;
-        else if (state_ == State::Indeterminate)
-            color = index == 0 ? t.accent : t.border;
-        else if (index < filled)
-            color = state_ == State::Success ? t.success : t.accent;
-        p.fillRect(QRect(x0 + index * (blockWidth + gap), y,
-                         blockWidth, h), color);
+    const qreal h = qBound<qreal>(4.0, height() - 2.0, 8.0);
+    const QRectF track(0.5, (height() - h) / 2.0,
+                       qMax(0, width() - 1), h);
+    QPainterPath trackPath;
+    trackPath.addRoundedRect(track, h / 2.0, h / 2.0);
+    p.fillPath(trackPath, t.border);
+    qreal ratio = 0.0;
+    if (state_ == State::Success) ratio = 1.0;
+    else if (state_ == State::Indeterminate) ratio = 0.18;
+    else if (maximum_ != 0)
+        ratio = qBound<qreal>(0.0,
+            static_cast<qreal>(value_) / static_cast<qreal>(maximum_), 1.0);
+    const QColor fill = state_ == State::Error ? t.error
+        : state_ == State::Paused ? t.textMuted
+        : state_ == State::Success ? t.success : t.accent;
+    if (ratio > 0.0) {
+        QRectF filled = track;
+        filled.setWidth(qMax(h, track.width() * ratio));
+        QPainterPath fillPath;
+        fillPath.addRoundedRect(filled, h / 2.0, h / 2.0);
+        p.fillPath(fillPath, fill);
     }
 }
 
@@ -245,9 +245,9 @@ VidStoreXProcessingFlow::VidStoreXProcessingFlow(QWidget *parent)
     setObjectName(QStringLiteral("videoSetLiveDataPath"));
     setFocusPolicy(Qt::NoFocus);
     setAttribute(Qt::WA_TransparentForMouseEvents);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    setMinimumHeight(78);
-    setAccessibleName(QStringLiteral("Live Data Path"));
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumSize(190, 238);
+    setAccessibleName(QStringLiteral("Data Path"));
 }
 
 void VidStoreXProcessingFlow::setMode(const Mode mode) {
@@ -259,7 +259,7 @@ void VidStoreXProcessingFlow::setPresentationMode(
     const PresentationMode mode) {
     if (presentationMode_ == mode) return;
     presentationMode_ = mode;
-    setMinimumHeight(mode == PresentationMode::Compact ? 58 : 78);
+    setMinimumHeight(mode == PresentationMode::Compact ? 220 : 260);
     updateGeometry();
     update();
 }
@@ -278,35 +278,32 @@ void VidStoreXProcessingFlow::setFileProgress(const quint64 value,
 }
 QSize VidStoreXProcessingFlow::sizeHint() const {
     return presentationMode_ == PresentationMode::Compact
-        ? QSize(620, 68) : QSize(620, 92);
+        ? QSize(210, 250) : QSize(230, 310);
 }
 QSize VidStoreXProcessingFlow::minimumSizeHint() const {
     return presentationMode_ == PresentationMode::Compact
-        ? QSize(320, 58) : QSize(360, 78);
+        ? QSize(180, 220) : QSize(190, 250);
 }
 
 void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
     const auto t = vidstorex_ui::themeTokens(palette());
-    constexpr qreal logicalWidth = 620.0;
     const bool compact = presentationMode_ == PresentationMode::Compact;
-    const qreal logicalHeight = compact ? 68.0 : 92.0;
-    const qreal scale = qMin(width() / logicalWidth, height() / logicalHeight);
-    if (scale <= 0) return;
-    p.translate((width() - logicalWidth * scale) / 2,
-                (height() - logicalHeight * scale) / 2);
-    p.scale(scale, scale);
     const bool reverse = mode_ == Mode::Recover || mode_ == Mode::Verify;
-    const qreal boxTop = compact ? 12.0 : 20.0;
-    const qreal boxHeight = compact ? 44.0 : 54.0;
-    const QRectF left(10, boxTop, 118, boxHeight),
-                 middle(220, boxTop, 180, boxHeight),
-                 right(492, boxTop, 118, boxHeight);
+    const qreal margin = compact ? 8.0 : 10.0;
+    const qreal gap = compact ? 22.0 : 28.0;
+    const qreal available = height() - margin * 2.0 - gap * 2.0;
+    const qreal boxHeight = qMax<qreal>(54.0, available / 3.0);
+    const QRectF first(margin, margin, width() - margin * 2.0, boxHeight);
+    const QRectF middle(margin, first.bottom() + gap,
+                        width() - margin * 2.0, boxHeight);
+    const QRectF last(margin, middle.bottom() + gap,
+                      width() - margin * 2.0, boxHeight);
     const auto box = [&](const QRectF &r, const QString &label,
                          const bool file, const bool partBox = false) {
         p.setPen(QPen(t.borderStrong, 2)); p.setBrush(t.surfaceRaised);
-        p.drawRect(r);
+        p.drawRoundedRect(r, 6, 6);
         if (file && fileDeterminate_) {
             const qreal ratio = static_cast<qreal>(fileValue_) / fileMaximum_;
             const QRectF fill(r.left() + 4,
@@ -315,10 +312,11 @@ void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
             p.fillRect(fill, t.accent);
         }
         p.setPen(t.textPrimary); QFont f = p.font(); f.setBold(true); p.setFont(f);
-        p.drawText(r.adjusted(6, 4, -6, -4),
-                   partBox ? Qt::AlignHCenter | Qt::AlignTop
-                           : Qt::AlignCenter,
-                   label);
+        const int textHeight = QFontMetrics(f).height();
+        const QRectF textCell = partBox
+            ? QRectF(r.left() + 8, r.top() + 6, r.width() - 16, textHeight + 4)
+            : r.adjusted(8, 5, -8, -5);
+        p.drawText(textCell, Qt::AlignHCenter | Qt::AlignVCenter, label);
     };
     const auto translatedLabel = [](const char *source) {
         return QCoreApplication::translate("DriveManagerUI", source);
@@ -331,24 +329,24 @@ void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
                   : translatedLabel("PARTS");
     const QString rightLabel = reverse ? translatedLabel("ORIGINAL FILE")
                                        : translatedLabel("VIDEOS");
-    box(left, leftLabel, false);
+    box(first, leftLabel, false);
     box(middle, midLabel, false, true);
-    box(right, rightLabel, reverse);
-    p.setPen(QPen(t.accent, 3, Qt::SolidLine, Qt::SquareCap));
-    const qreal arrowY = compact ? 34.0 : 47.0;
-    const auto arrow = [&](qreal x1, qreal x2) {
-        p.drawLine(QPointF(x1, arrowY), QPointF(x2, arrowY));
-        p.drawLine(QPointF(x2, arrowY), QPointF(x2 - 7, arrowY - 7));
-        p.drawLine(QPointF(x2, arrowY), QPointF(x2 - 7, arrowY + 7));
+    box(last, rightLabel, reverse);
+    p.setPen(QPen(t.accent, 2.5, Qt::SolidLine, Qt::RoundCap));
+    const auto arrow = [&](qreal y1, qreal y2) {
+        const qreal x = width() / 2.0;
+        p.drawLine(QPointF(x, y1), QPointF(x, y2));
+        p.drawLine(QPointF(x, y2), QPointF(x - 6, y2 - 7));
+        p.drawLine(QPointF(x, y2), QPointF(x + 6, y2 - 7));
     };
-    arrow(143, 204); arrow(415, 476);
+    arrow(first.bottom() + 4, middle.top() - 5);
+    arrow(middle.bottom() + 4, last.top() - 5);
     if (!parts_.isEmpty()) {
-        const bool aggregated = parts_.size() > 40;
-        const int visible = aggregated ? 20 : qMin(40, parts_.size());
+        const bool aggregated = parts_.size() > 12;
+        const int visible = aggregated ? 10 : parts_.size();
         const qreal gap = parts_.size() <= 12 ? 4.0 : 2.0;
-        const qreal preferredCell = parts_.size() == 1
-            ? (compact ? 28.0 : 34.0)
-            : parts_.size() <= 12 ? (compact ? 19.0 : 24.0) : 8.0;
+        const qreal preferredCell = parts_.size() == 1 ? 24.0
+            : parts_.size() <= 12 ? 14.0 : 7.0;
         const qreal cell = qMin(preferredCell,
             (middle.width() - 20.0 - gap * (visible - 1)) / visible);
         const qreal total = visible * cell + (visible - 1) * gap;
@@ -373,7 +371,7 @@ void VidStoreXProcessingFlow::paintEvent(QPaintEvent *) {
                     state = candidate;
             }
             drawPartMarker(p,
-                QRectF(x0 + slot * (cell + gap), middle.bottom() - cell - 6,
+                QRectF(x0 + slot * (cell + gap), middle.bottom() - cell - 7,
                        cell, cell), state, t, cell < 18.0);
         }
     }
@@ -703,14 +701,14 @@ QSize VidStoreXStepper::sizeHint() const {
         QStringLiteral("compact");
     const bool shortHeight = property("heightDensity").toString() ==
         QStringLiteral("short");
-    return {compactWidth ? 640 : 720, shortHeight ? 44 : 48};
+    return {compactWidth ? 640 : 720, shortHeight ? 40 : 44};
 }
 QSize VidStoreXStepper::minimumSizeHint() const {
     const bool compactWidth = property("densityMode").toString() ==
         QStringLiteral("compact");
     const bool shortHeight = property("heightDensity").toString() ==
         QStringLiteral("short");
-    return {compactWidth ? 420 : 460, shortHeight ? 42 : 46};
+    return {compactWidth ? 420 : 460, shortHeight ? 38 : 42};
 }
 
 void VidStoreXStepper::paintEvent(QPaintEvent *) {
@@ -722,7 +720,7 @@ void VidStoreXStepper::paintEvent(QPaintEvent *) {
     const int segment = width() / count;
     const bool shortHeight = property("heightDensity").toString() ==
         QStringLiteral("short");
-    const int box = qMin(shortHeight ? 26 : 28, height() - 18);
+    const int box = qMin(shortHeight ? 24 : 26, height() - 16);
     const int boxY = 2;
     QFont labelFont = font();
     labelFont.setPointSizeF(qMax(8.0, labelFont.pointSizeF() - 1.0));

@@ -254,6 +254,7 @@ std::optional<Model> makeRecoveryModel(const RecoveryEvidence &evidence,
     model.fileName = cleanFileName(evidence.recoveredFilePath);
     model.fileSizeBytes = evidence.fileSizeBytes;
     model.profileName = evidence.profileName;
+    model.setId = evidence.setId.toUpper();
     model.partCount = evidence.partCount;
     model.verifiedPartCount = evidence.verifiedPartCount;
     model.sourceKind = evidence.sourceKind;
@@ -295,9 +296,12 @@ QString Renderer::visibleText(const Model &model,
             lines << shortSha(model.sha256);
         if (privacy.showFullSha && model.shaVerified) lines << model.sha256;
     }
-    if (privacy.showTechnicalDetails)
+    if (privacy.showTechnicalDetails) {
         lines << QStringLiteral("%1=%2").arg(t("Verified Parts"))
                  .arg(model.verifiedPartCount);
+        if (!model.setId.isEmpty())
+            lines << QStringLiteral("Set ID=%1").arg(model.setId);
+    }
     lines << QLocale(model.localeName).toString(
         model.timestamp, QLocale::ShortFormat);
     lines << (model.appVersion.isEmpty()
@@ -550,7 +554,7 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
     setObjectName(QStringLiteral("resultCardPreviewDialog"));
     setModal(true);
     setMinimumSize(620, 390);
-    QSize dialogSize(860, 560);
+    QSize dialogSize(800, 520);
     if (const auto *screen = QApplication::primaryScreen()) {
         const QSize safe = screen->availableGeometry().size() - QSize(48, 48);
         dialogSize = dialogSize.boundedTo(safe).expandedTo(minimumSize());

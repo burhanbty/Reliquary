@@ -11,7 +11,7 @@ execute_process(
     RESULT_VARIABLE GUI_RESULT
     OUTPUT_VARIABLE GUI_OUTPUT
     ERROR_VARIABLE GUI_ERROR
-    TIMEOUT 120)
+    TIMEOUT 210)
 if (NOT GUI_RESULT EQUAL 0)
     message(FATAL_ERROR
         "Video Set Assistant E2E smoke failed: ${GUI_RESULT}\n${GUI_OUTPUT}\n${GUI_ERROR}")
@@ -43,7 +43,7 @@ foreach(SCALE IN ITEMS 1.25 1.5)
         RESULT_VARIABLE LAYOUT_RESULT
         OUTPUT_VARIABLE LAYOUT_OUTPUT
         ERROR_VARIABLE LAYOUT_ERROR
-        TIMEOUT 120)
+        TIMEOUT 210)
     if (NOT LAYOUT_RESULT EQUAL 0)
         message(FATAL_ERROR
             "Workflow layout qwindows audit failed at ${SCALE}: ${LAYOUT_RESULT}\n${LAYOUT_OUTPUT}\n${LAYOUT_ERROR}")

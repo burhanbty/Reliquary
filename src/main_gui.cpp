@@ -37,6 +37,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSet>
+#include <QShortcut>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -1044,6 +1045,8 @@ int main(int argc, char *argv[]) {
             "instantPlaylistRecoveryStatus");
         auto *success = window.findChild<QLabel *>(
             "videoSetAssistantExactSuccess");
+        auto *successDetails = window.findChild<QLabel *>(
+            "videoSetSuccessDetailsText");
         auto *resultCard = window.findChild<QPushButton *>(
             "videoSetRecoveryResultCardButton");
         auto *activityPanel = window.findChild<QFrame *>(
@@ -1649,6 +1652,8 @@ int main(int argc, char *argv[]) {
             "videoSetAssistantScanSummary");
         auto *success = window.findChild<QLabel *>(
             "videoSetAssistantExactSuccess");
+        auto *successDetails = window.findChild<QLabel *>(
+            "videoSetSuccessDetailsText");
         auto *recoveryResultCard = window.findChild<QPushButton *>(
             "videoSetRecoveryResultCardButton");
         auto *recent = window.findChild<QListWidget *>(
@@ -1661,6 +1666,16 @@ int main(int argc, char *argv[]) {
             "videoSetRecentPage");
         auto *actionBar = window.findChild<QFrame *>(
             "videoSetWizardActionBar");
+        auto *workflowArea = window.findChild<QFrame *>(
+            "videoSetWorkflowArea");
+        auto *workflowMain = window.findChild<QWidget *>(
+            "videoSetWorkflowMain");
+        auto *dataPathDrawer = window.findChild<QFrame *>(
+            "videoSetDataPathDrawer");
+        auto *dataPathToggle = window.findChild<QToolButton *>(
+            "videoSetDataPathToggle");
+        auto *dataPathPanel = window.findChild<QWidget *>(
+            "videoSetDataPathPanel");
         auto *sourceBack = window.findChild<QPushButton *>(
             "videoSetAssistantSourceBack");
         auto *modeBack = window.findChild<QPushButton *>(
@@ -1789,8 +1804,10 @@ int main(int argc, char *argv[]) {
             !createResultCard || !recoveryResultCard ||
             !progressPart || !uploaded || !recoveryInput ||
             !recoveryOutput || !scan || !recover || !scanSummary ||
-            !success || !recent || !recentFull || !recentNavigation ||
-            !recentPage || !actionBar || !sourceBack || !modeBack ||
+            !success || !successDetails || !recent || !recentFull ||
+            !recentNavigation || !recentPage || !actionBar ||
+            !workflowArea || !workflowMain || !dataPathDrawer ||
+            !dataPathToggle || !dataPathPanel || !sourceBack || !modeBack ||
             !planBack || !activityPanel || !activityTitle ||
             !activityDescription || !activityElapsed ||
             !activityProgressLabel || !activityProgress ||
@@ -1902,7 +1919,14 @@ int main(int argc, char *argv[]) {
                 return false;
             const QRect buttonRect(button->mapTo(&window, QPoint()),
                                    button->size());
+            const QRect scrollRect(
+                assistantScroll->mapTo(&window, QPoint()),
+                assistantScroll->size());
+            const QRect barRect(actionBar->mapTo(&window, QPoint()),
+                                actionBar->size());
             return window.rect().contains(buttonRect) &&
+                !scrollRect.intersects(barRect) &&
+                scrollRect.bottom() < barRect.top() &&
                 actionBar->geometry().bottom() <=
                     window.QMainWindow::centralWidget()->height();
         };
@@ -1928,13 +1952,96 @@ int main(int argc, char *argv[]) {
                 applicationHeader->height() > 76 ||
                 workflowStepper->height() > 50 ||
                 sourceHeading->mapTo(&window, QPoint()).x() > 80 ||
+                dataPathToggle->isChecked() ||
+                dataPathPanel->isVisible() ||
+                dataPathDrawer->width() < 32 ||
+                dataPathDrawer->width() > 44 ||
+                dataPathDrawer->geometry().right() !=
+                    workflowArea->rect().right() ||
+                workflowMain->width() >
+                    vidstorex_ui::Layout::WorkflowTaskMaxWidth ||
+                workflowMain->width() < 1100 ||
                 !actionIsPinnedAndVisible(sourceContinue) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-create-step1-" + suffix + ".png"))) {
-                qCritical() << "Create Step 1 pinned action audit failed" << suffix;
+                qCritical() << "Create Step 1 pinned action audit failed"
+                    << suffix << "actualWindow" << window.size()
+                    << "stack" << stack->currentIndex()
+                    << "activityHidden" << activityPanel->isHidden()
+                    << "header" << applicationHeader->height()
+                    << "stepper" << workflowStepper->height()
+                    << "headingX" << sourceHeading->mapTo(&window, QPoint()).x()
+                    << "drawer" << dataPathDrawer->geometry()
+                    << "workflowArea" << workflowArea->rect()
+                    << "drawerChecked" << dataPathToggle->isChecked()
+                    << "panelVisible" << dataPathPanel->isVisible()
+                    << "workflowMain" << workflowMain->geometry()
+                    << "pinned" << actionIsPinnedAndVisible(sourceContinue)
+                    << "windowMinHint" << window.minimumSizeHint();
                 return 86;
             }
         }
+        const auto drawerDoesNotCoverFooter = [&]() {
+            const QRect drawerRect(dataPathDrawer->mapTo(&window, QPoint()),
+                                   dataPathDrawer->size());
+            const QRect footerRect(actionBar->mapTo(&window, QPoint()),
+                                   actionBar->size());
+            return !drawerRect.intersects(footerRect);
+        };
+        window.resize(1366, 768);
+        dataPathToggle->click();
+        QApplication::processEvents();
+        if (!dataPathToggle->isChecked() || !dataPathPanel->isVisible() ||
+            !activityFlow->isVisible() ||
+            dataPathDrawer->width() < 220 || dataPathDrawer->width() > 280 ||
+            !dataPathDrawer->property("overlay").toBool() ||
+            dataPathDrawer->geometry().right() !=
+                workflowArea->rect().right() ||
+            activityDetails->isAncestorOf(activityFlow) ||
+            !dataPathPanel->isAncestorOf(activityFlow) ||
+            !drawerDoesNotCoverFooter() ||
+            !window.grab().save(QDir(root).filePath(
+                "e2e-data-path-expanded-create-1366x768.png"))) {
+            qCritical() << "Compact Data Path overlay audit failed";
+            return 132;
+        }
+        QKeyEvent drawerEscape(QEvent::KeyPress, Qt::Key_Escape,
+                               Qt::NoModifier);
+        QWidget *escapeTarget = QApplication::focusWidget();
+        if (!escapeTarget) escapeTarget = &window;
+        QApplication::sendEvent(escapeTarget, &drawerEscape);
+        QKeyEvent drawerEscapeRelease(QEvent::KeyRelease, Qt::Key_Escape,
+                                      Qt::NoModifier);
+        QApplication::sendEvent(escapeTarget, &drawerEscapeRelease);
+        QApplication::processEvents();
+        if (dataPathToggle->isChecked()) {
+            auto *escapeShortcut = window.findChild<QShortcut *>(
+                "videoSetDataPathEscapeShortcut");
+            if (escapeShortcut)
+                QMetaObject::invokeMethod(escapeShortcut, "activated",
+                                          Qt::DirectConnection);
+            QApplication::processEvents();
+        }
+        if (dataPathToggle->isChecked() || dataPathPanel->isVisible() ||
+            dataPathDrawer->width() < 32 || dataPathDrawer->width() > 44) {
+            qCritical() << "Escape did not collapse the Data Path drawer";
+            return 133;
+        }
+        window.resize(1600, 900);
+        dataPathToggle->click();
+        QApplication::processEvents();
+        if (!dataPathToggle->isChecked() || !dataPathPanel->isVisible() ||
+            dataPathDrawer->property("overlay").toBool() ||
+            dataPathDrawer->width() < 220 || dataPathDrawer->width() > 280 ||
+            workflowMain->geometry().right() >= dataPathDrawer->geometry().left() ||
+            !drawerDoesNotCoverFooter() ||
+            !window.grab().save(QDir(root).filePath(
+                "e2e-data-path-expanded-create-1600x900.png"))) {
+            qCritical() << "Wide Data Path inline audit failed";
+            return 134;
+        }
+        dataPathToggle->click();
+        QApplication::processEvents();
         sourceContinue->click();
         QApplication::processEvents();
         for (const auto &[size, suffix] : homeSizes) {
@@ -2134,7 +2241,7 @@ int main(int argc, char *argv[]) {
             bool activeDownloadCaptured = false;
         };
         auto *state = new SmokeState{
-            0, QDateTime::currentMSecsSinceEpoch() + 110000, {}, {}, {},
+            0, QDateTime::currentMSecsSinceEpoch() + 180000, {}, {}, {},
             false, false, false, false, false, false, false, false, 0, {}};
         auto *timer = new QTimer(&app);
         timer->setInterval(100);
@@ -2166,8 +2273,9 @@ int main(int argc, char *argv[]) {
                         .arg(activityPanel->property("observedScan").toBool())
                         .arg(activityPanel->property("observedRecovery").toBool())
                         .arg(activityPanel->property("observedFinalHash").toBool()) +
-                    QString(" description=%1 log=%2")
+                    QString(" description=%1 downloadStatus=%2 log=%3")
                         .arg(activityDescription->text(),
+                             downloadStatus->text(),
                              activityLog->toPlainText().right(1200)));
                 return;
             }
@@ -2225,7 +2333,7 @@ int main(int argc, char *argv[]) {
                         !activityPanel->property("terminalOperation").toBool() ||
                         activityFlow->presentationMode() !=
                             VidStoreXProcessingFlow::PresentationMode::Compact ||
-                        activityPanel->height() > 160 ||
+                        activityPanel->height() > 130 ||
                         activityDetailsButton->isChecked() ||
                         activityDetails->isVisible() ||
                         activityFlow->isVisible()) {
@@ -2269,7 +2377,7 @@ int main(int argc, char *argv[]) {
                         QApplication::processEvents();
                         if (stack->currentIndex() != 3 ||
                             activityPanel->isHidden() ||
-                            activityPanel->height() > 160 ||
+                            activityPanel->height() > 130 ||
                             activityDetails->isVisible() ||
                             activityFlow->isVisible() ||
                             applicationHeader->height() > 76 ||
@@ -2537,8 +2645,12 @@ int main(int argc, char *argv[]) {
             }
             if (state->stage == 31) {
                 if (activityPanel->property("terminalOperation").toBool() &&
-                    activityTitle->text().contains("failed",
-                        Qt::CaseInsensitive)) {
+                    (activityTitle->text().contains("failed",
+                         Qt::CaseInsensitive) ||
+                     downloadStatus->text().contains("stopped",
+                         Qt::CaseInsensitive) ||
+                     downloadStatus->text().contains("could not",
+                         Qt::CaseInsensitive))) {
                     fail(131, QString(
                         "Create YouTube download failed: %1 | %2 | %3")
                         .arg(activityDescription->text(),
@@ -2605,7 +2717,7 @@ int main(int argc, char *argv[]) {
                 if (activityPanel->isHidden() || activityFlow->isVisible() ||
                     activityDetails->isVisible() ||
                     activityDetailsButton->isChecked() ||
-                    activityPanel->height() > 160 ||
+                    activityPanel->height() > 130 ||
                     activityFlow->mode() != VidStoreXProcessingFlow::Mode::Create ||
                     activityFlow->presentationMode() !=
                         VidStoreXProcessingFlow::PresentationMode::Compact ||
@@ -2744,13 +2856,24 @@ int main(int argc, char *argv[]) {
                     fail(39, "Assistant exact-success screen was not shown");
                     return;
                 }
+                const QString canonicalProfile = QStringLiteral("High Capacity");
+                if (!successDetails->text().contains(
+                        QStringLiteral("source.bin")) ||
+                    !successDetails->text().contains(canonicalProfile) ||
+                    !successDetails->text().contains(
+                        QStringLiteral("SHA-256"))) {
+                    fail(135, QStringLiteral(
+                        "Recovery completion details are not canonical: ") +
+                        successDetails->text());
+                    return;
+                }
                 if (!state->recoveryCardDone) {
                     QString cardError;
                     if (!exerciseResultCardPreview(
                             recoveryResultCard,
                             QDir(root).filePath("recovery-result-card.png"),
                             {QStringLiteral("source.bin"),
-                             QStringLiteral("High Capacity"),
+                             canonicalProfile,
                              QStringLiteral("YouTube Round-Trip"),
                              QStringLiteral("SHA-256"),
                              QStringLiteral("Match")},
@@ -2764,9 +2887,11 @@ int main(int argc, char *argv[]) {
                     }
                     state->recoveryCardDone = true;
                 }
+                window.resize(1366, 768);
+                QApplication::processEvents();
                 if (!successRail->isVisible() || successRail->height() < 1 ||
                     !window.grab().save(
-                        QDir(root).filePath("e2e-success-en.png"))) {
+                        QDir(root).filePath("e2e-success-en-1366x768.png"))) {
                     fail(61, "Exact-success signature or visual audit is missing");
                     return;
                 }

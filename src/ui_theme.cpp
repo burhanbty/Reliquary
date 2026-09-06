@@ -137,7 +137,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         QWidget#capacityLabContent,
         QWidget#advancedLandingContent,
         QWidget#experimentalYouTubeSyncContent {
-            background: %1;
+            background: %22;
         }
         QTabWidget#applicationPages::pane { border: 0; margin: 0; }
         QFrame#applicationHeader {
@@ -151,11 +151,11 @@ QString applicationStyleSheet(const QPalette &palette) {
         QLabel[sectionTitle="true"] { font-size: 17px; font-weight: 700; color: %5; }
         QLabel[cardTitle="true"] { font-size: 16px; font-weight: 700; color: %5; }
         QWidget[workflowPage="true"] QLabel[pageTitle="true"] {
-            font-size: 20px;
+            font-size: 18px;
         }
         QWidget[workflowPage="true"] QLabel[sectionTitle="true"],
         QFrame#videoSetActivityPanel QLabel[cardTitle="true"] {
-            font-size: 15px;
+            font-size: 14px;
         }
         QLabel#videoSetActivityDescription,
         QLabel#videoSetProcessingSummary,
@@ -242,6 +242,19 @@ QString applicationStyleSheet(const QPalette &palette) {
         QWidget#videoSetLiveDataPath {
             background: %1; border: 1px solid %13; border-radius: 8px;
         }
+        QFrame#videoSetDataPathDrawer {
+            background: %2; border: 1px solid %13; border-radius: 8px;
+        }
+        QFrame#videoSetDataPathDrawer[overlay="true"] {
+            background: %2; border-left: 2px solid %8;
+        }
+        QToolButton#videoSetDataPathToggle {
+            min-width: 40px; max-width: 40px; padding: 0;
+            border: 0; border-right: 1px solid %13; border-radius: 0;
+            color: %8; font-size: 18px; font-weight: 700;
+        }
+        QToolButton#videoSetDataPathToggle:checked { background: %4; }
+        QWidget#videoSetDataPathPanel { background: %2; }
         QWidget#videoSetAssistantStepper {
             background: %1; border: 1px solid %13; border-radius: 5px;
         }
@@ -284,6 +297,9 @@ QString applicationStyleSheet(const QPalette &palette) {
             min-height: 34px; background: transparent; border: 0;
             border-bottom: 3px solid transparent; border-radius: 0;
             padding: 1px 11px; color: %6; font-weight: 600;
+        }
+        QToolButton#advancedNavigationButton::menu-indicator {
+            image: none; width: 0px;
         }
         QPushButton[nav="true"]:hover, QToolButton[nav="true"]:hover {
             background: %3; color: %5;

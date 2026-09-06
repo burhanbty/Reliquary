@@ -28,6 +28,7 @@ result_card::RecoveryEvidence recoveryEvidence(
         QStringLiteral("C:/Users/private/Recovered/archive.zip");
     evidence.fileSizeBytes = 842ULL * 1024 * 1024;
     evidence.profileName = QStringLiteral("high-capacity");
+    evidence.setId = QStringLiteral("0123456789abcdef0123456789abcdef");
     evidence.partCount = parts;
     evidence.verifiedPartCount = parts;
     evidence.sourceKind = source;
@@ -88,6 +89,11 @@ TEST(ResultCardModel, ExactRecoveryRequiresShaAndEveryPart) {
     ASSERT_TRUE(model.has_value());
     EXPECT_TRUE(model->shaVerified);
     EXPECT_TRUE(model->youtubeRoundTripVerified);
+    EXPECT_EQ(model->fileName, QStringLiteral("archive.zip"));
+    EXPECT_EQ(model->profileName, QStringLiteral("high-capacity"));
+    EXPECT_EQ(model->partCount, 4u);
+    EXPECT_EQ(model->setId,
+              QStringLiteral("0123456789ABCDEF0123456789ABCDEF"));
 
     auto mismatch = recoveryEvidence();
     mismatch.status = result_card::RecoveryStatus::ShaMismatch;
@@ -99,6 +105,26 @@ TEST(ResultCardModel, ExactRecoveryRequiresShaAndEveryPart) {
     incomplete.verifiedPartCount = 3;
     EXPECT_FALSE(result_card::makeRecoveryModel(
         incomplete, QStringLiteral("en_US")).has_value());
+}
+
+TEST(ResultCardModel, RecoveryCardUsesCanonicalCompletedSetMetadata) {
+    auto evidence = recoveryEvidence(result_card::SourceKind::Local, 12);
+    evidence.profileName = QStringLiteral("resilient");
+    evidence.setId = QStringLiteral("abcdef0123456789abcdef0123456789");
+    const auto model = result_card::makeRecoveryModel(
+        evidence, QStringLiteral("en_US"));
+    ASSERT_TRUE(model.has_value());
+    EXPECT_EQ(model->profileName, QStringLiteral("resilient"));
+    EXPECT_EQ(model->partCount, 12u);
+    EXPECT_EQ(model->setId,
+              QStringLiteral("ABCDEF0123456789ABCDEF0123456789"));
+
+    result_card::PrivacyOptions privacy;
+    privacy.showTechnicalDetails = true;
+    const QString text = result_card::Renderer::visibleText(*model, privacy);
+    EXPECT_TRUE(text.contains(QStringLiteral("Resilient")));
+    EXPECT_FALSE(text.contains(QStringLiteral("High Capacity")));
+    EXPECT_TRUE(text.contains(model->setId));
 }
 
 TEST(ResultCardModel, YouTubeClaimIsSpecificToReturnedPlaylistEvidence) {

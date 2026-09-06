@@ -349,6 +349,8 @@ private:
 
     void renderVideoSetActivity();
 
+    void setVideoSetDataPathExpanded(bool expanded);
+
     [[nodiscard]] video_set_workflow::PresentationPage
     currentOperationPresentationPage() const noexcept;
 
@@ -597,6 +599,12 @@ private:
 
     // Video Set Assistant (guided UI over the existing file-only CLI workflow)
     QWidget *videoSetPage = nullptr;
+    QFrame *videoSetWorkflowArea = nullptr;
+    QWidget *videoSetWorkflowMain = nullptr;
+    QFrame *videoSetDataPathDrawer = nullptr;
+    QWidget *videoSetDataPathPanel = nullptr;
+    QToolButton *videoSetDataPathToggle = nullptr;
+    QLabel *videoSetDataPathTitle = nullptr;
     QWidget *videoSetWelcomePage = nullptr;
     QWidget *videoSetRecentPage = nullptr;
     QLabel *videoSetRecentPageTitle = nullptr;
@@ -770,6 +778,7 @@ private:
     QString videoSetCurrentManifest;
     QString videoSetFinalSha;
     QString videoSetRecoveredProfileName;
+    QString videoSetRecoveredSetId;
     QDateTime videoSetCreateCompletedAt;
     QDateTime videoSetRecoveryCompletedAt;
     bool videoSetRecoveryFromYouTube = false;

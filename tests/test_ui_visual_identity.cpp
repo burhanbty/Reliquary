@@ -444,11 +444,30 @@ TEST(UiVisualIdentity, LiveDataPathHasCompactTerminalPresentation) {
     const QSize compactHint = flow.sizeHint();
     const QImage compact = render(flow, compactHint);
     EXPECT_LT(compactHint.height(), normalHint.height());
-    EXPECT_GE(compactHint.height(), 58);
+    EXPECT_GT(compactHint.height(), compactHint.width());
+    EXPECT_GE(compactHint.height(), 220);
     EXPECT_GT(unique_opaque_colors(normal), 4);
     EXPECT_GT(unique_opaque_colors(compact), 4);
     EXPECT_EQ(flow.presentationMode(),
               VidStoreXProcessingFlow::PresentationMode::Compact);
+}
+
+TEST(UiVisualIdentity, WorkflowTaskColumnAndDataPathRailStayWithinContract) {
+    EXPECT_GE(vidstorex_ui::Layout::WorkflowTaskMaxWidth, 1100);
+    EXPECT_LE(vidstorex_ui::Layout::WorkflowTaskMaxWidth, 1320);
+    EXPECT_LE(vidstorex_ui::Layout::WorkflowTaskMaxWidth,
+              vidstorex_ui::Layout::ContentMaxWidth);
+
+    VidStoreXProcessingFlow flow;
+    QVector<VidStoreXPartState> parts(64, VidStoreXPartState::Verified);
+    parts[17] = VidStoreXPartState::Active;
+    parts[51] = VidStoreXPartState::Missing;
+    flow.setParts(parts);
+    const QSize hint = flow.sizeHint();
+    EXPECT_GT(hint.height(), hint.width());
+    EXPECT_GE(hint.width(), 220);
+    EXPECT_LE(hint.width(), 280);
+    EXPECT_GT(unique_opaque_colors(render(flow, hint)), 4);
 }
 
 TEST(UiVisualIdentity, StepperUsesCompactHeightWithoutClipping) {
@@ -457,7 +476,7 @@ TEST(UiVisualIdentity, StepperUsesCompactHeightWithoutClipping) {
     stepper.setProperty("densityMode", "compact");
     stepper.setProperty("heightDensity", "short");
     const QImage compact = render(stepper, stepper.sizeHint());
-    EXPECT_EQ(stepper.sizeHint().height(), 44);
+    EXPECT_EQ(stepper.sizeHint().height(), 40);
     EXPECT_LE(stepper.minimumSizeHint().width(), 420);
     EXPECT_GT(unique_opaque_colors(compact), 4);
 }

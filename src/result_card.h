@@ -61,6 +61,7 @@ struct RecoveryEvidence {
     QString recoveredFilePath;
     quint64 fileSizeBytes = 0;
     QString profileName;
+    QString setId;
     uint32_t partCount = 0;
     uint32_t verifiedPartCount = 0;
     SourceKind sourceKind = SourceKind::Unknown;
@@ -76,6 +77,7 @@ struct Model {
     QString fileName;
     quint64 fileSizeBytes = 0;
     QString profileName;
+    QString setId;
     uint32_t partCount = 0;
     uint32_t verifiedPartCount = 0;
     SourceKind sourceKind = SourceKind::Unknown;
