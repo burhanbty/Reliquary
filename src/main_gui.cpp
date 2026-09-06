@@ -1810,10 +1810,19 @@ int main(int argc, char *argv[]) {
             qCritical() << "Assistant E2E smoke controls were not found";
             return 31;
         }
-        if (window.findChild<QWidget *>("videoSetDataPathDrawer") ||
-            window.findChild<QWidget *>("videoSetDataPathToggle") ||
-            window.findChild<QWidget *>("videoSetDataPathPanel") ||
-            window.findChild<QWidget *>("videoSetLiveDataPath")) {
+        const auto processingVisualsAbsent = [&window, activityPanel]() {
+            for (auto *widget : window.findChildren<QWidget *>())
+                if (dynamic_cast<VidStoreXProcessingFlow *>(widget) ||
+                    dynamic_cast<VidStoreXPartGrid *>(widget))
+                    return false;
+            return !window.findChild<QWidget *>("videoSetDataPathDrawer") &&
+                !window.findChild<QWidget *>("videoSetDataPathToggle") &&
+                !window.findChild<QWidget *>("videoSetDataPathPanel") &&
+                !window.findChild<QWidget *>("videoSetLiveDataPath") &&
+                !window.findChild<QWidget *>("videoSetPartGrid") &&
+                activityPanel->minimumHeight() == 0;
+        };
+        if (!processingVisualsAbsent()) {
             qCritical() << "Removed Data Path presentation is still present";
             return 132;
         }
@@ -2160,6 +2169,7 @@ int main(int argc, char *argv[]) {
             qint64 planFrozenAt = 0;
             QString planDuration;
             bool activeDownloadCaptured = false;
+            bool scanActiveCaptured = false;
         };
         auto *state = new SmokeState{
             0, QDateTime::currentMSecsSinceEpoch() + 180000, {}, {}, {},
@@ -2176,6 +2186,15 @@ int main(int argc, char *argv[]) {
                     diagnostic.write(message.toUtf8());
                 timer->stop();
                 app.exit(code);
+            };
+            const auto appendMetric = [root](const QString &name,
+                                              const int height) {
+                QFile metrics(QDir(root).filePath(
+                    "processing-flow-layout-metrics.txt"));
+                if (metrics.open(QIODevice::WriteOnly | QIODevice::Append |
+                                 QIODevice::Text))
+                    metrics.write(QString("%1=%2\n").arg(name).arg(height)
+                                      .toUtf8());
             };
             if (QDateTime::currentMSecsSinceEpoch() > state->deadline) {
                 fail(32, QString(
@@ -2282,6 +2301,16 @@ int main(int argc, char *argv[]) {
                     fail(80, "Completed plan Turkish copy is incomplete");
                     return;
                 }
+                activityDetailsButton->click();
+                QApplication::processEvents();
+                if (!activityDetailsButton->isChecked() ||
+                    !activityDetails->isVisible() ||
+                    !processingVisualsAbsent()) {
+                    fail(136, "Processing visual returned when Details opened");
+                    return;
+                }
+                activityDetailsButton->click();
+                QApplication::processEvents();
                 window.grab().save(QDir(root).filePath(
                     "e2e-plan-complete-tr.png"));
                 language->setCurrentIndex(language->findData("en"));
@@ -2335,6 +2364,21 @@ int main(int argc, char *argv[]) {
                                 .arg(stack->currentWidget()->minimumSizeHint().height())
                                 .arg(assistantScroll->viewport()->height()));
                             return;
+                        }
+                        if (size == QSize(1366, 768) ||
+                            size == QSize(1600, 900)) {
+                            const QString requestedName = size.width() == 1366
+                                ? "e2e-no-processing-create-plan-complete-1366x768.png"
+                                : "e2e-no-processing-create-plan-complete-1600x900.png";
+                            if (!processingVisualsAbsent() ||
+                                !window.grab().save(
+                                    QDir(root).filePath(requestedName))) {
+                                fail(137, "Create plan Processing Flow audit failed: " +
+                                    suffix);
+                                return;
+                            }
+                            appendMetric("create-plan-complete-" + suffix,
+                                         activityPanel->height());
                         }
                     }
                     language->setCurrentIndex(language->findData("en"));
@@ -2428,6 +2472,14 @@ int main(int argc, char *argv[]) {
                 }
                 if (!progressPart->text().contains("verified locally")) {
                     fail(34, "Assistant did not show local exact completion");
+                    return;
+                }
+                window.resize(1600, 900);
+                QApplication::processEvents();
+                if (!processingVisualsAbsent() ||
+                    !window.grab().save(QDir(root).filePath(
+                        "e2e-no-processing-create-encode-completed-1600x900.png"))) {
+                    fail(138, "Completed Create still exposes Processing Flow");
                     return;
                 }
                 if (!state->createCardDone) {
@@ -2690,6 +2742,18 @@ int main(int argc, char *argv[]) {
             if (state->stage == 4 &&
                 activityPanel->property("observedScan").toBool()) {
                 state->sawScan = true;
+                if (!state->scanActiveCaptured &&
+                    !activityPanel->property("terminalOperation").toBool()) {
+                    window.resize(1366, 768);
+                    QApplication::processEvents();
+                    if (!processingVisualsAbsent() ||
+                        !window.grab().save(QDir(root).filePath(
+                            "e2e-no-processing-recover-scan-active-1366x768.png"))) {
+                        fail(139, "Active Recover scan exposes Processing Flow");
+                        return;
+                    }
+                    state->scanActiveCaptured = true;
+                }
                 if (recover->isEnabled()) {
                     if (activityPanel->isHidden() ||
                         activityTitle->text() !=
@@ -2744,6 +2808,14 @@ int main(int argc, char *argv[]) {
                     fail(38, "Assistant scan did not report a complete set");
                     return;
                 }
+                window.resize(1600, 900);
+                QApplication::processEvents();
+                if (!processingVisualsAbsent() ||
+                    !window.grab().save(QDir(root).filePath(
+                        "e2e-no-processing-recover-scan-completed-1600x900.png"))) {
+                    fail(140, "Completed Recover scan exposes Processing Flow");
+                    return;
+                }
                 window.grab().save(QDir(root).filePath("e2e-scan-en.png"));
                 recover->click();
                 state->stage = 5;
@@ -2759,6 +2831,10 @@ int main(int argc, char *argv[]) {
                 }
                 if (!success->text().contains("recovered exactly")) {
                     fail(39, "Assistant exact-success screen was not shown");
+                    return;
+                }
+                if (!processingVisualsAbsent()) {
+                    fail(141, "Recovery success exposes Processing Flow");
                     return;
                 }
                 const QString canonicalProfile = QStringLiteral("High Capacity");
@@ -2986,6 +3062,31 @@ int main(int argc, char *argv[]) {
                 }
                 if (QSettings().value("ui/language").toString() != "tr") {
                     fail(56, "Runtime language preference was not persisted");
+                    return;
+                }
+                const QString emptyRecovery = QDir(root).filePath(
+                    "no-valid-parts");
+                QDir().mkpath(emptyRecovery);
+                recoveryInput->setText(emptyRecovery);
+                scan->click();
+                state->stage = 8;
+                qInfo() << "Assistant E2E stage 8: checking no valid parts";
+                return;
+            }
+            if (state->stage == 8 && scan->isEnabled() &&
+                activityPanel->property("terminalOperation").toBool() &&
+                (activityTitle->text().contains("failed",
+                     Qt::CaseInsensitive) ||
+                 activityTitle->text().contains(QString::fromUtf8("başarısız"),
+                     Qt::CaseInsensitive))) {
+                window.resize(1600, 900);
+                QApplication::processEvents();
+                appendMetric("recover-no-valid-parts-1600x900",
+                             activityPanel->height());
+                if (!processingVisualsAbsent() ||
+                    !window.grab().save(QDir(root).filePath(
+                        "e2e-no-processing-recover-no-valid-parts-1600x900.png"))) {
+                    fail(142, "No-valid-parts failure exposes Processing Flow");
                     return;
                 }
                 qInfo() << "Assistant E2E complete";
