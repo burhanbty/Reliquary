@@ -72,6 +72,7 @@ TEST(API, Version_ReturnsNonEmpty) {
     const char *version = ms_version();
     ASSERT_NE(version, nullptr);
     EXPECT_GT(std::strlen(version), 0u);
+    EXPECT_STREQ(version, RELIQUARY_VERSION);
 }
 
 TEST(API, StatusString_AllCodes) {

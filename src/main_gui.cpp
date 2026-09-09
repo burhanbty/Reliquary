@@ -2095,7 +2095,7 @@ int main(int argc, char *argv[]) {
             !settingsAuthor->text().contains(
                 QString::fromUtf8("Burhan Talha Yazıcı")) ||
             settingsAboutHeading->text() != QStringLiteral("Reliquary") ||
-            settingsAboutVersion->text() != QStringLiteral("v1.4.0") ||
+            settingsAboutVersion->text() != QStringLiteral("v" RELIQUARY_VERSION) ||
             settingsAboutDefinition->text() != QString::fromUtf8(
                 "Değerli bir şeyi korumak için kullanılan muhafaza.") ||
             settingsAuthor->text() != QString::fromUtf8(
@@ -2135,7 +2135,7 @@ int main(int argc, char *argv[]) {
         settingsNavigation->click();
         QApplication::processEvents();
         if (settingsAboutHeading->text() != QStringLiteral("Reliquary") ||
-            settingsAboutVersion->text() != QStringLiteral("v1.4.0") ||
+            settingsAboutVersion->text() != QStringLiteral("v" RELIQUARY_VERSION) ||
             settingsAboutDefinition->text() != QStringLiteral(
                 "A container for preserving something precious.") ||
             settingsAuthor->text() != QStringLiteral(

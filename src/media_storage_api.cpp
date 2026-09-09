@@ -1352,7 +1352,7 @@ const char *ms_status_string(const ms_status_t status) {
 }
 
 const char *ms_version(void) {
-    return "1.4.0";
+    return RELIQUARY_VERSION;
 }
 
 size_t ms_format_performance_report(const ms_result_t *result,

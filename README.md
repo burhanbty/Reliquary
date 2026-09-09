@@ -144,7 +144,7 @@ SHA-256 DOĞRULAMASI
 Doğrulanan Windows yapısı Visual Studio Build Tools 2022, MSVC v143, Windows SDK, CMake 3.22+, Git ve vcpkg kullanıyor. Proje C++23 gerektiriyor; FFmpeg ve libsodium zorunlu, masaüstü arayüzü için Qt 6 gerekiyor.
 
 ```powershell
-git clone --recurse-submodules https://github.com/burhanbty/VidStoreX.git Reliquary
+git clone --recurse-submodules https://github.com/burhanbty/Reliquary.git
 cd Reliquary
 
 cmake -S . -B build `

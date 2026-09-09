@@ -61,6 +61,8 @@ struct ExperimentConfig {
     std::string modulation_version = kModulation1Version;
     std::string decoder_threshold_version = kThresholdVersion;
     bool interleaving = false;
+    // Legacy config fingerprint input, not the current application version.
+    // Keep stable so existing profile IDs and evidence remain compatible.
     std::string created_with_version = "1.4.0";
 
     [[nodiscard]] bool valid(std::string *reason = nullptr) const;
@@ -251,7 +253,7 @@ struct ExperimentManifest {
     int schema_version = kManifestSchemaVersion;
     std::string experiment_id;
     std::string created_at;
-    std::string vidstorex_version = "1.4.0";
+    std::string vidstorex_version = RELIQUARY_VERSION;
     Preset preset = Preset::Smoke;
     ExperimentConfig baseline;
     std::size_t maximum_cases = kDefaultMaximumCases;

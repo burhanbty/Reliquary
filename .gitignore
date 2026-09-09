@@ -74,27 +74,16 @@ Testing/
 *.mp4
 *.avi
 *.mov
-test_*
-!tests/test_encoding_preflight.cpp
-!tests/test_cli_preflight.cmake
-!tests/test_gui_preflight_model.cpp
-!tests/test_ui_language.cpp
-!tests/test_fast_local.cpp
-!tests/test_cli_fast_local.cmake
-!tests/test_youtube_test_lab.cpp
-!tests/test_cli_testlab.cmake
-!tests/test_youtube_capacity_lab.cpp
-!tests/test_cli_capacitylab.cmake
-!tests/test_video_set.cpp
-!tests/test_cli_video_set.cmake
-!tests/test_instant_recovery.cpp
-!tests/test_youtube_sync.cpp
-!tests/test_youtube_network.cpp
-!tests/test_youtube_network_main.cpp
-!tests/fake_ytdlp.cpp
-!tests/test_gui_instant_recovery.cmake
-!tests/test_gui_youtube_sync.cmake
-decoded_*
+# Generated test artifacts; never hide test source files.
+/test_*/
+/test_*.bin
+/test_*.json
+/test_*.csv
+/test_*.txt
+/test_*.png
+/decoded_*/
+/decoded_*.bin
+/decoded_*.txt
 
 # Local Capacity Lab benchmark artifacts
 capacity-benchmark/
@@ -117,3 +106,12 @@ RecoveryJobs/
 *.dpapi
 yt-dlp.exe
 yt-dlp
+
+# Local experiment records (user-owned)
+stress-experiment-records/
+
+# Local browser authentication exports
+**/cookies.txt
+
+# Root-level GUI test captures (build-directory captures are already ignored)
+/e2e-*.png

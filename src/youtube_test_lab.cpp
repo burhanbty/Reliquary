@@ -1706,7 +1706,7 @@ std::vector<TestCase> build_matrix(
                     c.test_suite_id = suite_id;
                     c.test_case_id = id.str();
                     c.created_at = iso_timestamp();
-                    c.vidstorex_version = "1.4.0";
+                    c.vidstorex_version = RELIQUARY_VERSION;
                     c.reliability_profile =
                         profile_for_repair(repair);
                     c.repair_percentage = repair;
@@ -3492,7 +3492,7 @@ SuiteManifest create_suite(
     ensure_suite_directories(root);
     SuiteManifest manifest{
         .schema_version = kManifestSchemaVersion,
-        .vidstorex_version = "1.4.0",
+        .vidstorex_version = RELIQUARY_VERSION,
         .suite_id = suite_id,
         .created_at = iso_timestamp(),
         .preset = preset,

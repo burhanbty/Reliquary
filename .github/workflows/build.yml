@@ -8,6 +8,9 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
 
@@ -95,7 +98,7 @@ jobs:
       - name: Install system Qt6 (Linux ARM64)
         if: matrix.qt_source == 'system'
         run: |
-          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6opengl6-dev
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev
 
       - name: Install macOS deps
         if: runner.os == 'macOS'
@@ -187,14 +190,14 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: media_storage-${{ matrix.name }}
+          name: Reliquary-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
 
   release:
     name: Publish Release
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,18 +221,9 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           COMMIT_SUBJECT=$(git log -1 --pretty=%s)
           COMMIT_BODY=$(git log -1 --pretty=%b)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            NAME="$TAG - $COMMIT_SUBJECT"
-            PRERELEASE=false
-          else
-            DATE=$(date -u +'%Y-%m-%d')
-            TAG="build-${DATE}-${SHORT_SHA}"
-            NAME="${DATE} - ${COMMIT_SUBJECT}"
-            PRERELEASE=true
-          fi
+          TAG="${GITHUB_REF#refs/tags/}"
+          NAME="Reliquary $TAG - $COMMIT_SUBJECT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           {
             echo "name<<META_EOF"
             echo "$NAME"
@@ -251,7 +245,7 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.name }}
           body: ${{ steps.meta.outputs.body }}
-          prerelease: ${{ steps.meta.outputs.prerelease }}
+          prerelease: false
           target_commitish: ${{ github.sha }}
           files: artifacts/**/*
           fail_on_unmatched_files: true

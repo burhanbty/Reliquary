@@ -704,7 +704,7 @@ libsodium; the `gui` feature adds Qt 6.
 Clone the repository and its submodules:
 
 ```powershell
-git clone --recurse-submodules https://github.com/burhanbty/VidStoreX.git Reliquary
+git clone --recurse-submodules https://github.com/burhanbty/Reliquary.git
 cd Reliquary
 ```
 
@@ -848,7 +848,7 @@ structure versions, stale input metadata, and newly insufficient disk.
 Zero-initialized options retain Resilient mode and the default 5% Local
 reliability behavior.
 
-The API reports version `1.4.0`. `ms_encoding_mode_t` and Fast Local layout
+The API reports version `1.5.0`. `ms_encoding_mode_t` and Fast Local layout
 fields were appended to `ms_encode_options_t`, `ms_encoding_estimate_t`, and
 `ms_result_t`; `MS_ENCODING_ESTIMATE_VERSION` is now 2. These changes alter
 binary layouts, so applications built against an older header must be

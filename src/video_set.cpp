@@ -777,7 +777,7 @@ std::string manifest_json(const SetPlan &plan) {
     std::ostringstream out;
     out << "{\n  \"schema\": \"vidstorex.video_set\",\n"
         << "  \"version\": 1,\n"
-        << "  \"created_by_version\": \"1.4.0\",\n"
+        << "  \"created_by_version\": " << q(RELIQUARY_VERSION) << ",\n"
         << "  \"set_id\": " << q(id_hex(plan.set_id)) << ",\n"
         << "  \"descriptor_hash\": " << q(digest_hex_lower(plan.descriptor_hash)) << ",\n"
         << "  \"original\": {\"filename\": " << q(plan.original_filename)

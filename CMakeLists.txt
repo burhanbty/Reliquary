@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 cmake_minimum_required(VERSION 3.22)
-project(media_storage VERSION 1.4.0 LANGUAGES CXX)
+project(media_storage VERSION 1.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,6 +53,8 @@ set(CORE_LINK_LIBS
 )
 
 add_library(media_storage_core STATIC)
+target_compile_definitions(media_storage_core PUBLIC
+        RELIQUARY_VERSION="${PROJECT_VERSION}")
 set_target_properties(media_storage_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if (MEDIA_STORAGE_STATIC_BINARIES)
