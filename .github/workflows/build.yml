@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+  VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/.cache/vcpkg,readwrite'
 
 jobs:
   build:
@@ -36,7 +36,7 @@ jobs:
             qt_source: 'system'
           - name: windows-x64
             os: windows-2022
-            triplet: x64-windows-static
+            triplet: x64-windows
             msvc_arch: x64
             build_gui: 'ON'
             qt_source: 'vcpkg'
@@ -66,16 +66,15 @@ jobs:
             qt_source: 'vcpkg'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Export GitHub Actions cache env
-        uses: actions/github-script@v9
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v6
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: .cache/vcpkg
+          key: vcpkg-${{ matrix.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json', '.github/workflows/build.yml') }}
 
       - name: Install Linux system deps
         if: runner.os == 'Linux'
@@ -95,10 +94,13 @@ jobs:
             libxcomposite-dev libxcursor-dev libxdamage-dev libxinerama-dev \
             libxshmfence-dev libxtst-dev libxss-dev libinput-dev libmtdev-dev
 
-      - name: Install system Qt6 (Linux ARM64)
+      - name: Install system Qt6
         if: matrix.qt_source == 'system'
         run: |
-          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev
+          apt-cache show qt6-l10n-tools > /dev/null
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libqt6opengl6-dev
+          test -x /usr/lib/qt6/bin/lrelease
+          test -x /usr/lib/qt6/bin/lconvert
 
       - name: Install macOS deps
         if: runner.os == 'macOS'
@@ -118,9 +120,10 @@ jobs:
         with:
           arch: ${{ matrix.msvc_arch }}
 
-      - name: Install Ninja (Windows)
+      - name: Verify runner Ninja (Windows)
         if: runner.os == 'Windows'
-        uses: seanmiddleditch/gha-setup-ninja@v6
+        shell: pwsh
+        run: ninja --version
 
       - name: Install pkg-config (Windows)
         if: runner.os == 'Windows'
@@ -156,13 +159,29 @@ jobs:
           if [ "${{ matrix.build_gui }}" = "ON" ] && [ "${{ matrix.qt_source }}" = "vcpkg" ]; then
             MANIFEST_FEATURES="gui"
           fi
+          mkdir -p .cache/vcpkg
+          VCPKG_FEATURE_ARGS=()
+          if [ -n "$MANIFEST_FEATURES" ]; then
+            VCPKG_FEATURE_ARGS+=(--x-feature="$MANIFEST_FEATURES")
+          fi
+          "$VCPKG_ROOT/vcpkg" install --triplet=${{ matrix.triplet }} \
+            --x-install-root="$PWD/build/vcpkg_installed" "${VCPKG_FEATURE_ARGS[@]}"
+          if [ "${{ matrix.qt_source }}" = "vcpkg" ]; then
+            QT_TOOLS="$PWD/build/vcpkg_installed/${{ matrix.triplet }}/tools/Qt6/bin"
+            EXE=""
+            if [ "$RUNNER_OS" = "Windows" ]; then EXE=".exe"; fi
+            test -x "$QT_TOOLS/lrelease$EXE"
+            test -x "$QT_TOOLS/lconvert$EXE"
+          fi
+          STATIC_BINARIES=ON
+          if [ "${{ matrix.name }}" = "windows-x64" ]; then STATIC_BINARIES=OFF; fi
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
             -DVCPKG_MANIFEST_MODE=ON \
             -DVCPKG_MANIFEST_FEATURES="$MANIFEST_FEATURES" \
-            -DMEDIA_STORAGE_STATIC_BINARIES=ON \
+            -DMEDIA_STORAGE_STATIC_BINARIES="$STATIC_BINARIES" \
             -DBUILD_GUI=${{ matrix.build_gui }} \
             -DBUILD_TESTS=OFF
 
@@ -170,11 +189,31 @@ jobs:
         shell: bash
         run: cmake --build build --parallel
 
+      # Exercise the production x64 architecture without a desktop session.
+      - name: Windows x64 GUI smoke
+        if: matrix.name == 'windows-x64'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $env:PATH = "$PWD/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          $env:QT_PLUGIN_PATH = "$PWD/build/vcpkg_installed/x64-windows/Qt6/plugins"
+          $process = Start-Process -FilePath "$PWD/build/media_storage_gui.exe" -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw 'GUI smoke timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "GUI smoke failed: $($process.ExitCode)" }
+
       - name: Stage artifacts
         shell: bash
         run: |
           mkdir -p dist
           if [ "$RUNNER_OS" = "Windows" ]; then
+            # Raw CI binaries only; this is not a deployable package.
+            if [ "${{ matrix.name }}" = "windows-x64" ]; then
+              cp build/*.dll dist/
+            fi
             cp build/media_storage.exe "dist/media_storage-${{ matrix.name }}.exe"
             if [ "${{ matrix.build_gui }}" = "ON" ]; then
               cp build/media_storage_gui.exe "dist/media_storage_gui-${{ matrix.name }}.exe"
@@ -202,7 +241,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v8

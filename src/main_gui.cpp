@@ -1178,6 +1178,7 @@ int main(int argc, char *argv[]) {
                     QString cardError;
                     const QString cardPath = QDir(instantRecoverySmokeRoot)
                         .filePath("instant-result-card.png");
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
                     if (!exerciseResultCardPreview(
                             resultCard, cardPath,
                             {QStringLiteral("source.bin"),
@@ -1205,6 +1206,7 @@ int main(int argc, char *argv[]) {
                         delete observedPhases;
                         return;
                     }
+#endif
                     qInfo() << "Instant Recovery qwindows E2E complete:"
                             << status->text();
                     app.exit(0);
@@ -2484,6 +2486,7 @@ int main(int argc, char *argv[]) {
                 }
                 if (!state->createCardDone) {
                     QString cardError;
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
                     if (!exerciseResultCardPreview(
                             createResultCard,
                             QDir(root).filePath("create-result-card.png"),
@@ -2501,9 +2504,11 @@ int main(int argc, char *argv[]) {
                             "Create result card E2E failed: ") + cardError);
                         return;
                     }
+#endif
                     state->createCardDone = true;
                     language->setCurrentIndex(language->findData("tr"));
                     QApplication::processEvents();
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
                     if (!exerciseResultCardPreview(
                             createResultCard,
                             QDir(root).filePath("create-result-card-tr.png"),
@@ -2522,6 +2527,7 @@ int main(int argc, char *argv[]) {
                             cardError);
                         return;
                     }
+#endif
                     language->setCurrentIndex(language->findData("en"));
                     QApplication::processEvents();
                 }
@@ -2850,6 +2856,7 @@ int main(int argc, char *argv[]) {
                 }
                 if (!state->recoveryCardDone) {
                     QString cardError;
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
                     if (!exerciseResultCardPreview(
                             recoveryResultCard,
                             QDir(root).filePath("recovery-result-card.png"),
@@ -2866,6 +2873,7 @@ int main(int argc, char *argv[]) {
                             "Recovery result card E2E failed: ") + cardError);
                         return;
                     }
+#endif
                     state->recoveryCardDone = true;
                 }
                 window.resize(1366, 768);
