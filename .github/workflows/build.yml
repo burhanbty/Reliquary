@@ -16,55 +16,8 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x64
-            os: ubuntu-22.04
-            triplet: x64-linux
-            msvc_arch: ''
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-          - name: linux-arm64
-            os: ubuntu-22.04-arm
-            triplet: arm64-linux
-            msvc_arch: ''
-            build_gui: 'ON'
-            qt_source: 'system'
-          - name: windows-x64
-            os: windows-2022
-            triplet: x64-windows
-            msvc_arch: x64
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-          - name: windows-x86
-            os: windows-2022
-            triplet: x86-windows-static
-            msvc_arch: x86
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-          - name: windows-arm64
-            os: windows-11-arm
-            triplet: arm64-windows-static
-            msvc_arch: arm64
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-          - name: macos-x64
-            os: macos-15-intel
-            triplet: x64-osx
-            msvc_arch: ''
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-          - name: macos-arm64
-            os: macos-14
-            triplet: arm64-osx
-            msvc_arch: ''
-            build_gui: 'ON'
-            qt_source: 'vcpkg'
-
+    name: windows-x64
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
         with:
@@ -74,59 +27,18 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/vcpkg
-          key: vcpkg-${{ matrix.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json', '.github/workflows/build.yml') }}
-
-      - name: Install Linux system deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            ninja-build nasm yasm autoconf autoconf-archive automake libtool pkg-config \
-            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-cursor-dev \
-            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev \
-            libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-util-dev \
-            libxcb-xfixes0-dev libxcb-xkb-dev libxcb-render0-dev libxcb-glx0-dev \
-            libxcb-xinput-dev \
-            libgl1-mesa-dev libglu1-mesa-dev libfontconfig1-dev libfreetype6-dev \
-            libdbus-1-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev \
-            libx11-xcb-dev libsm-dev libice-dev \
-            libegl-dev libgles-dev libopengl-dev libwayland-dev wayland-protocols \
-            libxcomposite-dev libxcursor-dev libxdamage-dev libxinerama-dev \
-            libxshmfence-dev libxtst-dev libxss-dev libinput-dev libmtdev-dev
-
-      - name: Install system Qt6
-        if: matrix.qt_source == 'system'
-        run: |
-          apt-cache show qt6-l10n-tools > /dev/null
-          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libqt6opengl6-dev
-          test -x /usr/lib/qt6/bin/lrelease
-          test -x /usr/lib/qt6/bin/lconvert
-
-      - name: Install macOS deps
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja nasm yasm automake autoconf autoconf-archive libtool pkg-config libomp
-          LIBOMP_PREFIX="$(brew --prefix libomp)"
-          {
-            echo "OpenMP_ROOT=${LIBOMP_PREFIX}"
-            echo "CMAKE_PREFIX_PATH=${LIBOMP_PREFIX}"
-            echo "LDFLAGS=-L${LIBOMP_PREFIX}/lib"
-            echo "CPPFLAGS=-I${LIBOMP_PREFIX}/include"
-          } >> "$GITHUB_ENV"
+          key: vcpkg-windows-2022-x64-windows-${{ hashFiles('vcpkg.json', '.github/workflows/build.yml') }}
 
       - name: Set up MSVC environment
-        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.msvc_arch }}
+          arch: x64
 
       - name: Verify runner Ninja (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: ninja --version
 
       - name: Install pkg-config (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           choco install pkgconfiglite -y --no-progress
@@ -155,34 +67,25 @@ jobs:
       - name: Configure
         shell: bash
         run: |
-          MANIFEST_FEATURES=""
-          if [ "${{ matrix.build_gui }}" = "ON" ] && [ "${{ matrix.qt_source }}" = "vcpkg" ]; then
-            MANIFEST_FEATURES="gui"
-          fi
+          MANIFEST_FEATURES="gui"
           mkdir -p .cache/vcpkg
           VCPKG_FEATURE_ARGS=()
           if [ -n "$MANIFEST_FEATURES" ]; then
             VCPKG_FEATURE_ARGS+=(--x-feature="$MANIFEST_FEATURES")
           fi
-          "$VCPKG_ROOT/vcpkg" install --triplet=${{ matrix.triplet }} \
+          "$VCPKG_ROOT/vcpkg" install --triplet=x64-windows \
             --x-install-root="$PWD/build/vcpkg_installed" "${VCPKG_FEATURE_ARGS[@]}"
-          if [ "${{ matrix.qt_source }}" = "vcpkg" ]; then
-            QT_TOOLS="$PWD/build/vcpkg_installed/${{ matrix.triplet }}/tools/Qt6/bin"
-            EXE=""
-            if [ "$RUNNER_OS" = "Windows" ]; then EXE=".exe"; fi
-            test -x "$QT_TOOLS/lrelease$EXE"
-            test -x "$QT_TOOLS/lconvert$EXE"
-          fi
-          STATIC_BINARIES=ON
-          if [ "${{ matrix.name }}" = "windows-x64" ]; then STATIC_BINARIES=OFF; fi
+          QT_TOOLS="$PWD/build/vcpkg_installed/x64-windows/tools/Qt6/bin"
+          test -x "$QT_TOOLS/lrelease.exe"
+          test -x "$QT_TOOLS/lconvert.exe"
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_TARGET_TRIPLET=x64-windows \
             -DVCPKG_MANIFEST_MODE=ON \
             -DVCPKG_MANIFEST_FEATURES="$MANIFEST_FEATURES" \
-            -DMEDIA_STORAGE_STATIC_BINARIES="$STATIC_BINARIES" \
-            -DBUILD_GUI=${{ matrix.build_gui }} \
+            -DMEDIA_STORAGE_STATIC_BINARIES=OFF \
+            -DBUILD_GUI=ON \
             -DBUILD_TESTS=OFF
 
       - name: Build
@@ -191,7 +94,6 @@ jobs:
 
       # Exercise the production x64 architecture without a desktop session.
       - name: Windows x64 GUI smoke
-        if: matrix.name == 'windows-x64'
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -209,27 +111,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            # Raw CI binaries only; this is not a deployable package.
-            if [ "${{ matrix.name }}" = "windows-x64" ]; then
-              cp build/*.dll dist/
-            fi
-            cp build/media_storage.exe "dist/media_storage-${{ matrix.name }}.exe"
-            if [ "${{ matrix.build_gui }}" = "ON" ]; then
-              cp build/media_storage_gui.exe "dist/media_storage_gui-${{ matrix.name }}.exe"
-            fi
-          else
-            cp build/media_storage "dist/media_storage-${{ matrix.name }}"
-            if [ "${{ matrix.build_gui }}" = "ON" ]; then
-              cp build/media_storage_gui "dist/media_storage_gui-${{ matrix.name }}"
-            fi
-          fi
+          # Raw CI outputs; packaging is a separate task.
+          cp build/*.dll dist/
+          cp build/media_storage.exe dist/media_storage-windows-x64.exe
+          cp build/media_storage_gui.exe dist/media_storage_gui-windows-x64.exe
           ls -la dist/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Reliquary-${{ matrix.name }}
+          name: Reliquary-windows-x64
           path: dist/*
           if-no-files-found: error
 
