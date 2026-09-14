@@ -1,0 +1,2 @@
+# Preserve audited upstream license bytes, including original whitespace.
+packaging/windows/licenses/*.txt -text -whitespace

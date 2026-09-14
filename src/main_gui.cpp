@@ -58,6 +58,8 @@
 namespace {
 
 QIcon vidStoreXApplicationIcon() {
+    const QIcon packagedIcon(QStringLiteral(":/branding/reliquary.ico"));
+    if (!packagedIcon.isNull()) return packagedIcon;
     QIcon icon;
     for (const int size : {16, 24, 32, 48, 256}) {
         QPixmap pixmap(size, size);
@@ -288,8 +290,12 @@ bool exerciseResultCardPreview(
         }
         if (!previewScreenshot.isEmpty()) dialog->grab().save(previewScreenshot);
         copy->click();
-        if (QApplication::clipboard()->image().size() != QSize(1600, 900)) {
-            nestedError = QStringLiteral("copied result card has wrong dimensions");
+        const QImage clipboardImage = QApplication::clipboard()->image();
+        if (clipboardImage.size() != QSize(1600, 900)) {
+            nestedError = QStringLiteral("copied result card has wrong dimensions: %1x%2, DPR=%3, null=%4, ownsClipboard=%5")
+                .arg(clipboardImage.width()).arg(clipboardImage.height())
+                .arg(clipboardImage.devicePixelRatio()).arg(clipboardImage.isNull())
+                .arg(QApplication::clipboard()->ownsClipboard());
             dialog->reject();
             handled = true;
             return;

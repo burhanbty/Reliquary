@@ -141,6 +141,8 @@ SHA-256 DOĞRULAMASI
 
 ## Kurulum ve çalıştırma
 
+Windows x64 paketleri `Reliquary-Setup-v1.5.0-x64.exe` ve `Reliquary-v1.5.0-portable-x64.zip` adlarıyla hazırlanır. Installer kullanıcı hesabına kurulur; portable ZIP'i çıkardıktan sonra `Reliquary\Reliquary.exe` çalıştırılır. Dosya bütünlüğü `SHA256SUMS.txt` ile kontrol edilebilir. Paketler imzasızdır; Windows SmartScreen uyarısı gösterebilir.
+
 Doğrulanan Windows yapısı Visual Studio Build Tools 2022, MSVC v143, Windows SDK, CMake 3.22+, Git ve vcpkg kullanıyor. Proje C++23 gerektiriyor; FFmpeg ve libsodium zorunlu, masaüstü arayüzü için Qt 6 gerekiyor.
 
 ```powershell
@@ -157,7 +159,7 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-GUI hâlâ gerçek çıktı adıyla çalıştırılır; henüz `Reliquary.exe` adlı bir paket varmış gibi davranmıyorum:
+Kaynaktan derlenen geliştirme GUI'si şu çıktı adıyla çalıştırılır:
 
 ```powershell
 build\Release\media_storage_gui.exe

@@ -115,3 +115,6 @@ stress-experiment-records/
 
 # Root-level GUI test captures (build-directory captures are already ignored)
 /e2e-*.png
+
+# Local Windows release staging, packages and validation reports
+/release/

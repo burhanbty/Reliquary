@@ -1,0 +1,116 @@
+[
+  {
+    "file": "backports.tarfile-LICENSE.txt",
+    "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741",
+    "source": "https://raw.githubusercontent.com/jaraco/backports.tarfile/v1.2.0/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "importlib-metadata-LICENSE.txt",
+    "sha256": "458502e12d97bbf64438606a20044aa85eb05fb0a8a807bb35dbec253fd1fc04",
+    "source": "Extracted from pinned yt-dlp.exe: setuptools/_vendor/importlib_metadata-8.7.1.dist-info/licenses/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "jaraco-shared-MIT.txt",
+    "sha256": "4e2d9609e750b793277cc091257cbb8163161b261364885e2bd85b94e5109b77",
+    "source": "MIT declarations in jaraco.functools v4.2.1 and zipp v3.23.0 pyproject.toml; shared verbatim MIT terms from jaraco.context LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "jaraco.context-LICENSE.txt",
+    "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741",
+    "source": "https://raw.githubusercontent.com/jaraco/jaraco.context/v6.0.1/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "jaraco.text-LICENSE.txt",
+    "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741",
+    "source": "https://raw.githubusercontent.com/jaraco/jaraco.text/v4.0.0/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "more-itertools-LICENSE.txt",
+    "sha256": "09f1c8c9e941af3e584d59641ea9b87d83c0cb0fd007eb5ef391a7e2643c1a46",
+    "source": "https://raw.githubusercontent.com/more-itertools/more-itertools/master/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "MSVC-REDIST.txt",
+    "sha256": "33fc3a6c0be3894f022c82f5af8c358157e3269eee6f4c140dd9d8bc94389d35",
+    "source": "https://learn.microsoft.com/visualstudio/releases/2022/redistribution (article text)",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "OpenSSL-1.1.1-LICENSE.txt",
+    "sha256": "c32913b33252e71190af2066f08115c69bc9fddadf3bf29296e20c835389841c",
+    "source": "https://raw.githubusercontent.com/openssl/openssl/OpenSSL_1_1_1t/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "packaging-LICENSE.APACHE.txt",
+    "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "source": "https://raw.githubusercontent.com/pypa/packaging/main/LICENSE.APACHE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "packaging-LICENSE.BSD.txt",
+    "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5",
+    "source": "https://raw.githubusercontent.com/pypa/packaging/main/LICENSE.BSD",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "packaging-LICENSE.txt",
+    "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48",
+    "source": "https://raw.githubusercontent.com/pypa/packaging/main/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "PyInstaller-COPYING.txt",
+    "sha256": "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245",
+    "source": "https://raw.githubusercontent.com/pyinstaller/pyinstaller/v6.17.0/COPYING.txt",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "Python-3.10.11-LICENSE.txt",
+    "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+    "source": "https://raw.githubusercontent.com/python/cpython/v3.10.11/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "python310-LICENSE.txt",
+    "sha256": "ff4591f6dec4dc7ebe86e0c1c0eef1f2c7b651ee3ba45e5b4ccb35f2607bdd43",
+    "source": "Existing Python 3.10 installation LICENSE.txt; supplemental notices, not a version claim for yt-dlp",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "setuptools-LICENSE.txt",
+    "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741",
+    "source": "https://raw.githubusercontent.com/pypa/setuptools/main/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "tomli-LICENSE.txt",
+    "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe",
+    "source": "https://raw.githubusercontent.com/hukkin/tomli/master/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "wheel-LICENSE.txt",
+    "sha256": "30c23618679108f3e8ea1d2a658c7ca417bdfc891c98ef1a89fa4ff0c9828654",
+    "source": "https://raw.githubusercontent.com/pypa/wheel/main/LICENSE.txt",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "yt-dlp-LICENSE.txt",
+    "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
+    "source": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.07.04/LICENSE",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  },
+  {
+    "file": "yt-dlp-THIRD_PARTY_LICENSES.txt",
+    "sha256": "b085c65586a953cdb4b13c6390d63ec984d66912e4b6a19e66ba3582f2ed104b",
+    "source": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.07.04/THIRD_PARTY_LICENSES.txt",
+    "scope": "License text provenance; a supplemental tag is not an assertion of the embedded subversion"
+  }
+]

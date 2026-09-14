@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -181,6 +182,7 @@ TEST(ResultCardRenderer, RecoveryIsDeterministicOpaqueBrandCanvas) {
     const QImage image = result_card::Renderer::render(*model);
     EXPECT_LT(timer.elapsed(), 500);
     EXPECT_EQ(image.size(), QSize(1600, 900));
+    EXPECT_EQ(image.devicePixelRatio(), 1.0);
     EXPECT_EQ(image.format(), QImage::Format_ARGB32_Premultiplied);
     EXPECT_FALSE(image.isNull());
     EXPECT_GT(uniqueColors(image), 20);
@@ -336,6 +338,32 @@ TEST(ResultCardPreview, HasAccessiblePrivacyAndActionControls) {
     fileName->setChecked(false);
     QApplication::processEvents();
     EXPECT_EQ(dialog.renderedImage().size(), QSize(1600, 900));
+    // Preview scaling must never change the pixels exported to PNG or clipboard.
+    QTemporaryDir temporary;
+    ASSERT_TRUE(temporary.isValid());
+    QTranslator translator;
+    ASSERT_TRUE(translator.load(QStringLiteral(":/i18n/vidstorex_tr.qm")));
+    for (const bool turkish : {false, true}) {
+        if (turkish) qApp->installTranslator(&translator);
+        for (const QSize size : {QSize(640, 420), QSize(1000, 680)}) {
+            dialog.resize(size);
+            QApplication::processEvents();
+            const QImage canonical = dialog.renderedImage();
+            EXPECT_EQ(canonical.size(), QSize(1600, 900));
+            EXPECT_EQ(canonical.devicePixelRatio(), 1.0);
+            copy->click();
+            const QImage copied = QApplication::clipboard()->image();
+            EXPECT_EQ(copied.size(), canonical.size());
+            EXPECT_EQ(copied.devicePixelRatio(), 1.0);
+            const QString path = temporary.filePath(QStringLiteral("card.png"));
+            ASSERT_TRUE(result_card::savePng(canonical, path, true).ok);
+            const QImage saved(path);
+            EXPECT_EQ(saved.size(), canonical.size());
+            EXPECT_EQ(saved.convertToFormat(QImage::Format_RGB32),
+                      copied.convertToFormat(QImage::Format_RGB32));
+        }
+        if (turkish) qApp->removeTranslator(&translator);
+    }
     dialog.close();
 }
 
