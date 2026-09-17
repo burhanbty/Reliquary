@@ -2,27 +2,31 @@
 
 Türkçe | [English](https://github.com/burhanbty/Reliquary/blob/master/README_EN.md)
 
-Reliquary, bir dosyayı video karelerine gömüp sonra tam olarak geri çıkarmayı deneyen bir arşivleme projesi. Fikir aslında basit bir merakla başladı: YouTube kullanıcıların devasa miktarda video yüklemesine izin veriyor, ben de "bir dosyayı video gibi gösterip YouTube'un yeniden kodlamasından sonra hâlâ okuyabilir miyim?" diye merak ettim.
+Reliquary(Kutsal emanetlerin saklandığı ve sergilendiği süslü kutu, sandık veya kap)
+
+Günümüzün en büyük sorunlarından biri olan depolama sorunu için farklı bir yaklaşım ile yola çıktık. Bugün youtube twitch instagram ve daha niceleri gibi birçok platform bize sınırsız videolar ve fotoğraflar yükleyebilmemize olanak sağlıyor. Bizde acaba bu sınırsız video yüklememize izin veren platformlara bir şekilde videolarımızı depolamak haricinde farklı dosyalar depolayabilir miyiz diye düşündük
+
+Reliquary, bir dosyayı videodaki her bir pikseli bir veriye dönüştürerek ve çeşitli sıkıştırma algoritmalarına karşı bir takım önlemler alarak video karelerine gömüp sonrasında tam olarak video formatına çevirilmiş dosyayı kayıpsız bir doğrulukla geri çıkarmayı deneyen bir arşivleme projesi.Youtube kullanıcıların devasa miktarda video yüklemesine izin veriyor ve kimse bize neden 1 saat uzunluğunda ve 100gb büyüklüğünde bir video yükledin demiyor bizde tam olarak bundan faydalanıyoruz.
 
 Tek gerçek kriter şu: geri çıkan dosyanın SHA-256 değeri orijinaliyle birebir eşleşmiyorsa, iş bitmiş sayılmıyor.
 
-> Not: Reliquary deneysel bir proje. Yedekleme yazılımı ya da güvenilir bir arşiv servisinin yerine geçmez.
+> Not: Reliquary deneysel bir proje.  Program her ne kadar video paketlerinin sıkıştırma sırasındaki kayıplarına karşı birçok sağlama ve güvenlik katmanı içerse de Youtube platformunun bu algoritmaları ve süreçleri açıklamamasından dolayı güvenilir bir arşiv servisinin yerine geçmez. 
 
 ## Nasıl çalışıyor
 
-Dosya küçük parçalara ayrılıyor, bu parçalar video karelerindeki görsel bloklara kodlanıyor ve bir veya daha fazla video üretiliyor. Bu videolar yerelde tutulabilir veya normal bir video gibi YouTube'a yüklenebilir. Geri alırken aynı videolar indirilip taranıyor, içindeki veri okunup dosya yeniden birleştiriliyor. Eksik veya bozuk bir parça varsa dosya oluşturulmuyor — yarım iş yok.
+Varsayılan High Capacity profilinde her veri biti kare üzerinde 4×4 piksellik bir blok ile temsil ediliyor ve her blok 1 bit taşıyor. Buradaki denge önemliydi: blokları küçülttükçe aynı kareye daha fazla veri sığdırabiliyoruz, fakat video sıkıştırması, yeniden ölçekleme ve platform kaynaklı bozulmalar karşısında hata riski artıyor. Bu yüzden yalnız kapasiteyi değil, okunabilirlik ile veri yoğunluğu arasındaki dengeyi hedefledik. Daha dayanıklı senaryolar için 8×8 blok kullanan Resilient profilini de koruyoruz.
+
+Video üretmeden önce dosyayı bağımsız parçalara ayırıyor, her parçaya set kimliği, sıra bilgisi ve bütünlük verileri ekliyoruz. Ayrıca yaklaşık %5 repair verisi üreterek küçük kayıplarda veya hasarlı parçalarda kurtarma şansını artırıyoruz. Böylece sistem yalnızca “frame’leri tekrar okuyabiliyor mu?” sorusuna değil, “eksik veya bozulmuş veriyi ne kadar tolere edebilir?” sorusuna da cevap vermeye çalışıyor
 
 Masaüstünde Qt 6 ile yazılmış bir arayüz ve ayrıca bir komut satırı aracı var. İkisi de aynı C++ altyapısını kullanıyor.
-
-## Neden bunu denedim
 
 İlk denemelerde tek bir ayarla yetinmedim. 4×4 ve 8×8 blok boyutlarını, 1-bit / 2-bit veri yoğunluklarını, farklı sinyal seviyelerini ve onarım oranlarını denedim. Yerelde iyi görünen bazı kombinasyonlar YouTube'dan geri döndüğünde tutmadı — bu yüzden README'deki sayılar tahmini değil, gerçek yükleme-indirme turlarından geliyor.
 
 ## Profiller
 
-Masaüstü arayüzünde yeni bir Video Set açtığınızda varsayılan **High Capacity**: 1920×1080, 30 FPS, 4×4 blok, 1-bit yoğunluk, %5 onarım (config id: `538F2B009FAB`). 4×4 aynı karede 8×8'e göre kabaca dört kat daha fazla veri taşıyor ama bloklar küçüldüğü için bu profili özellikle gerçek YouTube turlarıyla test ettim: tek video stres testinde 6/6, Video Set testinde 4/4 parça tam SHA eşleşmesiyle geldi.
+Masaüstü arayüzünde yeni bir Video Set açtığınızda varsayılan **High Capacity**: 1920×1080, 30 FPS, 4×4 blok, 1-bit yoğunluk, %5 onarım (config id: `538F2B009FAB`). 4×4 aynı karede 8×8'e göre kabaca dört kat daha fazla veri taşıyor tek video stres testinde 6/6, Video Set testinde 4/4 parça tam SHA eşleşmesiyle geliyor. Bu yüzden f/p mantığına göre varsayılan olarak bunu seçtik.
 
-**Resilient** ise 8×8 blok kullanıyor — daha büyük ve daha uzun videolar çıkarıyor ama daha toleranslı. Komut satırı ve C API'de geriye dönük uyumluluk için varsayılan hâlâ bu.
+**Resilient** ise 8×8 blok kullanıyor — daha büyük ve daha uzun videolar çıkarıyor ama daha toleranslı. Komut satırı ve C API'de geriye dönük uyumluluk için varsayılan hâlâ bu. 
 
 ## Video Set
 
