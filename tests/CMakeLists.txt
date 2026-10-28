@@ -20,6 +20,7 @@ add_executable(media_storage_tests
         test_codec.cpp
         test_crypto.cpp
         test_roundtrip.cpp
+        test_recovery_output_safety.cpp
         test_stream.cpp
         test_dct.cpp
         test_api.cpp
@@ -60,6 +61,21 @@ endif ()
 
 include(GoogleTest)
 gtest_discover_tests(media_storage_tests)
+
+set(_legacy_recovery_cases success_plain success_encrypted wrong_password_existing
+    wrong_password_new same relative hardlink)
+if(WIN32)
+    list(APPEND _legacy_recovery_cases junction)
+endif()
+foreach(_case IN LISTS _legacy_recovery_cases)
+    add_test(NAME CLI.LegacyRecoverySafety.${_case}
+        COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:media_storage>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/legacy_recovery/${_case}"
+        "-DCASE=${_case}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/test_legacy_recovery_output.cmake")
+    set_tests_properties(CLI.LegacyRecoverySafety.${_case} PROPERTIES TIMEOUT 90)
+endforeach()
 
 if (TARGET media_storage_gui)
     add_executable(media_storage_youtube_network_tests

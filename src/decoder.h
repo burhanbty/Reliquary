@@ -21,6 +21,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <span>
@@ -128,7 +129,9 @@ public:
 
     [[nodiscard]] bool write_assembled_file(
         const std::string &output_path, uint32_t expected_chunks,
-        PerformanceProfiler *profiler = nullptr) const;
+        PerformanceProfiler *profiler = nullptr,
+        const std::function<bool()> &publish_allowed = {},
+        uint64_t *output_size = nullptr) const;
 
     void set_decrypt_key(std::span<const std::byte, 32> key);
 

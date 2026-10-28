@@ -827,7 +827,7 @@ ms_status_t ms_encode(const ms_encode_options_t *options, ms_result_t *result) {
     return MS_OK;
 }
 
-ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
+ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) try {
     if (!options || !options->input_path || !options->output_path) {
         return MS_ERR_INVALID_ARGS;
     }
@@ -838,6 +838,12 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
 
     if (!std::filesystem::exists(input_path)) {
         return MS_ERR_FILE_NOT_FOUND;
+    }
+
+    // Do this before opening a decoder or invoking progress, for every mode.
+    // equivalent() covers filesystem aliases, symlinks and hardlinks.
+    if (output_conflicts_with_input(input_path, output_path)) {
+        return MS_ERR_INVALID_ARGS;
     }
 
     uint64_t video_size = 0;
@@ -991,15 +997,22 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
         }
     }
 
+    uint64_t output_size = 0;
     if (!decoder.write_assembled_file(
-            output_path, expected_chunks, &profiler)) {
+            output_path, expected_chunks, &profiler, [&] {
+                // Honour cancellation after decryption/writes as well, and
+                // recheck identity immediately before publishing.
+                const auto frames = static_cast<uint64_t>(total_frames_read);
+                if (options->progress && options->progress(
+                        frames, frames, options->progress_user) != 0) return false;
+                return !output_conflicts_with_input(input_path, output_path);
+            }, &output_size)) {
         if (decoder.is_encrypted()) decoder.clear_decrypt_key();
         return MS_ERR_DECODE_FAILED;
     }
 
     if (decoder.is_encrypted()) decoder.clear_decrypt_key();
 
-    const auto output_size = std::filesystem::file_size(output_path);
     profiler.finish();
     fill_result(result, profiler, MS_OPERATION_DECODE,
                 video_size, output_size, expected_chunks, total_extracted,
@@ -1012,6 +1025,9 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) {
     }
 
     return MS_OK;
+} catch (...) {
+    // Filesystem and allocation failures must not escape the C API.
+    return MS_ERR_IO;
 }
 
 ms_status_t ms_stream_encode(const ms_stream_encode_options_t *options, ms_result_t *result) {
@@ -1315,15 +1331,19 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
         }
     }
 
+    uint64_t output_size = 0;
     if (!decoder.write_assembled_file(
-            output_path, expected_chunks, &profiler)) {
+            output_path, expected_chunks, &profiler, [&] {
+                const auto frames = static_cast<uint64_t>(total_frames_read);
+                return !options->progress || options->progress(
+                    frames, frames, options->progress_user) == 0;
+            }, &output_size)) {
         if (decoder.is_encrypted()) decoder.clear_decrypt_key();
         return MS_ERR_DECODE_FAILED;
     }
 
     if (decoder.is_encrypted()) decoder.clear_decrypt_key();
 
-    const auto output_size = std::filesystem::file_size(output_path);
     profiler.finish();
     fill_result(result, profiler, MS_OPERATION_STREAM_DECODE,
                 0, output_size, expected_chunks, total_extracted,

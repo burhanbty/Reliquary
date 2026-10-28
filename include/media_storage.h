@@ -204,6 +204,14 @@ typedef struct {
     ms_encoding_mode_t encoding_mode;
 } ms_encode_options_t;
 
+/**
+ * Decode replaces an existing output only after successful recovery and output
+ * finalization. Supplying output_path retains the historical overwrite consent;
+ * callers needing confirmation must obtain it before calling. An output that
+ * aliases the input video (including links) is rejected with MS_ERR_INVALID_ARGS.
+ * Legacy videos verify packet checksums and, when encrypted, authentication;
+ * they do not contain an original-file SHA-256 digest.
+ */
 typedef struct {
     const char *input_path;
     const char *output_path;

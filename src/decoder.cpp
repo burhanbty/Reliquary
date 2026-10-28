@@ -15,6 +15,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "decoder.h"
+#include "safe_output.h"
+#include <atomic>
 #include "performance_profiler.h"
 
 #include "configuration.h"
@@ -535,7 +537,9 @@ std::optional<std::vector<std::byte> > Decoder::assemble_file(const uint32_t exp
 
 bool Decoder::write_assembled_file(const std::string &output_path,
                                    const uint32_t expected_chunks,
-                                   PerformanceProfiler *profiler) const {
+                                   PerformanceProfiler *profiler,
+                                   const std::function<bool()> &publish_allowed,
+                                   uint64_t *output_size) const try {
     if (completed_count_ != expected_chunks) {
         return false;
     }
@@ -554,14 +558,7 @@ bool Decoder::write_assembled_file(const std::string &output_path,
         return false;
     }
 
-    std::ofstream out;
-    {
-        ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
-        out.open(output_path, std::ios::binary);
-    }
-    if (!out) {
-        return false;
-    }
+    SafeOutputFile output(output_path, SafeOutputFile::Mode::ExclusiveWrite);
 
     if (encrypted_ && decrypt_key_set_) {
         std::vector<std::size_t> sizes(expected_chunks);
@@ -580,7 +577,7 @@ bool Decoder::write_assembled_file(const std::string &output_path,
         }
 
         std::vector<std::vector<std::byte>> decrypted_chunks(expected_chunks);
-        bool decrypt_error = false;
+        std::atomic_bool decrypt_error{false};
 
         {
             ScopedTimer timer(profiler, PerformanceStage::Postprocess);
@@ -604,20 +601,28 @@ bool Decoder::write_assembled_file(const std::string &output_path,
         {
             ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
             for (uint32_t i = 0; i < expected_chunks; ++i) {
-                out.write(reinterpret_cast<const char *>(decrypted_chunks[i].data()),
-                          static_cast<std::streamsize>(sizes[i]));
-                if (!out.good()) return false;
+                output.write(decrypted_chunks[i]);
             }
         }
     } else {
         ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
         for (uint32_t i = 0; i < expected_chunks; ++i) {
             const auto &chunk = *completed_chunks[i];
-            out.write(reinterpret_cast<const char *>(chunk.data()),
-                      static_cast<std::streamsize>(chunk.size()));
-            if (!out.good()) return false;
+            output.write(chunk);
         }
     }
 
+    {
+        ScopedTimer timer(profiler, PerformanceStage::OutputWrite);
+        output.finish_writing();
+        // Read all fallible metadata before publication. Nothing after a
+        // successful rename should turn the operation into a reported failure.
+        const auto size = std::filesystem::file_size(output.partial_path());
+        if (publish_allowed && !publish_allowed()) return false;
+        output.commit();
+        if (output_size) *output_size = size;
+    }
     return true;
+} catch (...) {
+    return false;
 }

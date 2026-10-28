@@ -282,6 +282,10 @@ FastLocalStatistics decode_fast_local(
     PerformanceProfiler *profiler,
     const FastLocalProgressFn progress,
     void *progress_user) {
+    if (output_conflicts_with_input(video_path, output_path)) {
+        throw FastLocalError(FastLocalErrorCode::Io,
+                             "recovery output aliases the source video");
+    }
     VideoDecoder decoder(video_path.string(), profiler);
     std::vector<std::byte> frame;
     if (!decoder.decode_next_gray8_frame(frame)) {
@@ -456,6 +460,12 @@ FastLocalStatistics decode_fast_local(
         {
             ScopedTimer timer(
                 profiler, PerformanceStage::OutputWrite);
+            if ((progress && progress(file_header.total_frames,
+                    file_header.total_frames, progress_user) != 0) ||
+                output_conflicts_with_input(video_path, output_path)) {
+                throw FastLocalError(FastLocalErrorCode::Io,
+                                     "Fast Local publication was cancelled or aliases its source");
+            }
             safe_output.commit();
         }
     } catch (...) {
