@@ -208,6 +208,31 @@ TEST_F(VideoSetTest, ManifestIsAtomicAndBackupProtectsPreviousVersion) {
     EXPECT_EQ(video_set::read_manifest(path).aggregate_state, "Encoding");
 }
 
+TEST_F(VideoSetTest, ManifestRejectsUnsafeVideoNamesWithoutChangingFiles) {
+    const auto source = make_file("source.bin", 10);
+    const auto original = make_plan(source);
+    const auto sentinel = make_file("sentinel.bin", 127);
+    const auto before = video_set::sha256_file(sentinel);
+    const auto manifest = root / "set_manifest.json";
+    const std::vector<std::string> names{
+        "../../outside-video.mkv", "/tmp/outside-video.mkv", "C:\\outside.mkv",
+        "C:outside.mkv", "\\\\server\\share\\outside.mkv", "video.mkv:stream",
+        "sub/video.mkv", "sub\\video.mkv", "NUL.mkv", "CON.mkv", "..", ".", "",
+        "video.mkv.", "video.mkv ", std::string("video\0.mkv", 10),
+        std::string("video\x7f.mkv"), "different-but-safe.mkv"};
+    for (const auto &name : names) {
+        SCOPED_TRACE(name);
+        auto plan = original;
+        plan.parts[0].expected_video_filename = name;
+        std::ofstream(manifest, std::ios::binary) << video_set::manifest_json(plan);
+        const auto manifest_before = video_set::sha256_file(manifest);
+        EXPECT_THROW((void) video_set::read_manifest(manifest), std::runtime_error);
+        EXPECT_EQ(video_set::sha256_file(sentinel), before);
+        EXPECT_EQ(video_set::sha256_file(manifest), manifest_before);
+        EXPECT_FALSE(std::filesystem::exists(manifest.string() + ".bak"));
+    }
+}
+
 TEST_F(VideoSetTest, FilenameSanitizationBlocksTraversalAndWindowsDevices) {
     EXPECT_EQ(video_set::sanitize_filename("../../secret.bin"), "secret.bin");
     EXPECT_EQ(video_set::sanitize_filename("C:\\temp\\CON.txt"), "_CON.txt");

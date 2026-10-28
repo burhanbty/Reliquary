@@ -898,6 +898,14 @@ SetPlan read_manifest(const std::filesystem::path &path) {
             throw std::runtime_error("manifest chunk range is outside source file");
         p.chunk_sha256 = digest_from_hex(require_string(object, "chunk_sha256"));
         p.expected_video_filename = require_string(object, "expected_video_filename");
+        // Manifest filenames are untrusted, including on a different OS from
+        // the writer. Reject rather than sanitize: silently changing a name
+        // could select another part or an existing user's file.
+        const auto &name = p.expected_video_filename;
+        if (name.empty() || !valid_utf8(name) || name != sanitize_filename(name) ||
+            name.find_first_of("/\\:") != std::string::npos ||
+            name.find(static_cast<char>(0x7f)) != std::string::npos)
+            throw std::runtime_error("unsafe manifest video filename");
         p.estimated_frames = require_u64(object, "estimated_frame_count");
         p.estimated_duration_seconds = json_double_after(object, "estimated_duration_seconds").value_or(0);
         p.estimated_output_bytes = require_u64(object, "estimated_output_size");
@@ -923,6 +931,15 @@ SetPlan read_manifest(const std::filesystem::path &path) {
     if (next != plan.original_file_size) throw std::runtime_error("manifest ranges do not cover source exactly");
     if (digest_bytes(canonical_descriptor(plan)) != plan.descriptor_hash)
         throw std::runtime_error("manifest descriptor hash mismatch");
+    // Keep the established deterministic naming mechanism. In addition to
+    // containment, this prevents aliases (including case aliases on Windows)
+    // between parts and avoids trusting a manifest-selected write target.
+    auto expected = plan;
+    recompute_descriptor_and_part_ids(expected);
+    for (std::size_t i = 0; i < plan.parts.size(); ++i) {
+        if (plan.parts[i].expected_video_filename != expected.parts[i].expected_video_filename)
+            throw std::runtime_error("unsafe manifest video filename: expected deterministic part name");
+    }
     plan.aggregate_state = json_string_after(json, "aggregate_state").value_or("Planned");
     plan.final_output_path = json_string_after(json, "final_output_path").value_or("");
     return plan;

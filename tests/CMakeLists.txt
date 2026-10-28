@@ -228,6 +228,23 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cli_video_set.cmake"
 )
 
+set(_resume_security_cases normal_resume encrypted_resume completed_resume partial_resume
+    traversal traversal_overwrite absolute rooted drive unc ads subdirectory
+    backslash device trailing_dot existing corrupt_completed existing_overwrite
+    backup_hardlink)
+if(WIN32)
+    list(APPEND _resume_security_cases videos_junction staging_junction reports_junction)
+endif()
+foreach(_case IN LISTS _resume_security_cases)
+    add_test(NAME CLI.VideoSetResumeSecurity.${_case}
+        COMMAND ${CMAKE_COMMAND}
+        "-DCLI=$<TARGET_FILE:media_storage>"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/resume_security/${_case}"
+        "-DCASE=${_case}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/test_video_set_resume_security.cmake")
+    set_tests_properties(CLI.VideoSetResumeSecurity.${_case} PROPERTIES TIMEOUT 90)
+endforeach()
+
 if (TARGET media_storage_gui)
     add_test(
             NAME GUI.LaunchSmoke

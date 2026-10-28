@@ -19,6 +19,13 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace video_set_cli {
 namespace {
 
@@ -384,6 +391,55 @@ std::filesystem::path final_path_for(const std::filesystem::path &output_root,
         base + "_" + id_hex(plan.set_id).substr(0, 8));
 }
 
+// Check actual filesystem entries, not just lexical prefixes. Do not traverse
+// symlinks, dangling links, junctions, mount points or other Windows reparse
+// points. Hardlinks also matter: the manifest backup uses copy_file.
+// These checks reject an unsafe on-disk tree, but are not a lock: path-based
+// codec/iostream APIs still leave a check/open race with a concurrent local
+// writer. Recheck before writes; do not treat staging as a shared workspace.
+void check_encode_entry(const std::filesystem::path &path) {
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    if (error && error != std::errc::no_such_file_or_directory)
+        throw std::filesystem::filesystem_error("cannot inspect encode path", path, error);
+    if (std::filesystem::is_symlink(status))
+        throw std::runtime_error("unsafe symlink in encode path: " + path.string());
+#if defined(_WIN32)
+    const auto attributes = GetFileAttributesW(path.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        throw std::runtime_error("unsafe reparse point in encode path: " + path.string());
+    if (attributes == INVALID_FILE_ATTRIBUTES && GetLastError() != ERROR_FILE_NOT_FOUND &&
+        GetLastError() != ERROR_PATH_NOT_FOUND)
+        throw std::runtime_error("cannot inspect encode path attributes: " + path.string());
+#endif
+    if (std::filesystem::is_regular_file(status) && std::filesystem::hard_link_count(path) != 1)
+        throw std::runtime_error("unsafe hard link in encode path: " + path.string());
+    if (std::filesystem::exists(status) && !std::filesystem::is_directory(status) &&
+        !std::filesystem::is_regular_file(status))
+        throw std::runtime_error("unsafe special file in encode path: " + path.string());
+}
+
+void check_encode_path(const std::filesystem::path &path) {
+    auto current = path.root_path();
+    for (const auto &component : path.relative_path()) {
+        current /= component;
+        check_encode_entry(current);
+    }
+}
+
+void check_encode_tree(const std::filesystem::path &path) {
+    check_encode_path(path);
+    if (!std::filesystem::is_directory(path)) return;
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(path))
+        check_encode_entry(entry.path());
+}
+
+bool completed_encode_part(const std::filesystem::path &video, const PartPlan &part) {
+    return part.local_decode_state == "Exact" && std::filesystem::is_regular_file(video) &&
+        std::filesystem::file_size(video) == part.actual_output_bytes &&
+        lower(sha256_file(video).hexValue()) == lower(part.video_sha256);
+}
+
 void remove_scoped(const std::filesystem::path &target,
                    const std::filesystem::path &root) {
     const auto absolute_target = std::filesystem::absolute(target).lexically_normal();
@@ -617,8 +673,8 @@ int do_plan(const Options &options) {
 int do_encode(const Options &options) {
     const ProgressReporter progress(options, "encode");
     const std::filesystem::path source = options.input;
-    const std::filesystem::path output_root = options.output;
-    std::filesystem::create_directories(output_root);
+    const auto output_root = std::filesystem::absolute(options.output).lexically_normal();
+    check_encode_path(output_root);
     progress.emit({.phase = "hashing_source",
                    .message = "Reading and hashing the source file"});
     const auto source_before = sha256_file(source);
@@ -628,6 +684,7 @@ int do_encode(const Options &options) {
     populate_chunk_hashes(source, plan);
     if (plan.original_file_sha256 != source_before) throw std::runtime_error("source changed while hashing");
     auto staging = staging_path_for(output_root, plan);
+    check_encode_tree(staging);
     if (options.resume && std::filesystem::exists(staging / "set_manifest.json")) {
         auto resumed = read_manifest(staging / "set_manifest.json");
         if (resumed.original_file_sha256 != plan.original_file_sha256 ||
@@ -641,10 +698,25 @@ int do_encode(const Options &options) {
         if (!options.overwrite) throw std::runtime_error("staging set already exists; use --resume or --overwrite");
         remove_scoped(staging, output_root);
     }
+    const auto final = final_path_for(output_root, plan);
+    check_encode_tree(final);
+    if (std::filesystem::exists(final) && !options.overwrite && !options.plan_only)
+        throw std::runtime_error("output exists; use --overwrite");
+    // Preflight every part before modifying even the manifest or backup.
+    for (const auto &part : plan.parts) {
+        const auto video = staging / "videos" / std::filesystem::u8path(part.expected_video_filename);
+        if (std::filesystem::exists(video) && !options.overwrite &&
+            !(options.resume && completed_encode_part(video, part)))
+            throw std::runtime_error("video output exists; use --overwrite");
+    }
+    const auto save_manifest = [&] {
+        check_encode_tree(staging);
+        write_manifest_atomic(staging / "set_manifest.json", plan);
+    };
     std::filesystem::create_directories(staging / "videos");
     std::filesystem::create_directories(staging / "returned");
     std::filesystem::create_directories(staging / "recovery");
-    write_manifest_atomic(staging / "set_manifest.json", plan);
+    save_manifest();
     print_plan(plan);
     if (options.plan_only) return 0;
 
@@ -652,9 +724,8 @@ int do_encode(const Options &options) {
         auto &part = plan.parts[index];
         const auto video = staging / "videos" /
             std::filesystem::u8path(part.expected_video_filename);
-        if (options.resume && part.local_decode_state == "Exact" &&
-            std::filesystem::exists(video) && std::filesystem::file_size(video) == part.actual_output_bytes &&
-            lower(sha256_file(video).hexValue()) == lower(part.video_sha256)) {
+        check_encode_tree(staging);
+        if (options.resume && completed_encode_part(video, part)) {
             std::cout << "Resume: verified part " << index + 1 << " already complete\n";
             progress.emit({.phase = "verifying_part",
                            .message = "Part already verified exactly",
@@ -667,6 +738,8 @@ int do_encode(const Options &options) {
                            .determinate = true});
             continue;
         }
+        if (std::filesystem::exists(video) && !options.overwrite)
+            throw std::runtime_error("video output exists; use --overwrite");
         progress.emit({.phase = "encoding_part",
                        .message = "Encoding Video Set part",
                        .current_item = part.expected_video_filename,
@@ -680,10 +753,15 @@ int do_encode(const Options &options) {
         const auto decoded = staging / (".part-" + std::to_string(index) + ".decoded");
         part.local_encode_state = "Encoding";
         part.local_decode_state = "Pending";
-        write_manifest_atomic(staging / "set_manifest.json", plan);
+        save_manifest();
         write_logical_payload(source, plan, part, payload);
+        // Encode to a fresh sibling and publish separately. The codec/API's
+        // replacing writer must never receive an existing manifest target.
+        // A short scratch stem also avoids nesting the long deterministic part
+        // name inside the API's own SafeOutputFile name (Windows MAX_PATH).
+        SafeOutputFile pending_video(video.parent_path() / "encode.mkv");
         const std::string payload_text = payload.string();
-        const std::string video_text = video.string();
+        const std::string video_text = pending_video.partial_path().string();
         ms_encode_options_t encode{};
         encode.input_path = payload_text.c_str(); encode.output_path = video_text.c_str();
         encode.password = options.password.c_str(); encode.password_len = options.password.size();
@@ -697,9 +775,12 @@ int do_encode(const Options &options) {
         if (status != MS_OK) {
             part.local_encode_state = "Failed";
             part.notes = ms_status_string(status);
-            write_manifest_atomic(staging / "set_manifest.json", plan);
+            save_manifest();
             throw std::runtime_error("part encode failed: " + std::string(ms_status_string(status)));
         }
+        check_encode_tree(staging);
+        atomic_publish_with_optional_replace(
+            pending_video.partial_path(), video, staging, options.overwrite);
         part.local_encode_state = "Encoded";
         part.actual_frames = result.total_frames;
         part.actual_duration_seconds = plan.fps > 0 ? static_cast<double>(result.total_frames) / plan.fps : 0;
@@ -720,13 +801,13 @@ int do_encode(const Options &options) {
                 plan = plan_file(source, replanned);
                 plan.adaptive_retry_count = retries;
                 populate_chunk_hashes(source, plan);
-                write_manifest_atomic(staging / "set_manifest.json", plan);
+                save_manifest();
                 index = static_cast<std::size_t>(-1);
                 continue;
             }
             part.local_encode_state = "Failed size cap";
             part.notes = "actual video exceeds hard size cap";
-            write_manifest_atomic(staging / "set_manifest.json", plan);
+            save_manifest();
             throw std::runtime_error("actual video exceeds hard size cap; set remains in staging");
         }
         ms_result_t decoded_result{};
@@ -741,7 +822,7 @@ int do_encode(const Options &options) {
                        .determinate = true});
         if (!decode_video(video, decoded, options.password, &decoded_result)) {
             part.local_decode_state = "Failed";
-            write_manifest_atomic(staging / "set_manifest.json", plan);
+            save_manifest();
             throw std::runtime_error("local verification decode failed");
         }
         PartEnvelopeV1 actual;
@@ -750,7 +831,7 @@ int do_encode(const Options &options) {
             !envelope_matches(actual, plan, part)) {
             part.local_decode_state = "Failed";
             part.notes = verification_error.empty() ? "embedded metadata mismatch" : verification_error;
-            write_manifest_atomic(staging / "set_manifest.json", plan);
+            save_manifest();
             throw std::runtime_error("local part verification failed: " + part.notes);
         }
         part.local_decode_state = "Exact";
@@ -758,7 +839,7 @@ int do_encode(const Options &options) {
         part.notes.clear();
         std::error_code ignored;
         std::filesystem::remove(payload, ignored); std::filesystem::remove(decoded, ignored);
-        write_manifest_atomic(staging / "set_manifest.json", plan);
+        save_manifest();
         progress.emit({.phase = "verifying_part",
                        .message = "Part verified exactly",
                        .current_item = part.expected_video_filename,
@@ -772,12 +853,13 @@ int do_encode(const Options &options) {
     }
     if (sha256_file(source) != source_before) throw std::runtime_error("source file changed during encode");
     plan.aggregate_state = infer_status(plan);
+    check_encode_tree(staging);
     write_reports(staging, plan);
     write_manual_workflow_files(staging, plan, options.upload_batch_size);
-    write_manifest_atomic(staging / "set_manifest.json", plan);
-    const auto final = final_path_for(output_root, plan);
+    save_manifest();
     progress.emit({.phase = "finalizing",
                    .message = "Publishing the verified Video Set"});
+    check_encode_tree(final);
     atomic_publish_with_optional_replace(
         staging, final, output_root, options.overwrite);
     std::cout << "Video Set locally verified and atomically published: " << final.string() << "\n";
