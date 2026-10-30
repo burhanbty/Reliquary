@@ -53,6 +53,9 @@
 #include "ui_theme.h"
 #include "visual_components.h"
 #include "youtube_auth.h"
+#ifdef VIDSTOREX_ENABLE_TEST_HOOKS
+#include "test_fake_youtube_api.h"
+#endif
 #include "youtube_sync_state.h"
 
 namespace {
@@ -88,149 +91,6 @@ QIcon vidStoreXApplicationIcon() {
 }
 
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
-class FakeYouTubeApi final : public QObject {
-public:
-    explicit FakeYouTubeApi(QObject *parent = nullptr) : QObject(parent) {
-        connect(&server_, &QTcpServer::newConnection, this, [this]() {
-            while (auto *socket = server_.nextPendingConnection()) {
-                connect(socket, &QTcpSocket::readyRead, this,
-                        [this, socket]() { consume(socket); });
-            }
-        });
-    }
-
-    bool start() {
-        return server_.listen(QHostAddress::LocalHost, 0);
-    }
-
-    QString apiBase() const {
-        return QStringLiteral("http://127.0.0.1:%1/youtube/v3")
-            .arg(server_.serverPort());
-    }
-
-    QString uploadBase() const {
-        return QStringLiteral("http://127.0.0.1:%1/upload/youtube/v3")
-            .arg(server_.serverPort());
-    }
-
-    bool complete(const int expectedParts) const {
-        return playlistCreates_ == 1 && sessionCreates_ == expectedParts &&
-            completedUploads_ == expectedParts &&
-            playlistInserts_ == expectedParts && processingChecks_ == 1 &&
-            authorizationValid_ && metadataPrivate_;
-    }
-
-private:
-    void consume(QTcpSocket *socket) {
-        auto &buffer = buffers_[socket];
-        buffer += socket->readAll();
-        const int headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd < 0) return;
-        const QByteArray headers = buffer.left(headerEnd + 4);
-        const QRegularExpression contentLength(
-            QStringLiteral("(?:^|\\r\\n)Content-Length:\\s*(\\d+)"),
-            QRegularExpression::CaseInsensitiveOption);
-        const auto match = contentLength.match(QString::fromLatin1(headers));
-        const qint64 bodyLength = match.hasMatch()
-            ? match.captured(1).toLongLong() : 0;
-        if (buffer.size() < headerEnd + 4 + bodyLength) return;
-        const QByteArray body = buffer.mid(headerEnd + 4, bodyLength);
-        const QList<QByteArray> requestLine = headers.left(
-            headers.indexOf("\r\n")).split(' ');
-        if (requestLine.size() < 2) {
-            respond(socket, 400, "Bad Request", "{}");
-            return;
-        }
-        const QByteArray method = requestLine.at(0);
-        const QByteArray target = requestLine.at(1);
-        authorizationValid_ = authorizationValid_ &&
-            headers.contains("Authorization: Bearer gui-e2e-access");
-        if (method == "POST" && target.startsWith(
-                "/youtube/v3/playlists?")) {
-            ++playlistCreates_;
-            respond(socket, 200, "OK",
-                R"({"id":"PL_FAKE_SYNC","status":{"privacyStatus":"unlisted"}})");
-        } else if (method == "POST" && target.startsWith(
-                       "/upload/youtube/v3/videos?")) {
-            if (body.contains("source.bin") || body.contains("\\\\") ||
-                body.contains(":/"))
-                metadataPrivate_ = false;
-            const int session = ++sessionCreates_;
-            respond(socket, 200, "OK", {}, {{"Location",
-                QStringLiteral("http://127.0.0.1:%1/session/%2")
-                    .arg(server_.serverPort()).arg(session).toLatin1()}});
-        } else if (method == "PUT" && target.startsWith("/session/")) {
-            const QRegularExpression range(
-                QStringLiteral("Content-Range:\\s*bytes\\s+(\\d+)-(\\d+)/(\\d+)"),
-                QRegularExpression::CaseInsensitiveOption);
-            const auto rangeMatch = range.match(QString::fromLatin1(headers));
-            if (!rangeMatch.hasMatch()) {
-                respond(socket, 400, "Bad Request", "{}");
-                return;
-            }
-            const quint64 last = rangeMatch.captured(2).toULongLong();
-            const quint64 total = rangeMatch.captured(3).toULongLong();
-            if (last + 1 < total) {
-                respond(socket, 308, "Resume Incomplete", {},
-                    {{"Range", QByteArray("bytes=0-") + QByteArray::number(last)}});
-            } else {
-                const QByteArray session = target.mid(target.lastIndexOf('/') + 1);
-                const QByteArray id = "fake-video-" + session;
-                uploadedVideos_ << QString::fromLatin1(id);
-                ++completedUploads_;
-                respond(socket, 201, "Created",
-                    QByteArray("{\"id\":\"") + id +
-                    "\",\"status\":{\"privacyStatus\":\"unlisted\"}}");
-            }
-        } else if (method == "POST" && target.startsWith(
-                       "/youtube/v3/playlistItems?")) {
-            ++playlistInserts_;
-            respond(socket, 200, "OK",
-                QByteArray("{\"id\":\"playlist-item-") +
-                QByteArray::number(playlistInserts_) + "\"}");
-        } else if (method == "GET" && target.startsWith(
-                       "/youtube/v3/videos?")) {
-            ++processingChecks_;
-            QByteArray items;
-            for (const auto &id : uploadedVideos_) {
-                if (!items.isEmpty()) items += ',';
-                items += QByteArray("{\"id\":\"") + id.toLatin1() +
-                    "\",\"processingDetails\":{\"processingStatus\":\"succeeded\","
-                    "\"processingProgress\":{\"partsProcessed\":1,\"partsTotal\":1}},"
-                    "\"status\":{\"privacyStatus\":\"unlisted\"}}";
-            }
-            respond(socket, 200, "OK", QByteArray("{\"items\":[") +
-                items + "]}");
-        } else {
-            respond(socket, 404, "Not Found", "{}");
-        }
-    }
-
-    static void respond(QTcpSocket *socket, const int status,
-                        const QByteArray &reason, const QByteArray &body,
-                        const QList<QPair<QByteArray, QByteArray>> &extra = {}) {
-        QByteArray response = "HTTP/1.1 " + QByteArray::number(status) + ' ' +
-            reason + "\r\nContent-Type: application/json\r\nConnection: close\r\n";
-        for (const auto &[name, value] : extra)
-            response += name + ": " + value + "\r\n";
-        response += "Content-Length: " + QByteArray::number(body.size()) +
-            "\r\n\r\n" + body;
-        socket->write(response);
-        socket->disconnectFromHost();
-    }
-
-    QTcpServer server_;
-    QHash<QTcpSocket *, QByteArray> buffers_;
-    QStringList uploadedVideos_;
-    int playlistCreates_ = 0;
-    int sessionCreates_ = 0;
-    int completedUploads_ = 0;
-    int playlistInserts_ = 0;
-    int processingChecks_ = 0;
-    bool authorizationValid_ = true;
-    bool metadataPrivate_ = true;
-};
-
 bool exerciseResultCardPreview(
     QPushButton *openButton, const QString &outputPath,
     const QStringList &requiredSummary,
@@ -1011,7 +871,10 @@ int main(int argc, char *argv[]) {
                 timer->stop();
                 window.close();
                 delete deadline;
-            } else if (QDateTime::currentMSecsSinceEpoch() > *deadline) {
+            } else if (status->text().contains("needs attention", Qt::CaseInsensitive) ||
+                       QDateTime::currentMSecsSinceEpoch() > *deadline) {
+                QFile diagnostic(QDir(youtubeSyncSmokeRoot).filePath("sync-timeout.txt"));
+                if (diagnostic.open(QIODevice::WriteOnly)) diagnostic.write(status->text().toUtf8());
                 qCritical() << "YouTube Sync GUI E2E timeout:" << status->text();
                 timer->stop();
                 window.close();

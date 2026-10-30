@@ -6,6 +6,7 @@
 #include "encoder.h"
 #include "decoder.h"
 #include "safe_output.h"
+#include "directory_publish.h"
 #include "video_encoder.h"
 
 #include <filesystem>
@@ -38,6 +39,7 @@ void put(const fs::path &path, const std::string &contents) {
 
 std::string get(const fs::path &path) {
     std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in) << "Could not read synthetic fixture: " << path;
     return {std::istreambuf_iterator<char>(in), {}};
 }
 
@@ -249,7 +251,7 @@ const std::vector<std::string> alias_cases = {
 INSTANTIATE_TEST_SUITE_P(Paths, RecoveryAlias, testing::ValuesIn(alias_cases));
 
 class RecoveryIoFailure : public RecoveryOutputSafety,
-                          public testing::WithParamInterface<std::tuple<std::string, bool>> {};
+                          public testing::WithParamInterface<std::tuple<std::string, bool, int>> {};
 
 class InjectFailure {
 public:
@@ -272,14 +274,17 @@ private:
 };
 
 TEST_P(RecoveryIoFailure, PreservesTargetAndCleansPartial) {
-    encode();
-    const auto &[stage, existing] = GetParam();
+    const auto &[stage, existing, profile] = GetParam();
+    const ms_encoding_mode_t modes[] = {MS_ENCODING_MODE_RESILIENT,
+        MS_ENCODING_MODE_HIGH_CAPACITY, MS_ENCODING_MODE_FAST_LOCAL};
+    encode(profile >= 3, modes[profile % 3]);
     std::string target_before;
     if (existing) { put(output, sentinel); target_before = digest(output); }
     const auto before = digest(video);
     {
         const InjectFailure failure(stage);
-        EXPECT_EQ(decode(output), MS_ERR_DECODE_FAILED);
+        EXPECT_EQ(decode(output, password), profile % 3 == 2
+            ? MS_ERR_IO : MS_ERR_DECODE_FAILED);
     }
     if (existing) EXPECT_EQ(digest(output), target_before);
     else EXPECT_FALSE(fs::exists(output));
@@ -287,13 +292,16 @@ TEST_P(RecoveryIoFailure, PreservesTargetAndCleansPartial) {
     no_partials();
 }
 INSTANTIATE_TEST_SUITE_P(Stages, RecoveryIoFailure, testing::Combine(
-    testing::Values("create", "write", "flush", "close", "publish"), testing::Bool()));
+    testing::Values("create", "write", "flush", "close", "publish"),
+    testing::Bool(), testing::Range(0, 6)));
 
 class RecoveryCancellation : public RecoveryOutputSafety,
-                             public testing::WithParamInterface<std::tuple<bool, bool>> {};
+                             public testing::WithParamInterface<std::tuple<bool, bool, int>> {};
 TEST_P(RecoveryCancellation, PreservesTargetAndSource) {
-    encode(true);
-    const auto [late, existing] = GetParam();
+    const auto [late, existing, profile] = GetParam();
+    const ms_encoding_mode_t modes[] = {MS_ENCODING_MODE_RESILIENT,
+        MS_ENCODING_MODE_HIGH_CAPACITY, MS_ENCODING_MODE_FAST_LOCAL};
+    encode(profile >= 3, modes[profile % 3]);
     std::string target_before;
     if (existing) { put(output, sentinel); target_before = digest(output); }
     const auto source_before = digest(video);
@@ -301,12 +309,13 @@ TEST_P(RecoveryCancellation, PreservesTargetAndSource) {
     Cancel state{root, late};
     EXPECT_EQ(decode(output, password, [](uint64_t, uint64_t, void *p) {
         auto &s = *static_cast<Cancel *>(p);
-        bool partial_exists = false;
+        bool written_partial_exists = false;
         for (const auto &entry : fs::directory_iterator(s.root))
-            partial_exists |= entry.path().string().find(".vidstorex-part-") != std::string::npos;
-        s.cancelled = !s.late || partial_exists;
+            if (entry.path().string().find(".vidstorex-part-") != std::string::npos)
+                written_partial_exists |= fs::file_size(entry.path()) > 0;
+        s.cancelled = !s.late || written_partial_exists;
         return s.cancelled ? 1 : 0;
-    }, &state), MS_ERR_DECODE_FAILED);
+    }, &state), profile % 3 == 2 ? MS_ERR_IO : MS_ERR_DECODE_FAILED);
     EXPECT_TRUE(state.cancelled);
     if (existing) EXPECT_EQ(digest(output), target_before);
     else EXPECT_FALSE(fs::exists(output));
@@ -314,7 +323,8 @@ TEST_P(RecoveryCancellation, PreservesTargetAndSource) {
     no_partials();
 }
 INSTANTIATE_TEST_SUITE_P(Timing, RecoveryCancellation,
-                       testing::Combine(testing::Bool(), testing::Bool()));
+                       testing::Combine(testing::Bool(), testing::Bool(),
+                                        testing::Range(0, 6)));
 
 class RecoveryCorruption : public RecoveryOutputSafety,
                           public testing::WithParamInterface<std::tuple<std::string, bool>> {};
@@ -449,6 +459,72 @@ TEST_F(RecoveryOutputSafety, DistinctExclusiveTemporaryFilesAreCleaned) {
 }
 
 #ifdef _WIN32
+class DirectoryReadLock {
+public:
+    explicit DirectoryReadLock(const fs::path &path)
+        : handle_(CreateFileW(path.c_str(), GENERIC_READ,
+              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+              FILE_FLAG_BACKUP_SEMANTICS, nullptr)) {}
+    ~DirectoryReadLock() { release(); }
+    bool valid() const { return handle_ != INVALID_HANDLE_VALUE; }
+    void release() {
+        if (valid()) { CloseHandle(handle_); handle_ = INVALID_HANDLE_VALUE; }
+    }
+private:
+    HANDLE handle_;
+};
+
+TEST_F(RecoveryOutputSafety, DirectoryPublishRetriesSharingLock) {
+    const auto staged = root / "staged", target = root / "published";
+    fs::create_directory(staged);
+    put(staged / "sentinel.bin", sentinel);
+    const auto before = digest(staged / "sentinel.bin");
+    DirectoryReadLock lock(staged);
+    ASSERT_TRUE(lock.valid());
+    int checks = 0;
+    publish_directory_with_retry(staged, target, [&] {
+        if (++checks == 2) lock.release();
+    });
+    EXPECT_EQ(checks, 2);
+    EXPECT_FALSE(fs::exists(staged));
+    EXPECT_EQ(digest(target / "sentinel.bin"), before);
+}
+
+TEST_F(RecoveryOutputSafety, DirectoryPublishPermanentLockPreservesStaging) {
+    const auto staged = root / "staged", target = root / "published";
+    fs::create_directory(staged);
+    put(staged / "sentinel.bin", sentinel);
+    const auto before = digest(staged / "sentinel.bin");
+    DirectoryReadLock lock(staged);
+    ASSERT_TRUE(lock.valid());
+    EXPECT_THROW(publish_directory_with_retry(staged, target, [] {}),
+                 fs::filesystem_error);
+    lock.release();
+    EXPECT_EQ(digest(staged / "sentinel.bin"), before);
+    EXPECT_FALSE(fs::exists(target));
+}
+
+TEST_F(RecoveryOutputSafety, DirectoryPublishRetryRevalidatesTarget) {
+    const auto staged = root / "staged", target = root / "published";
+    fs::create_directory(staged);
+    put(staged / "sentinel.bin", plain);
+    const auto before = digest(staged / "sentinel.bin");
+    DirectoryReadLock lock(staged);
+    ASSERT_TRUE(lock.valid());
+    int checks = 0;
+    EXPECT_THROW(publish_directory_with_retry(staged, target, [&] {
+        if (++checks == 2) {
+            lock.release();
+            fs::create_directory(target);
+            put(target / "sentinel.bin", sentinel);
+            throw std::runtime_error("output exists; refusing publication");
+        }
+    }), std::runtime_error);
+    EXPECT_EQ(checks, 2);
+    EXPECT_EQ(digest(staged / "sentinel.bin"), before);
+    EXPECT_EQ(get(target / "sentinel.bin"), sentinel);
+}
+
 TEST_F(RecoveryOutputSafety, NativePublishSharingViolationPreservesExistingTarget) {
     encode();
     put(output, sentinel);

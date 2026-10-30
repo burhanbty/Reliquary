@@ -1,4 +1,11 @@
-file(REMOVE_RECURSE "${TEST_ROOT}")
+# Isolate successive GUI runs from stale handles on an earlier staging tree.
+get_filename_component(TEST_PARENT "${TEST_ROOT}" DIRECTORY)
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef RUN_ID)
+set(TEST_ROOT "${TEST_PARENT}/assistant-${RUN_ID}")
+if(EXISTS "${TEST_ROOT}")
+    message(FATAL_ERROR "Assistant fixture directory collision: ${TEST_ROOT}")
+endif()
+message(STATUS "Video Set Assistant synthetic run: ${TEST_ROOT}")
 file(MAKE_DIRECTORY "${TEST_ROOT}")
 string(REPEAT "V" 1048576 SOURCE_PAYLOAD)
 file(WRITE "${TEST_ROOT}/source.bin" "${SOURCE_PAYLOAD}")

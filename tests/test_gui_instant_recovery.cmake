@@ -1,4 +1,13 @@
-file(REMOVE_RECURSE "${TEST_ROOT}")
+# A previous GUI/codec run or an external scanner may still hold the reused
+# staging directory on Windows. Keep each synthetic run in a fresh, short
+# sibling, preserving failed-run evidence instead of deleting and reusing it.
+get_filename_component(TEST_PARENT "${TEST_ROOT}" DIRECTORY)
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef RUN_ID)
+set(TEST_ROOT "${TEST_PARENT}/instant-${RUN_ID}")
+if(EXISTS "${TEST_ROOT}")
+    message(FATAL_ERROR "Instant fixture directory collision: ${TEST_ROOT}")
+endif()
+message(STATUS "Instant Recovery synthetic run: ${TEST_ROOT}")
 file(MAKE_DIRECTORY "${TEST_ROOT}" "${TEST_ROOT}/sets")
 string(REPEAT "I" 1048576 SOURCE_PAYLOAD)
 file(WRITE "${TEST_ROOT}/source.bin" "${SOURCE_PAYLOAD}")

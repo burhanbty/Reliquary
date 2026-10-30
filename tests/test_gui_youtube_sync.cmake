@@ -34,8 +34,12 @@ execute_process(
     ERROR_VARIABLE GUI_ERROR
     TIMEOUT 150)
 if (NOT GUI_RESULT EQUAL 0)
+    set(SYNC_DIAGNOSTIC "")
+    if(EXISTS "${TEST_ROOT}/sync-timeout.txt")
+        file(READ "${TEST_ROOT}/sync-timeout.txt" SYNC_DIAGNOSTIC)
+    endif()
     message(FATAL_ERROR
-        "YouTube Sync GUI E2E failed: ${GUI_RESULT}\n${GUI_OUTPUT}\n${GUI_ERROR}")
+        "YouTube Sync GUI E2E failed: ${GUI_RESULT}\n${GUI_OUTPUT}\n${GUI_ERROR}\n${SYNC_DIAGNOSTIC}")
 endif ()
 get_filename_component(SET_ROOT "${MANIFEST}" DIRECTORY)
 if (NOT EXISTS "${SET_ROOT}/youtube_sync_state.json")

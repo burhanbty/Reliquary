@@ -3,6 +3,7 @@
 #include "media_storage.h"
 #include "safe_output.h"
 #include "video_set.h"
+#include "directory_publish.h"
 
 #include <algorithm>
 #include <array>
@@ -456,7 +457,16 @@ void atomic_publish_with_optional_replace(
     const std::filesystem::path &scope_root,
     const bool overwrite) {
     if (!std::filesystem::exists(target)) {
-        std::filesystem::rename(staged, target);
+        if (std::filesystem::is_directory(staged)) {
+            publish_directory_with_retry(staged, target, [&] {
+                check_encode_tree(staged);
+                check_encode_tree(target);
+                if (std::filesystem::exists(target))
+                    throw std::runtime_error("output exists; refusing publication");
+            });
+        } else {
+            std::filesystem::rename(staged, target);
+        }
         return;
     }
     if (!overwrite)

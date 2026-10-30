@@ -1,5 +1,6 @@
 #include "youtube_network_service.h"
 #include "youtube_upload_manager.h"
+#include "test_fake_youtube_api.h"
 
 #include <gtest/gtest.h>
 
@@ -99,4 +100,36 @@ TEST(YouTubeNetworkFakeHttp, Preserves308RangeForResumableDecision) {
     EXPECT_EQ(decision.action,
         youtube_sync::UploadResponseDecision::Action::NextChunk);
     EXPECT_EQ(decision.next_offset, 524288u);
+}
+
+TEST(YouTubeNetworkFakeHttp, GuiUploadSessionConsumesAlreadyBufferedRequest) {
+    // A readyRead signal is not replayed when the handler is connected later.
+    // Attach only once bytes arrive, forcing data to precede the normal handler.
+    FakeYouTubeApi server(nullptr, true);
+    ASSERT_TRUE(server.start());
+    youtube_sync::YouTubeNetworkService service;
+    QEventLoop loop;
+    int status = 0;
+    QByteArray location;
+    QObject::connect(&service,
+        &youtube_sync::YouTubeNetworkService::responseReady,
+        [&](int code, const QByteArray &, const QList<QPair<QByteArray, QByteArray>> &headers) {
+            status = code;
+            for (const auto &header : headers)
+                if (header.first.compare("Location", Qt::CaseInsensitive) == 0)
+                    location = header.second;
+            loop.quit();
+        });
+    QObject::connect(&service, &youtube_sync::YouTubeNetworkService::networkFailed,
+        [&](const QString &, const QString &) { loop.quit(); });
+    service.execute({"POST", server.uploadBase().toStdString() +
+        "/videos?uploadType=resumable&part=snippet,status",
+        {{"Authorization", "Bearer gui-e2e-access"},
+         {"Content-Type", "application/json"}}, "{}"});
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
+    ASSERT_GT(server.bufferedConnections(), 0);
+    EXPECT_EQ(status, 200);
+    EXPECT_TRUE(location.startsWith("http://127.0.0.1:"));
+    EXPECT_TRUE(location.endsWith("/session/1"));
 }

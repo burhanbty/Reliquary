@@ -286,6 +286,9 @@ FastLocalStatistics decode_fast_local(
         throw FastLocalError(FastLocalErrorCode::Io,
                              "recovery output aliases the source video");
     }
+    // Gather fallible result metadata before publication. A successful replace
+    // must not subsequently be reported as failure by a file_size() call.
+    const auto input_size = std::filesystem::file_size(video_path);
     VideoDecoder decoder(video_path.string(), profiler);
     std::vector<std::byte> frame;
     if (!decoder.decode_next_gray8_frame(frame)) {
@@ -332,15 +335,7 @@ FastLocalStatistics decode_fast_local(
     uint64_t written_bytes = 0;
     uint64_t payload_bytes = 0;
     try {
-        SafeOutputFile safe_output(output_path);
-        std::ofstream output(
-            safe_output.partial_path(),
-            std::ios::binary | std::ios::trunc);
-        if (!output) {
-            throw FastLocalError(
-                FastLocalErrorCode::Io,
-                "could not create partial output file");
-        }
+        SafeOutputFile safe_output(output_path, SafeOutputFile::Mode::ExclusiveWrite);
         StreamingSha256 hash;
 
         for (uint64_t index = 0;
@@ -423,14 +418,7 @@ FastLocalStatistics decode_fast_local(
             {
                 ScopedTimer timer(
                     profiler, PerformanceStage::OutputWrite);
-                output.write(
-                    reinterpret_cast<const char *>(plain.data()),
-                    static_cast<std::streamsize>(plain.size()));
-                if (!output) {
-                    throw FastLocalError(
-                        FastLocalErrorCode::Io,
-                        "Fast Local output write failed");
-                }
+                safe_output.write(plain);
             }
             written_bytes += plain.size();
             payload_bytes += stored.size();
@@ -451,12 +439,7 @@ FastLocalStatistics decode_fast_local(
         if (!(actual == file_header.original_sha256)) {
             corrupt("Fast Local SHA-256 mismatch");
         }
-        output.close();
-        if (!output) {
-            throw FastLocalError(
-                FastLocalErrorCode::Io,
-                "Fast Local output flush failed");
-        }
+        safe_output.finish_writing();
         {
             ScopedTimer timer(
                 profiler, PerformanceStage::OutputWrite);
@@ -468,6 +451,12 @@ FastLocalStatistics decode_fast_local(
             }
             safe_output.commit();
         }
+    } catch (const FastLocalError &) {
+        if (encrypted) secure_zero(key);
+        throw;
+    } catch (const std::runtime_error &error) {
+        if (encrypted) secure_zero(key);
+        throw FastLocalError(FastLocalErrorCode::Io, error.what());
     } catch (...) {
         if (encrypted) secure_zero(key);
         throw;
@@ -475,6 +464,6 @@ FastLocalStatistics decode_fast_local(
     if (encrypted) secure_zero(key);
 
     return make_statistics(
-        std::filesystem::file_size(video_path),
+        input_size,
         written_bytes, file_header.total_frames, payload_bytes);
 }
