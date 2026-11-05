@@ -113,6 +113,8 @@ struct ProgressUpdate {
     std::string suggested_action;
     bool can_retry = false;
     std::optional<int> exit_code;
+    std::vector<uint32_t> missing_part_numbers;
+    std::vector<std::string> unreadable_videos;
 };
 
 class ProgressReporter {
@@ -168,6 +170,22 @@ public:
         if (update.can_retry) out << ",\"can_retry\":true";
         if (update.exit_code)
             out << ",\"exit_code\":" << *update.exit_code;
+        if (!update.missing_part_numbers.empty()) {
+            out << ",\"missing_part_numbers\":[";
+            for (size_t i = 0; i < update.missing_part_numbers.size(); ++i) {
+                if (i != 0) out << ',';
+                out << update.missing_part_numbers[i];
+            }
+            out << ']';
+        }
+        if (!update.unreadable_videos.empty()) {
+            out << ",\"unreadable_videos\":[";
+            for (size_t i = 0; i < update.unreadable_videos.size(); ++i) {
+                if (i != 0) out << ',';
+                out << '"' << json_escape(update.unreadable_videos[i]) << '"';
+            }
+            out << ']';
+        }
         out << '}';
         std::cerr << out.str() << '\n' << std::flush;
     }
@@ -941,6 +959,8 @@ int do_inspect(const Options &options) {
     uint64_t duplicate_total = 0;
     uint64_t conflict_total = 0;
     uint64_t missing_total = 0;
+    constexpr size_t max_issue_examples = 8;
+    std::vector<uint32_t> missing_part_numbers;
     for (const auto &[set_id, parts] : sets) {
         const auto first = std::find_if(candidates.begin(), candidates.end(),
             [&](const Candidate &c) { return id_hex(c.envelope.set_id) == set_id; });
@@ -972,11 +992,24 @@ int do_inspect(const Options &options) {
         duplicate_total += duplicate_count;
         conflict_total += conflict_count;
         missing_total += missing_count;
+        if (options.jsonl_progress && sets.size() == 1 && missing_count != 0) {
+            for (uint32_t index = 0; index < first->envelope.part_count &&
+                    missing_part_numbers.size() < max_issue_examples; ++index) {
+                if (!parts.contains(index)) missing_part_numbers.push_back(index + 1);
+            }
+        }
         std::cout << ", duplicates " << duplicate_count
                   << ", conflicts " << conflict_count
                   << ", missing " << missing_count << "\n";
     }
     if (!corrupt.empty()) std::cout << "Corrupt/unreadable videos: " << corrupt.size() << "\n";
+    std::vector<std::string> unreadable_videos;
+    if (options.jsonl_progress) {
+        for (size_t i = 0; i < (std::min)(corrupt.size(), max_issue_examples); ++i) {
+            const auto name = corrupt[i].filename().u8string();
+            unreadable_videos.emplace_back(name.begin(), name.end());
+        }
+    }
     progress.emit({.phase = "completed",
                    .message = "Downloaded video scan complete",
                    .progress_current = videos.size(),
@@ -994,7 +1027,9 @@ int do_inspect(const Options &options) {
                    .status = sets.empty() ? "no_video_set" :
                        (corrupt.empty() && !conflict_found &&
                         missing_total == 0 ? "scan_complete" :
-                                             "scan_needs_attention")});
+                                             "scan_needs_attention"),
+                   .missing_part_numbers = std::move(missing_part_numbers),
+                   .unreadable_videos = std::move(unreadable_videos)});
     if (sets.empty()) return kExitCorrupt;
     return corrupt.empty() && !conflict_found ? 0 : kExitCorrupt;
 }

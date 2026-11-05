@@ -337,13 +337,15 @@ private:
     void updateVideoSetPlanSummaryText();
 
     void updateVideoSetAssistant();
+    void updateVideoSetStepper();
+    void updateRecoverySummary();
 
     void startVideoSetProcess(const QStringList &arguments,
                               bool assistantOperation = true);
 
     void handleVideoSetOutput(const QString &text);
 
-    void handleVideoSetProgressOutput(const QString &text);
+    void handleVideoSetProgressOutput(const QByteArray &bytes);
 
     void renderVideoSetActivity();
 
@@ -355,6 +357,7 @@ private:
     [[nodiscard]] bool currentVideoSetPlanMatches() const;
 
     void updateWizardActionBarVisibility();
+    void updateWorkflowScroll();
 
     void handleVideoSetFinished(int exitCode,
                                 QProcess::ExitStatus exitStatus);
@@ -611,7 +614,6 @@ private:
     QFrame *videoSetWizardActionBar = nullptr;
     QStackedWidget *videoSetWizardActionStack = nullptr;
     QLabel *videoSetPrimaryMessage = nullptr;
-    QLabel *videoSetSuggestedAction = nullptr;
     QPushButton *videoSetWelcomeCreateButton = nullptr;
     QPushButton *videoSetWelcomeRecoverButton = nullptr;
     QFrame *videoSetCreateCard = nullptr;
@@ -632,8 +634,6 @@ private:
     QPushButton *videoSetRecentRemoveButton = nullptr;
     QFrame *videoSetRecentEmptyState = nullptr;
     QLabel *videoSetRecentEmptyLabel = nullptr;
-    QPushButton *videoSetRecentEmptyCreateButton = nullptr;
-    QPushButton *videoSetRecentEmptyRecoverButton = nullptr;
     QListWidget *videoSetRecentFullList = nullptr;
     QPushButton *videoSetRecentFullContinueButton = nullptr;
     QPushButton *videoSetRecentFullOpenFolderButton = nullptr;
@@ -702,8 +702,6 @@ private:
     QLabel *videoSetRecoveryAvailabilityLabel = nullptr;
     QToolButton *videoSetTechnicalLogButton = nullptr;
     QTextEdit *videoSetLog = nullptr;
-    QLabel *videoSetUploadInstructionsLabel = nullptr;
-    QVector<QLabel *> videoSetUploadInstructionLabels;
     QPushButton *videoSetOpenVideosButton = nullptr;
     QPushButton *videoSetOpenYouTubeButton = nullptr;
     QPushButton *videoSetOpenChecklistButton = nullptr;
@@ -723,7 +721,11 @@ private:
     QLineEdit *videoSetAssistantRecoveryInputEdit = nullptr;
     QLineEdit *videoSetAssistantRecoveryOutputEdit = nullptr;
     QLabel *videoSetScanSummaryLabel = nullptr;
-    QLabel *videoSetScanCountsLabel = nullptr;
+    QWidget *videoSetScanMetrics = nullptr;
+    QWidget *videoSetScanOutcome = nullptr;
+    QLabel *videoSetScanIssuesLabel = nullptr;
+    QStringList videoSetMissingPartNumbers;
+    QStringList videoSetUnreadableVideoNames;
     QVector<QLabel *> videoSetScanMetricTitles;
     QVector<QLabel *> videoSetScanMetricValues;
     QListWidget *videoSetDetectedSetsList = nullptr;
@@ -759,7 +761,7 @@ private:
     video_set_workflow::Controller videoSetWorkflow;
     video_set_workflow::OperationProgressModel videoSetOperationProgress;
     QString videoSetProcessBuffer;
-    QString videoSetProgressLineBuffer;
+    QByteArray videoSetProgressLineBuffer;
     QString videoSetActiveCommand;
     QStringList videoSetLastAssistantArguments;
     QString videoSetPlanningInputKey;

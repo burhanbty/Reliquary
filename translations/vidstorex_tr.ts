@@ -735,7 +735,7 @@ Sürüm 1.4</translation>
     </message>
     <message>
         <source>Upload every video as Unlisted and wait for 1080p processing to finish.</source>
-        <translation type="vanished">Her videoyu Liste Dışı olarak yükleyin ve 1080p işlemenin tamamlanmasını bekleyin.</translation>
+        <translation>Her videoyu Liste Dışı olarak yükleyin ve 1080p işlemenin tamamlanmasını bekleyin.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="3594"/>
@@ -836,7 +836,7 @@ Sürüm 1.4</translation>
     </message>
     <message>
         <source>Source file</source>
-        <translation type="vanished">Kaynak dosya</translation>
+        <translation>Kaynak dosya</translation>
     </message>
     <message>
         <source>Choose file...</source>
@@ -844,7 +844,7 @@ Sürüm 1.4</translation>
     </message>
     <message>
         <source>Video Set output folder</source>
-        <translation type="vanished">Video Set çıktı klasörü</translation>
+        <translation>Video Set çıktı klasörü</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="148"/>
@@ -963,7 +963,7 @@ Teknik: 4x4, 1-bit, sinyal 1.0, onarım %5; yapılandırma 538F2B009FAB.</transl
     </message>
     <message>
         <source>Target duration:</source>
-        <translation type="vanished">Hedef süre:</translation>
+        <translation>Hedef süre:</translation>
     </message>
     <message>
         <source>Maximum actual video size:</source>
@@ -971,7 +971,7 @@ Teknik: 4x4, 1-bit, sinyal 1.0, onarım %5; yapılandırma 538F2B009FAB.</transl
     </message>
     <message>
         <source>Safety reserve:</source>
-        <translation type="vanished">Güvenlik payı:</translation>
+        <translation>Güvenlik payı:</translation>
     </message>
     <message>
         <source>Container:</source>
@@ -1142,7 +1142,7 @@ Mod: %6</translation>
     </message>
     <message>
         <source>Resume</source>
-        <translation type="vanished">Devam Ettir</translation>
+        <translation>Sürdür</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="163"/>
@@ -1218,7 +1218,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Recovered output folder</source>
-        <translation type="vanished">Kurtarılan çıktı klasörü</translation>
+        <translation>Kurtarılan dosyanın klasörü</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="156"/>
@@ -1429,11 +1429,11 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Choose the file you want to turn into videos.</source>
-        <translation type="vanished">Videolara dönüştürmek istediğiniz dosyayı seçin.</translation>
+        <translation>Videolara dönüştürmek istediğiniz dosyayı seçin.</translation>
     </message>
     <message>
         <source>Choose a readable file and an output folder.</source>
-        <translation type="vanished">Okunabilir bir dosya ve çıktı klasörü seçin.</translation>
+        <translation>Okunabilir bir dosya ve çıktı klasörü seçin.</translation>
     </message>
     <message>
         <source>Continue to calculate the plan.</source>
@@ -1454,7 +1454,7 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Creating and checking each video...</source>
-        <translation type="vanished">Her video oluşturuluyor ve kontrol ediliyor...</translation>
+        <translation>Her video oluşturuluyor ve kontrol ediliyor...</translation>
     </message>
     <message>
         <source>You can cancel safely and continue later.</source>
@@ -1462,11 +1462,11 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Video creation was paused safely.</source>
-        <translation type="vanished">Video oluşturma güvenle duraklatıldı.</translation>
+        <translation>Video oluşturma güvenle duraklatıldı.</translation>
     </message>
     <message>
         <source>You can continue this Video Set later.</source>
-        <translation type="vanished">Bu Video Set&apos;e daha sonra devam edebilirsiniz.</translation>
+        <translation>Bu Video Set&apos;e daha sonra devam edebilirsiniz.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="169"/>
@@ -1479,11 +1479,11 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Paste the playlist link to download YouTube&apos;s processed copies.</source>
-        <translation type="vanished">YouTube&apos;un işlediği kopyaları indirmek için oynatma listesi bağlantısını yapıştırın.</translation>
+        <translation>YouTube&apos;un işlediği kopyaları indirmek için oynatma listesi bağlantısını yapıştırın.</translation>
     </message>
     <message>
         <source>You can also choose downloaded videos manually.</source>
-        <translation type="vanished">İndirilen videoları elle de seçebilirsiniz.</translation>
+        <translation>İndirilen videoları elle de seçebilirsiniz.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="177"/>
@@ -1502,27 +1502,27 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Filenames and playlist order are not used as identity.</source>
-        <translation type="vanished">Dosya adları ve oynatma listesi sırası kimlik olarak kullanılmaz.</translation>
+        <translation>Dosya adları ve oynatma listesi sırası kimlik olarak kullanılmaz.</translation>
     </message>
     <message>
         <source>Download the missing parts, then scan the folder again.</source>
-        <translation type="vanished">Eksik parçaları indirin, ardından klasörü yeniden tarayın.</translation>
+        <translation>Eksik parçaları indirin, ardından klasörü yeniden tarayın.</translation>
     </message>
     <message>
         <source>Different videos claim to be the same part.</source>
-        <translation type="vanished">Farklı videolar aynı parça olduğunu iddia ediyor.</translation>
+        <translation>Farklı videolar aynı parça olduğunu iddia ediyor.</translation>
     </message>
     <message>
         <source>Remove the conflicting copy and scan again.</source>
-        <translation type="vanished">Çakışan kopyayı kaldırıp yeniden tarayın.</translation>
+        <translation>Çakışan kopyayı kaldırıp yeniden tarayın.</translation>
     </message>
     <message>
         <source>One or more parts are corrupt or could not be verified.</source>
-        <translation type="vanished">Bir veya daha fazla parça bozuk ya da doğrulanamadı.</translation>
+        <translation>Bir veya daha fazla parça bozuk ya da doğrulanamadı.</translation>
     </message>
     <message>
         <source>Download the affected videos again, then rescan.</source>
-        <translation type="vanished">Etkilenen videoları yeniden indirip tekrar tarayın.</translation>
+        <translation>Etkilenen videoları yeniden indirip tekrar tarayın.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="168"/>
@@ -1531,11 +1531,11 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>Recovering and checking the original file...</source>
-        <translation type="vanished">Orijinal dosya kurtarılıyor ve kontrol ediliyor...</translation>
+        <translation>Orijinal dosya kurtarılıyor ve kontrol ediliyor...</translation>
     </message>
     <message>
         <source>Success is shown only after the full SHA-256 matches.</source>
-        <translation type="vanished">Başarı yalnızca tam SHA-256 eşleştikten sonra gösterilir.</translation>
+        <translation>Başarı yalnızca tam SHA-256 eşleştikten sonra gösterilir.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="171"/>
@@ -1545,11 +1545,11 @@ VidStoreX hesabınızda hiçbir zaman oturum açmaz ve otomatik yükleme yapmaz.
     </message>
     <message>
         <source>The operation could not be completed.</source>
-        <translation type="vanished">İşlem tamamlanamadı.</translation>
+        <translation>İşlem tamamlanamadı.</translation>
     </message>
     <message>
         <source>Open technical details, correct the problem, and retry.</source>
-        <translation type="vanished">Teknik ayrıntıları açın, sorunu düzeltin ve yeniden deneyin.</translation>
+        <translation>Teknik ayrıntıları açın, sorunu düzeltin ve yeniden deneyin.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="6742"/>
@@ -2187,7 +2187,7 @@ Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
         <source>Upload with YouTube Sync</source>
-        <translation type="vanished">YouTube Senkronizasyonu ile Yükle</translation>
+        <translation>YouTube Senkronizasyonu ile Yükle</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="5241"/>
@@ -2310,7 +2310,7 @@ Son açılma: Kaydedilmedi</translation>
     </message>
     <message>
         <source>YouTube Sync  •  Experimental</source>
-        <translation type="vanished">YouTube Senkronizasyonu  •  Deneysel</translation>
+        <translation>YouTube Senkronizasyonu · Deneysel</translation>
     </message>
     <message>
         <source>Experimental feature
@@ -2335,15 +2335,15 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
     </message>
     <message>
         <source>Upload all parts to YouTube.</source>
-        <translation type="vanished">Tüm parçaları YouTube&apos;a yükleyin.</translation>
+        <translation>Tüm parçaları YouTube&#x27;a yükleyin.</translation>
     </message>
     <message>
         <source>Set them to Unlisted when possible.</source>
-        <translation type="vanished">Mümkünse Liste Dışı olarak ayarlayın.</translation>
+        <translation>Mümkünse görünürlüğü Liste Dışı yapın.</translation>
     </message>
     <message>
         <source>Add the videos to one playlist.</source>
-        <translation type="vanished">Videoları tek bir oynatma listesine ekleyin.</translation>
+        <translation>Videoları tek oynatma listesine ekleyin.</translation>
     </message>
     <message>
         <source>Upload the videos manually. You can recover your file later by pasting the playlist link into VidStoreX.</source>
@@ -2386,7 +2386,7 @@ YouTube Senkronizasyonu, Google Cloud projesi ve OAuth yapılandırması gerekti
     </message>
     <message>
         <source>Optional official API upload. Manual upload always remains available.</source>
-        <translation type="vanished">İsteğe bağlı resmî API yüklemesi. Manuel yükleme her zaman kullanılabilir.</translation>
+        <translation>YouTube API ile isteğe bağlı yükleme. Videoları elle de yükleyebilirsiniz.</translation>
     </message>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="2345"/>
@@ -2446,7 +2446,7 @@ Tüm parçaları tek bir oynatma listesine ekleyin</translation>
     <message>
         <location filename="../src/drive_manager_ui.cpp" line="200"/>
         <source>Paste the playlist. Get your file back.</source>
-        <translation>Playlist bağlantısını yapıştırın, dosyanızı geri alın</translation>
+        <translation>Oynatma listesi bağlantısını yapıştırın, dosyanızı geri alın</translation>
     </message>
     <message>
         <source>VidStoreX downloads the videos, identifies the correct parts and rebuilds the original file.</source>
@@ -2498,6 +2498,882 @@ Tüm parçaları tek bir oynatma listesine ekleyin</translation>
         <location filename="../src/drive_manager_ui.cpp" line="2761"/>
         <source>Getting Started cannot be opened while an operation is running.</source>
         <translation>Bir işlem sürerken Başlangıç Rehberi açılamaz.</translation>
+    </message>
+    <message>
+        <source>%1 min %2 s</source>
+        <translation>%1 dk %2 sn</translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 sn</translation>
+    </message>
+    <message>
+        <source>%1 — %2 · %3/%4 parts found · %5 duplicate · %6 conflict · %7 missing</source>
+        <translation>%1 — %2 · %3/%4 parça bulundu · %5 yinelenen · %6 çakışan · %7 eksik</translation>
+    </message>
+    <message>
+        <source>1-bit Stress Validation</source>
+        <translation>1 bit stres doğrulaması</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Batch mapping preview&lt;/b&gt;</source>
+        <translation>&lt;b&gt;Toplu eşleştirme önizlemesi&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Manual YouTube steps:&lt;/b&gt; upload only candidates marked &lt;i&gt;Ready for YouTube - 60+ frames, 2.0+ seconds, local SHA-256 passed&lt;/i&gt;, choose Private or Unlisted, wait for processing, download your own video, then import it here. Fast Local is not designed for lossy YouTube processing.</source>
+        <translation>&lt;b&gt;Manuel YouTube adımları:&lt;/b&gt; Yalnızca &lt;i&gt;YouTube için hazır&lt;/i&gt; olarak işaretlenen adayları yükleyin. Bu adaylar en az 60 kare ve 2 saniye içerir, ayrıca yerel SHA-256 doğrulamasından geçmiştir. Özel veya Liste Dışı seçin, işleme tamamlanınca kendi videonuzu indirip buraya aktarın. Kayıplı YouTube işlemesi için Dayanıklı profili kullanın.</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Real YouTube analysis&lt;/b&gt;</source>
+        <translation>&lt;b&gt;Gerçek YouTube analizi&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;YouTube Capacity Lab (experimental)&lt;/b&gt;&lt;br&gt;Searches 4x4/6x6/8x8 geometry, 1/2-bit modulation, signal strength and repair levels behind local lossless and H.264 gates. These controls never change the normal Create profile. Shortlisted videos still require a manual real YouTube roundtrip before they can be considered proven.</source>
+        <translation>&lt;b&gt;YouTube Kapasite Laboratuvarı (deneysel)&lt;/b&gt;&lt;br&gt;4×4, 6×6 ve 8×8 blok boyutlarını, 1 ve 2 bit modülasyonu, sinyal gücünü ve onarım oranını yerel kayıpsız ve H.264 testleriyle inceler. Bu ayarlar Oluştur ekranındaki profilden bağımsızdır. Adayları doğrulamak için YouTube&#x27;a yükleyip geri indirerek test edin.</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;YouTube Test Lab&lt;/b&gt;&lt;br&gt;Creates Resilient test videos for a manual Private/Unlisted YouTube roundtrip. It never signs in, uploads, or downloads. Upload candidates contain at least 60 real data frames and 2.0 seconds at 30 FPS; no blank or repeated filler frames are used. Small requested payloads are extended deterministically. Local simulation is fast feedback only and is &lt;b&gt;not&lt;/b&gt; a guaranteed copy of YouTube processing.</source>
+        <translation>&lt;b&gt;YouTube Test Laboratuvarı&lt;/b&gt;&lt;br&gt;Özel veya Liste Dışı olarak elle yükleyip geri indirebileceğiniz Dayanıklı test videoları üretir. Hesap ve yükleme işlemleri size aittir. Adaylar 30 FPS&#x27;de en az 2 saniye ve 60 veri karesi içerir. Küçük yükler tekrarlanabilir biçimde genişletilir. Yerel simülasyon ön değerlendirme sağlar. Sonucu doğrulamak için gerçek YouTube turunu tamamlayın.</translation>
+    </message>
+    <message>
+        <source>A. Generate Test Suite</source>
+        <translation>A. Test paketi oluştur</translation>
+    </message>
+    <message>
+        <source>Active analysis session: -</source>
+        <translation>Etkin analiz oturumu: —</translation>
+    </message>
+    <message>
+        <source>Analyze Folder</source>
+        <translation>Klasörü Analiz Et</translation>
+    </message>
+    <message>
+        <source>Analyze Returned Folder</source>
+        <translation>İndirilen Video Klasörünü Analiz Et</translation>
+    </message>
+    <message>
+        <source>Analyze Single Video</source>
+        <translation>Tek Videoyu Analiz Et</translation>
+    </message>
+    <message>
+        <source>B. Local Simulation / C. Real YouTube Analysis</source>
+        <translation>B. Yerel simülasyon / C. Gerçek YouTube analizi</translation>
+    </message>
+    <message>
+        <source>Bits</source>
+        <translation>Bit</translation>
+    </message>
+    <message>
+        <source>Bits/block:</source>
+        <translation>Blok başına bit:</translation>
+    </message>
+    <message>
+        <source>Block</source>
+        <translation>Blok</translation>
+    </message>
+    <message>
+        <source>Block sizes:</source>
+        <translation>Blok boyutları:</translation>
+    </message>
+    <message>
+        <source>Browse...</source>
+        <translation>Gözat…</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>İptal</translation>
+    </message>
+    <message>
+        <source>Candidate</source>
+        <translation>Aday</translation>
+    </message>
+    <message>
+        <source>Candidate duration</source>
+        <translation>Aday süresi</translation>
+    </message>
+    <message>
+        <source>Candidate frames</source>
+        <translation>Aday kareleri</translation>
+    </message>
+    <message>
+        <source>Capacity manifest.json</source>
+        <translation>Kapasite manifest.json dosyası</translation>
+    </message>
+    <message>
+        <source>Case</source>
+        <translation>Test</translation>
+    </message>
+    <message>
+        <source>Case:</source>
+        <translation>Test:</translation>
+    </message>
+    <message>
+        <source>Choose Video Set or returned videos folder</source>
+        <translation>Video Set veya indirilen video klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Choose Video Set output folder</source>
+        <translation>Video Set çıktı klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Choose recovered output folder</source>
+        <translation>Kurtarılan dosyanın klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Choose set_manifest.json or a Video Set video</source>
+        <translation>set_manifest.json veya bir Video Set videosu seçin</translation>
+    </message>
+    <message>
+        <source>Choose the file to turn into videos</source>
+        <translation>Videolara dönüştürülecek dosyayı seçin</translation>
+    </message>
+    <message>
+        <source>Chunk bytes</source>
+        <translation>Parça boyutu (bayt)</translation>
+    </message>
+    <message>
+        <source>Codec</source>
+        <translation>Kodek</translation>
+    </message>
+    <message>
+        <source>Config</source>
+        <translation>Yapılandırma</translation>
+    </message>
+    <message>
+        <source>Copy Batch Download Command</source>
+        <translation>Toplu İndirme Komutunu Kopyala</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Özel</translation>
+    </message>
+    <message>
+        <source>Deduplicate Results</source>
+        <translation>Yinelenen Sonuçları Ayıkla</translation>
+    </message>
+    <message>
+        <source>Default folder for created Video Sets:</source>
+        <translation>Oluşturulan Video Set&#x27;lerin varsayılan klasörü:</translation>
+    </message>
+    <message>
+        <source>Detect Sets / Scan</source>
+        <translation>Setleri Tara</translation>
+    </message>
+    <message>
+        <source>Detected case</source>
+        <translation>Bulunan test</translation>
+    </message>
+    <message>
+        <source>Downloaded YouTube video</source>
+        <translation>YouTube&#x27;dan indirilen video</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>Yinelenen</translation>
+    </message>
+    <message>
+        <source>Effective</source>
+        <translation>Gerçek yük</translation>
+    </message>
+    <message>
+        <source>Encode Set</source>
+        <translation>Seti Oluştur</translation>
+    </message>
+    <message>
+        <source>Encode a Video Set</source>
+        <translation>Video Set oluştur</translation>
+    </message>
+    <message>
+        <source>Encoding and simulation</source>
+        <translation>Kodlama ve simülasyon</translation>
+    </message>
+    <message>
+        <source>Estimate</source>
+        <translation>Tahmini Hesapla</translation>
+    </message>
+    <message>
+        <source>Estimate only (write no videos)</source>
+        <translation>Yalnızca tahmin hesapla</translation>
+    </message>
+    <message>
+        <source>Expected</source>
+        <translation>Beklenen</translation>
+    </message>
+    <message>
+        <source>Experiment controls</source>
+        <translation>Deney ayarları</translation>
+    </message>
+    <message>
+        <source>Experiment parent output directory</source>
+        <translation>Deney çıktı klasörü</translation>
+    </message>
+    <message>
+        <source>File...</source>
+        <translation>Dosya…</translation>
+    </message>
+    <message>
+        <source>Filename</source>
+        <translation>Dosya adı</translation>
+    </message>
+    <message>
+        <source>Folder containing downloaded MP4/WebM files</source>
+        <translation>İndirilen MP4/WebM dosyalarının klasörü</translation>
+    </message>
+    <message>
+        <source>Folder containing downloaded YouTube videos</source>
+        <translation>YouTube&#x27;dan indirilen videoların klasörü</translation>
+    </message>
+    <message>
+        <source>Folder...</source>
+        <translation>Klasör…</translation>
+    </message>
+    <message>
+        <source>Folder:</source>
+        <translation>Klasör:</translation>
+    </message>
+    <message>
+        <source>Folder: %1</source>
+        <translation>Klasör: %1</translation>
+    </message>
+    <message>
+        <source>For local videos, select a source and then Check Videos.</source>
+        <translation>Yerel videolar için kaynağı seçin, ardından Videoları Kontrol Et&#x27;e basın.</translation>
+    </message>
+    <message>
+        <source>Full Matrix</source>
+        <translation>Tam test matrisi</translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation>Kazanç</translation>
+    </message>
+    <message>
+        <source>Generate</source>
+        <translation>Oluştur</translation>
+    </message>
+    <message>
+        <source>Generate YouTube Shortlist</source>
+        <translation>YouTube Aday Listesi Oluştur</translation>
+    </message>
+    <message>
+        <source>High Capacity: 4x4, 1-bit, signal 1.0, repair 5%, 1920x1080 at 30 FPS; config 538F2B009FAB. Real YouTube tests: 6/6 single videos and 4/4 set parts with exact full-file SHA-256.</source>
+        <translation>Yüksek Kapasite: 4×4, 1 bit, sinyal 1,0, %5 onarım, 1920×1080 ve 30 FPS. Yapılandırma: 538F2B009FAB. Gerçek YouTube testinde 6/6 tek video ve 4/4 set parçası tam dosya SHA-256 eşleşmesiyle doğrulandı.</translation>
+    </message>
+    <message>
+        <source>Include simulation failures in boundary test</source>
+        <translation>Simülasyonda başarısız olanları sınır testine ekle</translation>
+    </message>
+    <message>
+        <source>Initial upload, 24-hour retest, 7-day retest...</source>
+        <translation>İlk yükleme, 24 saat sonra, 7 gün sonra…</translation>
+    </message>
+    <message>
+        <source>Input:</source>
+        <translation>Girdi:</translation>
+    </message>
+    <message>
+        <source>Inspect / Recover returned videos</source>
+        <translation>İndirilen videoları kontrol et ve kurtar</translation>
+    </message>
+    <message>
+        <source>Less than %1 s</source>
+        <translation>%1 sn&#x27;den kısa</translation>
+    </message>
+    <message>
+        <source>Local evidence</source>
+        <translation>Yerel kanıt</translation>
+    </message>
+    <message>
+        <source>Local videos</source>
+        <translation>Yerel videolar</translation>
+    </message>
+    <message>
+        <source>Manifest, video, or mixed returned folder</source>
+        <translation>Manifest, video veya indirilen videoların klasörü</translation>
+    </message>
+    <message>
+        <source>Manifest...</source>
+        <translation>Manifest…</translation>
+    </message>
+    <message>
+        <source>Manifest:</source>
+        <translation>Manifest:</translation>
+    </message>
+    <message>
+        <source>Mapping:</source>
+        <translation>Eşleştirme:</translation>
+    </message>
+    <message>
+        <source>Margin</source>
+        <translation>Güvenlik payı</translation>
+    </message>
+    <message>
+        <source>Max cases:</source>
+        <translation>En fazla test:</translation>
+    </message>
+    <message>
+        <source>Max disk:</source>
+        <translation>Disk sınırı:</translation>
+    </message>
+    <message>
+        <source>Maximum actual size:</source>
+        <translation>En büyük video boyutu:</translation>
+    </message>
+    <message>
+        <source>Minimum</source>
+        <translation>En az</translation>
+    </message>
+    <message>
+        <source>Missing part numbers: %1</source>
+        <translation>Eksik parça numaraları: %1</translation>
+    </message>
+    <message>
+        <source>New Session</source>
+        <translation>Yeni Oturum</translation>
+    </message>
+    <message>
+        <source>Offset</source>
+        <translation>Başlangıç konumu</translation>
+    </message>
+    <message>
+        <source>Open Experiment Folder</source>
+        <translation>Deney Klasörünü Aç</translation>
+    </message>
+    <message>
+        <source>Optional case ID; filename auto-detection is attempted</source>
+        <translation>İsteğe bağlı test kimliği. Dosya adından otomatik algılanır.</translation>
+    </message>
+    <message>
+        <source>Optional corrections: filename.webm=yt001;other.mp4=yt002</source>
+        <translation>İsteğe bağlı düzeltmeler: dosya.webm=yt001;diger.mp4=yt002</translation>
+    </message>
+    <message>
+        <source>Output root</source>
+        <translation>Ana çıktı klasörü</translation>
+    </message>
+    <message>
+        <source>Output root:</source>
+        <translation>Ana çıktı klasörü:</translation>
+    </message>
+    <message>
+        <source>Output:</source>
+        <translation>Çıktı:</translation>
+    </message>
+    <message>
+        <source>Overall / Boundary</source>
+        <translation>Genel / Sınır</translation>
+    </message>
+    <message>
+        <source>Packets</source>
+        <translation>Paketler</translation>
+    </message>
+    <message>
+        <source>Payload instance</source>
+        <translation>Veri örneği</translation>
+    </message>
+    <message>
+        <source>Plan</source>
+        <translation>Planla</translation>
+    </message>
+    <message>
+        <source>Preset:</source>
+        <translation>Hazır ayar:</translation>
+    </message>
+    <message>
+        <source>Preview Folder Mapping</source>
+        <translation>Klasör Eşleştirmesini Önizle</translation>
+    </message>
+    <message>
+        <source>Profile:</source>
+        <translation>Profil:</translation>
+    </message>
+    <message>
+        <source>Quick Test</source>
+        <translation>Hızlı test</translation>
+    </message>
+    <message>
+        <source>Quick: 6 cases (requested 64 KiB random, 5/20/50%, 1080p + 4K). Effective payload and disk estimates include the 2-second / 60-frame minimum.</source>
+        <translation>Hızlı test: 6 durum, 64 KiB rastgele veri, %5/20/50 onarım, 1080p ve 4K. Veri ve disk tahmini en az 2 saniye ve 60 kareyi hesaba katar.</translation>
+    </message>
+    <message>
+        <source>Real YouTube</source>
+        <translation>Gerçek YouTube</translation>
+    </message>
+    <message>
+        <source>Record as new timed observation</source>
+        <translation>Yeni zamanlı gözlem olarak kaydet</translation>
+    </message>
+    <message>
+        <source>Recovery</source>
+        <translation>Kurtarma</translation>
+    </message>
+    <message>
+        <source>Refresh Reports</source>
+        <translation>Raporları Yenile</translation>
+    </message>
+    <message>
+        <source>Reliability</source>
+        <translation>Dayanıklılık</translation>
+    </message>
+    <message>
+        <source>Repair</source>
+        <translation>Onarım</translation>
+    </message>
+    <message>
+        <source>Repair %:</source>
+        <translation>Onarım oranı:</translation>
+    </message>
+    <message>
+        <source>Requested</source>
+        <translation>İstenen</translation>
+    </message>
+    <message>
+        <source>Required source Boundary or verified 1-bit manifest.json</source>
+        <translation>Kaynak sınır testi veya doğrulanmış 1 bit manifest.json dosyası</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>Çözünürlük</translation>
+    </message>
+    <message>
+        <source>Resolution:</source>
+        <translation>Çözünürlük:</translation>
+    </message>
+    <message>
+        <source>Resume Encode</source>
+        <translation>Oluşturmaya Devam Et</translation>
+    </message>
+    <message>
+        <source>Resume Incomplete</source>
+        <translation>Yarım Kalanı Sürdür</translation>
+    </message>
+    <message>
+        <source>Resume Recovery</source>
+        <translation>Kurtarmaya Devam Et</translation>
+    </message>
+    <message>
+        <source>Returned</source>
+        <translation>İndirilen</translation>
+    </message>
+    <message>
+        <source>Returned folder:</source>
+        <translation>İndirilen videoların klasörü:</translation>
+    </message>
+    <message>
+        <source>Returned video:</source>
+        <translation>İndirilen video:</translation>
+    </message>
+    <message>
+        <source>Run Local Simulation</source>
+        <translation>Yerel Simülasyonu Çalıştır</translation>
+    </message>
+    <message>
+        <source>SHA-256 / Status</source>
+        <translation>SHA-256 / Durum</translation>
+    </message>
+    <message>
+        <source>Search space</source>
+        <translation>Arama aralığı</translation>
+    </message>
+    <message>
+        <source>Select Source Evidence Manifest</source>
+        <translation>Kaynak Kanıt Manifestini Seç</translation>
+    </message>
+    <message>
+        <source>Session</source>
+        <translation>Oturum</translation>
+    </message>
+    <message>
+        <source>Session label:</source>
+        <translation>Oturum etiketi:</translation>
+    </message>
+    <message>
+        <source>Shortlist and returned-video analysis</source>
+        <translation>Aday listesi ve indirilen video analizi</translation>
+    </message>
+    <message>
+        <source>Shortlist limit:</source>
+        <translation>Aday listesi sınırı:</translation>
+    </message>
+    <message>
+        <source>Signal</source>
+        <translation>Sinyal</translation>
+    </message>
+    <message>
+        <source>Signals:</source>
+        <translation>Sinyal düzeyleri:</translation>
+    </message>
+    <message>
+        <source>Simulation profile (used only by Run Local Simulation):</source>
+        <translation>Yerel simülasyon profili:</translation>
+    </message>
+    <message>
+        <source>Simulation:</source>
+        <translation>Simülasyon:</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>Boyut</translation>
+    </message>
+    <message>
+        <source>Smoke</source>
+        <translation>Hızlı deneme</translation>
+    </message>
+    <message>
+        <source>Smoke: 12 local cases. Staged: 24 geometry/modulation cases, then at most 4 repair families and 3 resolution/profile finalists. The raw 192-case matrix is never the default.</source>
+        <translation>Hızlı deneme 12 yerel test çalıştırır. Aşamalı tarama 24 blok/modülasyon birleşimini, ardından en fazla 4 onarım grubunu ve 3 çözünürlük/profil adayını dener. 192 testlik tam matris Özel ayarından seçilir.</translation>
+    </message>
+    <message>
+        <source>Source Boundary Manifest:</source>
+        <translation>Kaynak sınır testi manifesti:</translation>
+    </message>
+    <message>
+        <source>Source SHA prefix</source>
+        <translation>Kaynak SHA başlangıcı</translation>
+    </message>
+    <message>
+        <source>Source:</source>
+        <translation>Kaynak:</translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation>Aşama</translation>
+    </message>
+    <message>
+        <source>Staged Sweep</source>
+        <translation>Aşamalı tarama</translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation>Başlat</translation>
+    </message>
+    <message>
+        <source>Start creating</source>
+        <translation>Oluşturmaya Başla</translation>
+    </message>
+    <message>
+        <source>Start recovery</source>
+        <translation>Kurtarmaya Başla</translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation>Durum</translation>
+    </message>
+    <message>
+        <source>Suite parent output directory</source>
+        <translation>Test paketi çıktı klasörü</translation>
+    </message>
+    <message>
+        <source>The recovered file passed full-file SHA-256 verification.</source>
+        <translation>Kurtarılan dosyanın tamamı SHA-256 ile doğrulandı.</translation>
+    </message>
+    <message>
+        <source>Unreadable videos: %1</source>
+        <translation>Okunamayan videolar: %1</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation>Yükleme</translation>
+    </message>
+    <message>
+        <source>Use a YouTube playlist for automatic recovery, or check local videos before recovering the file.</source>
+        <translation>Otomatik kurtarma için YouTube oynatma listesi kullanın. Yerel videolardan kurtaracaksanız önce parçaları kontrol edin.</translation>
+    </message>
+    <message>
+        <source>Useful KiB/s</source>
+        <translation>Yararlı veri (KiB/sn)</translation>
+    </message>
+    <message>
+        <source>User mapping</source>
+        <translation>Kullanıcı eşleştirmesi</translation>
+    </message>
+    <message>
+        <source>Usually fewer videos or a shorter total duration. Stores more data in each frame.</source>
+        <translation>Genellikle daha az video veya daha kısa toplam süre. Her karede daha fazla veri saklar.</translation>
+    </message>
+    <message>
+        <source>Usually more videos or a longer total duration. More room for changes introduced by video compression.</source>
+        <translation>Genellikle daha fazla video veya daha uzun toplam süre. Video sıkıştırmasının yol açtığı değişikliklere karşı daha dayanıklı.</translation>
+    </message>
+    <message>
+        <source>Validation</source>
+        <translation>Doğrulama</translation>
+    </message>
+    <message>
+        <source>Video Set inputs (set_manifest.json *.mkv *.mp4 *.webm *.avi *.mov);;All files (*)</source>
+        <translation>Video Set girdileri (set_manifest.json *.mkv *.mp4 *.webm *.avi *.mov);;Tüm dosyalar (*)</translation>
+    </message>
+    <message>
+        <source>Video check finished</source>
+        <translation>Video kontrolü tamamlandı</translation>
+    </message>
+    <message>
+        <source>Video...</source>
+        <translation>Video…</translation>
+    </message>
+    <message>
+        <source>Workflow steps</source>
+        <translation>İşlem adımları</translation>
+    </message>
+    <message>
+        <source>YouTube 1-bit Verification</source>
+        <translation>YouTube 1 bit doğrulaması</translation>
+    </message>
+    <message>
+        <source>YouTube Boundary 1080p</source>
+        <translation>YouTube 1080p sınır testi</translation>
+    </message>
+    <message>
+        <source>YouTube playlist</source>
+        <translation>YouTube oynatma listesi</translation>
+    </message>
+    <message>
+        <source>YouTube ready</source>
+        <translation>YouTube&#x27;a hazır</translation>
+    </message>
+    <message>
+        <source>Pause Upload</source>
+        <translation>Yüklemeyi Duraklat</translation>
+    </message>
+    <message>
+        <source>The selected Video Set location does not exist.</source>
+        <translation>Seçilen Video Set konumu bulunamadı.</translation>
+    </message>
+    <message>
+        <source>Choose a set folder, manifest, video, or returned-video folder.</source>
+        <translation>Bir set klasörü, manifest, video veya indirilen video klasörü seçin.</translation>
+    </message>
+    <message>
+        <source>No valid Video Set parts were found.</source>
+        <translation>Geçerli Video Set parçası bulunamadı.</translation>
+    </message>
+    <message>
+        <source>Choose downloaded video files or a Video Set folder and scan again.</source>
+        <translation>İndirilen videoları veya bir Video Set klasörünü seçip yeniden kontrol edin.</translation>
+    </message>
+    <message>
+        <source>More than one Video Set was found in this folder.</source>
+        <translation>Bu klasörde birden fazla Video Set bulundu.</translation>
+    </message>
+    <message>
+        <source>Choose a set-specific folder or manifest so recovery cannot mix sets.</source>
+        <translation>Tek bir sete ait klasörü veya manifesti seçip yeniden kontrol edin.</translation>
+    </message>
+    <message>
+        <source>The Video Set plan could not be calculated.</source>
+        <translation>Video Set planı hesaplanamadı.</translation>
+    </message>
+    <message>
+        <source>Check the source, output folder, disk access, and technical details.</source>
+        <translation>Kaynak dosyayı, çıktı klasörünü ve disk erişimini kontrol edin.</translation>
+    </message>
+    <message>
+        <source>The Video Set operation did not finish.</source>
+        <translation>Video Set işlemi tamamlanamadı.</translation>
+    </message>
+    <message>
+        <source>Review the suggested action or technical log, then retry.</source>
+        <translation>Önerilen adımı veya teknik günlüğü inceleyip yeniden deneyin.</translation>
+    </message>
+    <message>
+        <source>Stopped safely. You can continue this Video Set later.</source>
+        <translation>İşlem güvenle durduruldu. Bu Video Set&#x27;e daha sonra devam edebilirsiniz.</translation>
+    </message>
+    <message>
+        <source>Video Set idle</source>
+        <translation>Video Set işlemi bekleniyor</translation>
+    </message>
+    <message>
+        <source>Planned</source>
+        <translation>Planlandı</translation>
+    </message>
+    <message>
+        <source> MiB (0 disables)</source>
+        <translation> MiB (0 sınırı kaldırır)</translation>
+    </message>
+    <message>
+        <source>Step %1 of %2: %3</source>
+        <translation>Adım %1 / %2: %3</translation>
+    </message>
+    <message>
+        <source>Step %1 of %2: %3. Needs attention.</source>
+        <translation>Adım %1 / %2: %3. Kontrol gerekiyor.</translation>
+    </message>
+    <message>
+        <source>Resilient (default)</source>
+        <translation>Dayanıklı (varsayılan)</translation>
+    </message>
+    <message>
+        <source>High Capacity (opt-in, 6/6 exact)</source>
+        <translation>Yüksek Kapasite (isteğe bağlı, 6/6 birebir)</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Dengeli</translation>
+    </message>
+    <message>
+        <source>Durable</source>
+        <translation>Güçlendirilmiş</translation>
+    </message>
+    <message>
+        <source>Estimate Stress Validation</source>
+        <translation>Stres Testi Tahmini</translation>
+    </message>
+    <message>
+        <source>Estimate 1-bit Verification</source>
+        <translation>1 Bit Doğrulama Tahmini</translation>
+    </message>
+    <message>
+        <source>Estimate Boundary Sweep</source>
+        <translation>Sınır Testi Tahmini</translation>
+    </message>
+    <message>
+        <source>Generate 9 Stress Videos</source>
+        <translation>9 Stres Testi Videosu Oluştur</translation>
+    </message>
+    <message>
+        <source>Generate 6 Upload Videos</source>
+        <translation>6 Yükleme Videosu Oluştur</translation>
+    </message>
+    <message>
+        <source>Generate Boundary Videos</source>
+        <translation>Sınır Testi Videolarını Oluştur</translation>
+    </message>
+    <message>
+        <source>Refresh Stress Report</source>
+        <translation>Stres Testi Raporunu Yenile</translation>
+    </message>
+    <message>
+        <source>Refresh 1-bit Report</source>
+        <translation>1 Bit Raporunu Yenile</translation>
+    </message>
+    <message>
+        <source>Refresh Boundary Report</source>
+        <translation>Sınır Testi Raporunu Yenile</translation>
+    </message>
+    <message>
+        <source>Open Boundary Folder</source>
+        <translation>Sınır Testi Klasörünü Aç</translation>
+    </message>
+    <message>
+        <source>Nine cases: six independent 4x payload/session stress videos plus a shared-payload 3x3 repair 20/35/50 sweep. The verified 1-bit manifest is required as G05 control.</source>
+        <translation>Dokuz test çalışır. Altı video, oturum ve dört kat veri yükü stresini bağımsız sınar. Diğer üçü aynı veriyle %20, %35 ve %50 onarımı dener. G05 kontrolü için doğrulanmış 1 bit manifest gerekir.</translation>
+    </message>
+    <message>
+        <source>Exactly 6 videos: R00, R01, G04, R02, R03, G05. Locked to 1920x1080, 30 FPS, 1-bit, signal 1.00x, repair 5%. Source Boundary manifest is required.</source>
+        <translation>Altı video oluşturur (R00, R01, G04, R02, R03, G05). Ayarlar 1920×1080, 30 FPS, 1 bit, 1,00× sinyal ve %5 onarım olarak sabittir. Kaynak sınır testi manifesti gerekir.</translation>
+    </message>
+    <message>
+        <source>B00-B06: exactly 7 videos, 1920x1080, 30 FPS, signal 1.00x. Matrix: 8x8/1-bit r5; 6x6/1-bit r2/r5; 8x8/2-bit r2/r5; 6x6/2-bit r5; 4x4/1-bit r5. Use Estimate Boundary Sweep for disk sizing.</source>
+        <translation>B00–B06 için 1920×1080, 30 FPS ve 1,00× sinyal ile yedi video oluşturur. Matris 8×8/1 bit r5, 6×6/1 bit r2/r5, 8×8/2 bit r2/r5, 6×6/2 bit r5 ve 4×4/1 bit r5 birleşimlerini içerir. Disk alanını Sınır Testi Tahmini ile hesaplayın.</translation>
+    </message>
+    <message>
+        <source>Smoke: 12 local cases. Staged: 24 geometry/modulation cases, then bounded repair and final profiles. Custom is explicit.</source>
+        <translation>Hızlı deneme 12 yerel test çalıştırır. Aşamalı tarama 24 blok/modülasyon birleşimini, ardından sınırlı onarım oranı ve profil seçeneklerini dener. Elle ayarlamak için Özel'i seçin.</translation>
+    </message>
+    <message>
+        <source>Quick: 6 cases (requested 64 KiB random, 5/20/50%, 1080p + 4K). Effective payload is sized for at least 60 real frames.</source>
+        <translation>Hızlı testte 64 KiB rastgele veri, %5/20/50 onarım, 1080p ve 4K ile 6 durum denenir. Veri yükü en az 60 veri karesine göre ayarlanır.</translation>
+    </message>
+    <message>
+        <source>Full: 36 cases after de-duplicating the current production resolution. Review disk preflight before generation.</source>
+        <translation>Tam matris, mevcut üretim çözünürlüğündeki tekrarlar elendikten sonra 36 durum dener. Oluşturmadan önce disk tahminini inceleyin.</translation>
+    </message>
+    <message>
+        <source>Select Video Set source</source>
+        <translation>Video Set kaynak dosyasını seçin</translation>
+    </message>
+    <message>
+        <source>Select Video Set output root</source>
+        <translation>Video Set ana çıktı klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Select returned video folder</source>
+        <translation>İndirilen video klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Select recovery output folder</source>
+        <translation>Kurtarma çıktı klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Capacity Lab output directory</source>
+        <translation>Kapasite Laboratuvarı çıktı klasörü</translation>
+    </message>
+    <message>
+        <source>Select Capacity Lab manifest</source>
+        <translation>Kapasite Laboratuvarı manifestini seçin</translation>
+    </message>
+    <message>
+        <source>JSON manifest (manifest.json)</source>
+        <translation>JSON manifesti (manifest.json)</translation>
+    </message>
+    <message>
+        <source>Returned YouTube video folder</source>
+        <translation>YouTube&#x27;dan indirilen videoların klasörü</translation>
+    </message>
+    <message>
+        <source>Test Lab output directory</source>
+        <translation>Test Laboratuvarı çıktı klasörü</translation>
+    </message>
+    <message>
+        <source>Select Test Lab manifest</source>
+        <translation>Test Laboratuvarı manifestini seçin</translation>
+    </message>
+    <message>
+        <source>Select downloaded YouTube video</source>
+        <translation>YouTube&#x27;dan indirilen videoyu seçin</translation>
+    </message>
+    <message>
+        <source>Video files (*.mp4 *.mkv *.webm);;All files (*)</source>
+        <translation>Video dosyaları (*.mp4 *.mkv *.webm);;Tüm dosyalar (*)</translation>
+    </message>
+    <message>
+        <source>Select downloaded YouTube video folder</source>
+        <translation>YouTube&#x27;dan indirilen videoların klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Video Set operation complete</source>
+        <translation>Video Set işlemi tamamlandı</translation>
+    </message>
+    <message>
+        <source>Video Set operation stopped</source>
+        <translation>Video Set işlemi durdu</translation>
+    </message>
+    <message>
+        <source>Planning / hashing / encode-decode verification...</source>
+        <translation>Planlama, özet hesaplama ve doğrulama yapılıyor…</translation>
+    </message>
+    <message>
+        <source>Ready to download into this set&#x27;s returned folder.</source>
+        <translation>Bu setin indirme klasörü hazır.</translation>
+    </message>
+    <message>
+        <source>Enter a valid YouTube playlist URL containing list=.</source>
+        <translation>list= içeren geçerli bir YouTube oynatma listesi bağlantısı girin.</translation>
+    </message>
+    <message>
+        <source>Executable (yt-dlp.exe);;All files (*)</source>
+        <translation>Çalıştırılabilir dosya (yt-dlp.exe);;Tüm dosyalar (*)</translation>
+    </message>
+    <message>
+        <source>yt-dlp executable (yt-dlp);;All files (*)</source>
+        <translation>yt-dlp çalıştırılabilir dosyası (yt-dlp);;Tüm dosyalar (*)</translation>
+    </message>
+    <message>
+        <source>yt-dlp selected. Paste a playlist URL to continue.</source>
+        <translation>yt-dlp seçildi. Devam etmek için oynatma listesi bağlantısını yapıştırın.</translation>
+    </message>
+    <message>
+        <source>Choose returned videos folder</source>
+        <translation>İndirilen videoların klasörünü seçin</translation>
+    </message>
+    <message>
+        <source>Open or create a Video Set before downloading its playlist.</source>
+        <translation>Oynatma listesini indirmeden önce bir Video Set açın veya oluşturun.</translation>
+    </message>
+    <message>
+        <source>yt-dlp was not found. Select the executable or download videos manually. Reliquary does not install it automatically.</source>
+        <translation>yt-dlp bulunamadı. Çalıştırılabilir dosyayı seçin veya videoları elle indirin.</translation>
     </message>
 </context>
 <context>

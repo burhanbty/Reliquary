@@ -97,7 +97,7 @@ ThemeTokens themeTokens(const QPalette &palette) {
     result.surfaceSelected = mix(result.surfaceRaised, anchor, 0.11);
     result.textPrimary = text;
     result.textSecondary = mix(text, window, 0.34);
-    result.textMuted = mix(text, window, 0.54);
+    result.textMuted = mix(text, window, 0.35);
     result.accent = anchor;
     result.accentHover = anchor.darker(108);
     result.accentPressed = anchor.darker(122);
@@ -117,6 +117,9 @@ QString applicationStyleSheet(const QPalette &palette) {
     return QString(R"CSS(
         QWidget { font-size: 13px; }
         QMainWindow, QWidget#centralWidget { background: %1; color: %5; }
+        QMenuBar, QMenu { background: %1; color: %5; }
+        QMenuBar::item:selected, QMenu::item:selected { background: %4; color: %5; }
+        QMenu::item:disabled { color: %7; }
         QScrollArea#videoSetAssistantScrollArea QWidget#qt_scrollarea_viewport,
         QStackedWidget#videoSetAssistantStack,
         QWidget#videoSetAssistantWelcomePage,
@@ -187,6 +190,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         QGroupBox[vsxRole="profileCard"]::title {
             subcontrol-origin: margin; left: 16px; padding: 0 4px; color: %5;
         }
+        QGroupBox[vsxRole="section"] { margin-top: 12px; padding-top: 5px; }
         QGroupBox[vsxRole="profileCard"] QRadioButton {
             color: %5; background: transparent; border: 0; padding: 0;
         }
@@ -318,6 +322,7 @@ QString applicationStyleSheet(const QPalette &palette) {
             color: %5; selection-background-color: %4; selection-color: %5;
         }
         QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { min-height: 32px; padding: 1px 7px; }
+        QLineEdit { placeholder-text-color: %7; }
         QListWidget::item { padding: 10px 8px; border-bottom: 1px solid %13; }
         QListWidget::item:hover { background: %3; }
         QListWidget::item:selected { background: %4; color: %5; }

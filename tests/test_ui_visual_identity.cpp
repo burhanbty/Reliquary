@@ -137,6 +137,9 @@ TEST(UiVisualIdentity, LightPaletteHasReadablePrimaryAction) {
     EXPECT_FALSE(tokens.dark);
     EXPECT_GE(contrast(tokens.accent, tokens.onAccent), 4.5);
     EXPECT_GE(contrast(tokens.textPrimary, tokens.surfaceRaised), 7.0);
+    EXPECT_GE(contrast(tokens.textMuted, tokens.surfacePage), 4.5);
+    EXPECT_GE(contrast(tokens.textMuted, tokens.surfaceRaised), 4.5);
+    EXPECT_GE(contrast(tokens.textMuted, tokens.surfaceSelected), 4.5);
 }
 
 TEST(UiVisualIdentity, DarkPaletteHasReadablePrimaryAction) {

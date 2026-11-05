@@ -281,6 +281,13 @@ int main(int argc, char *argv[]) {
     }
     QApplication app(argc, argv);
 
+#ifdef Q_OS_WIN
+    const auto platform = QGuiApplication::platformName();
+    const bool workflowTestPlatform = platform == QStringLiteral("windows") ||
+        (platform == QStringLiteral("offscreen") &&
+         qEnvironmentVariableIntValue("VIDSTOREX_GUI_TEST_HEADLESS") == 1);
+#endif
+
 #ifdef VIDSTOREX_ENABLE_TEST_HOOKS
     std::unique_ptr<FakeYouTubeApi> fakeYouTubeApi;
     if (!youtubeSyncSmokeRoot.isEmpty()) {
@@ -888,7 +895,7 @@ int main(int argc, char *argv[]) {
 
     if (!instantRecoverySmokeRoot.isEmpty()) {
 #ifdef Q_OS_WIN
-        if (QGuiApplication::platformName() != QStringLiteral("windows")) {
+        if (!workflowTestPlatform) {
             qCritical() << "Instant Recovery result card E2E requires qwindows";
             return 80;
         }
@@ -1442,12 +1449,12 @@ int main(int argc, char *argv[]) {
 
     if (!videoSetAssistantSmokeRoot.isEmpty()) {
 #ifdef Q_OS_WIN
-        if (QGuiApplication::platformName() != QStringLiteral("windows")) {
+        if (!workflowTestPlatform) {
             qCritical() << "Assistant E2E requires the real qwindows platform plugin; active platform is"
                         << QGuiApplication::platformName();
             return 29;
         }
-        qInfo() << "Assistant E2E platform: qwindows.dll (Qt key: windows)";
+        qInfo() << "Assistant E2E platform:" << QGuiApplication::platformName();
 #endif
         const QString root = QDir(videoSetAssistantSmokeRoot).absolutePath();
         const QString source = QDir(root).filePath("source.bin");
@@ -1732,7 +1739,8 @@ int main(int argc, char *argv[]) {
         auto *assistantScroll = window.findChild<QScrollArea *>(
             "videoSetAssistantScrollArea");
         const QList<QPair<QSize, QString>> homeSizes{
-            {{1280, 720}, "1280x720"}, {{1366, 768}, "1366x768"},
+            {{1024, 640}, "1024x640"}, {{1280, 720}, "1280x720"},
+            {{1366, 768}, "1366x768"},
             {{1600, 900}, "1600x900"}, {{1920, 1080}, "1920x1080"}};
         for (const auto &[size, suffix] : homeSizes) {
             window.resize(size);
@@ -1788,6 +1796,7 @@ int main(int argc, char *argv[]) {
             const QRect barRect(actionBar->mapTo(&window, QPoint()),
                                 actionBar->size());
             return window.rect().contains(buttonRect) &&
+                barRect.contains(buttonRect) &&
                 !scrollRect.intersects(barRect) &&
                 scrollRect.bottom() < barRect.top() &&
                 actionBar->geometry().bottom() <=
@@ -1804,6 +1813,25 @@ int main(int argc, char *argv[]) {
             return visible.width() > 0 &&
                 visible.height() >= qMax(1, widget->height() / 2);
         };
+        const auto fullyVisibleInWorkflow = [assistantScroll](const QWidget *widget) {
+            if (!assistantScroll || !widget || !widget->isVisible()) return false;
+            auto *viewport = assistantScroll->viewport();
+            return viewport->rect().contains(QRect(widget->mapTo(viewport, QPoint()),
+                                                   widget->size())) &&
+                widget->height() >= widget->minimumSizeHint().height() &&
+                widget->width() >= widget->minimumSizeHint().width();
+        };
+        window.resize(1024, 640);
+        QApplication::processEvents();
+        if (!fullyVisibleInWorkflow(create) ||
+            !fullyVisibleInWorkflow(recoverChoice)) {
+            qCritical() << "Home actions are clipped at the minimum window size";
+            return 142;
+        }
+        auto *sourceBrowse = window.findChild<QPushButton *>("videoSetAssistantChooseFile");
+        auto *outputBrowse = window.findChild<QPushButton *>("videoSetAssistantChooseOutput");
+        auto *returnedBrowse = window.findChild<QPushButton *>("videoSetAssistantChooseReturnedFolder");
+        auto *returnedFileBrowse = window.findChild<QPushButton *>("videoSetAssistantChooseReturnedFile");
         create->click();
         input->setText(source);
         output->setText(sets);
@@ -1815,11 +1843,14 @@ int main(int argc, char *argv[]) {
             const int rightGutter = workflowArea->width() -
                 workflowMain->geometry().right() - 1;
             if (stack->currentIndex() != 1 || !activityPanel->isHidden() ||
+                workflowStepper->activeStep() != 0 ||
+                !fullyVisibleInWorkflow(sourceBrowse) ||
+                !fullyVisibleInWorkflow(outputBrowse) ||
                 applicationHeader->height() > 76 ||
                 workflowStepper->height() > 50 ||
                 workflowMain->width() >
                     vidstorex_ui::Layout::WorkflowTaskMaxWidth ||
-                workflowMain->width() < 1100 ||
+                workflowMain->width() > workflowArea->width() ||
                 qAbs(leftGutter - rightGutter) > 1 ||
                 !actionIsPinnedAndVisible(sourceContinue) ||
                 !window.grab().save(QDir(root).filePath(
@@ -1844,6 +1875,7 @@ int main(int argc, char *argv[]) {
             window.resize(size);
             QApplication::processEvents();
             if (stack->currentIndex() != 2 || !activityPanel->isHidden() ||
+                workflowStepper->activeStep() != 1 ||
                 !actionIsPinnedAndVisible(calculate) ||
                 !window.grab().save(QDir(root).filePath(
                     "e2e-create-step2-" + suffix + ".png"))) {
@@ -1862,6 +1894,10 @@ int main(int argc, char *argv[]) {
             const int rightGutter = workflowArea->width() -
                 workflowMain->geometry().right() - 1;
             if (stack->currentIndex() != 7 || !activityPanel->isHidden() ||
+                workflowStepper->activeStep() != 0 ||
+                instantPlaylistEdit->accessibleName().isEmpty() ||
+                !fullyVisibleInWorkflow(returnedBrowse) ||
+                !fullyVisibleInWorkflow(returnedFileBrowse) ||
                 applicationHeader->height() > 76 ||
                 workflowStepper->height() > 50 ||
                 qAbs(leftGutter - rightGutter) > 1 ||
@@ -2049,7 +2085,8 @@ int main(int argc, char *argv[]) {
         timer->setInterval(100);
         QObject::connect(timer, &QTimer::timeout, &app,
             [&, state, timer, root, source, sets, returned, recovered,
-             homeSizes, actionIsPinnedAndVisible]() {
+             homeSizes, actionIsPinnedAndVisible,
+             substantiallyVisibleInWorkflow, fullyVisibleInWorkflow]() {
             const auto fail = [&](const int code, const QString &message) {
                 qCritical() << message;
                 QFile diagnostic(QDir(root).filePath("e2e-failure.txt"));
@@ -2631,10 +2668,8 @@ int main(int argc, char *argv[]) {
                 }
                 if (recover->isEnabled()) {
                     if (activityPanel->isHidden() ||
-                        activityTitle->text() !=
-                            "Scanning downloaded videos" ||
-                        !activityDescription->text().contains(
-                            "The original file is not being rebuilt yet.")) {
+                        activityTitle->text() != "Video check finished" ||
+                        !activityDescription->text().isEmpty()) {
                         fail(45, "Completed scan activity is not clearly identified");
                         return;
                     }
@@ -2807,8 +2842,20 @@ int main(int argc, char *argv[]) {
                 const QStringList originalRecent = QSettings().value(
                     "videoSet/recentManifests").toStringList();
                 if (!originalRecent.isEmpty()) {
+                    QStringList distinctLocations{originalRecent.front()};
+                    for (int i = 1; i < 5; ++i) {
+                        const QDir fixture(QDir(root).filePath(
+                            QString("recent-fixture-%1").arg(i)));
+                        const QString manifest = fixture.filePath("set_manifest.json");
+                        if (!QDir().mkpath(fixture.absolutePath()) ||
+                            !QFile::copy(originalRecent.front(), manifest)) {
+                            fail(143, "Could not create distinct recent-set locations");
+                            return;
+                        }
+                        distinctLocations << manifest;
+                    }
                     QSettings().setValue("videoSet/recentManifests",
-                        QStringList(5, originalRecent.front()));
+                                         distinctLocations);
                     homeNavigation->click();
                     window.resize(1920, 1080);
                     QApplication::processEvents();
@@ -2822,7 +2869,11 @@ int main(int argc, char *argv[]) {
                     }
                     recentNavigation->click();
                     QApplication::processEvents();
+                    const auto *differentLocation = window.findChild<QLabel *>(
+                        "videoSetRecentFullEntryMetadata1");
                     if (recentFull->count() != 5 ||
+                        !differentLocation ||
+                        !differentLocation->text().contains("recent-fixture-1") ||
                         recentFull->item(0)->data(Qt::UserRole) !=
                             recent->item(0)->data(Qt::UserRole) ||
                         !window.grab().save(QDir(root).filePath(
@@ -2841,9 +2892,9 @@ int main(int argc, char *argv[]) {
                     stack->currentIndex() != 0 ||
                     brandSubtitle->text() != QString::fromUtf8(
                         "DOSYA → VİDEO → DOSYA · DİJİTAL ARŞİV") ||
-                    create->text() != QString::fromUtf8("Dosya Seç") ||
+                    create->text() != QString::fromUtf8("Oluşturmaya Başla") ||
                     activityTitle->text() != QCoreApplication::translate(
-                        "DriveManagerUI", "Your file is being rebuilt") ||
+                        "DriveManagerUI", "Your file was recovered exactly.") ||
                     success->text() != QString::fromUtf8(
                         "Dosyanız birebir kurtarıldı.")) {
                     fail(52, QString(
@@ -2899,6 +2950,15 @@ int main(int argc, char *argv[]) {
                     fail(43, "Recover remained enabled with a missing part");
                     return;
                 }
+                const auto *issues = window.findChild<QLabel *>("videoSetScanIssues");
+                const auto *nextAction = window.findChild<QLabel *>("videoSetRecoveryAvailability");
+                if (!issues || !issues->isVisible() ||
+                    !issues->text().contains(QString::fromUtf8("Eksik parça numaraları")) ||
+                    !fullyVisibleInWorkflow(nextAction) ||
+                    !nextAction->text().contains(QString::fromUtf8("yeniden tarayın"))) {
+                    fail(144, "Missing part numbers or guidance are not visible in Turkish");
+                    return;
+                }
                 if (!window.grab().save(QDir(root).filePath(
                         "e2e-missing-part-tr.png"))) {
                     fail(72, "Missing-part workflow screenshot was not saved");
@@ -2930,6 +2990,12 @@ int main(int argc, char *argv[]) {
                      Qt::CaseInsensitive))) {
                 if (recover->isEnabled()) {
                     fail(51, "Recover remained enabled with a corrupt part");
+                    return;
+                }
+                const auto *issues = window.findChild<QLabel *>("videoSetScanIssues");
+                if (!issues || !issues->isVisible() ||
+                    !issues->text().contains(QFileInfo(state->returnedFiles.at(1)).fileName())) {
+                    fail(145, "Corrupt video filename is not shown");
                     return;
                 }
                 if (!window.grab().save(QDir(root).filePath(

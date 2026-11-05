@@ -425,6 +425,18 @@ TEST(VideoSetWorkflow, StructuredResultCarriesRecoveryProof) {
     EXPECT_EQ(parsed->part_count, 4u);
 }
 
+TEST(VideoSetWorkflow, CompletedScanDoesNotTreatPhaseValueAsAField) {
+    using namespace video_set_workflow;
+    const auto parsed = parse_progress_jsonl(
+        R"({"type":"progress","operation_id":12,"operation":"scan","phase":"completed","future":{"missing":99},"message":"Scan finished","expected_parts":4,"returned_parts":3,"verified":4,"duplicates":1,"missing":1,"corrupt":0,"status":"scan_needs_attention","missing_part_numbers":[4]})");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->phase, OperationPhase::Completed);
+    EXPECT_FALSE(parsed->completed_items.has_value());
+    EXPECT_TRUE(parsed->has_scan_summary);
+    EXPECT_EQ(parsed->scan.exact_parts, 3u);
+    EXPECT_EQ(parsed->scan.missing_parts.size(), 1u);
+}
+
 TEST(VideoSetWorkflow, StructuredErrorCarriesRetryGuidanceAndExitCode) {
     using namespace video_set_workflow;
     const auto parsed = parse_progress_jsonl(

@@ -52,17 +52,29 @@ int step_for(const ViewState &view) {
 
 std::size_t json_value_start(const std::string_view json,
                              const std::string_view key) {
-    const std::string needle = "\"" + std::string(key) + "\"";
-    const auto key_position = json.find(needle);
-    if (key_position == std::string_view::npos)
-        return std::string_view::npos;
-    const auto colon = json.find(':', key_position + needle.size());
-    if (colon == std::string_view::npos)
-        throw std::invalid_argument("missing JSON colon");
-    const auto value = json.find_first_not_of(" \t\r\n", colon + 1);
-    if (value == std::string_view::npos)
-        throw std::invalid_argument("missing JSON value");
-    return value;
+    int depth = 0;
+    for (std::size_t quote = 0; quote < json.size(); ++quote) {
+        if (json[quote] == '{' || json[quote] == '[') ++depth;
+        if (json[quote] == '}' || json[quote] == ']') --depth;
+        if (json[quote] != '"') continue;
+        const auto start = quote + 1;
+        auto end = start;
+        while (end < json.size() && json[end] != '"') {
+            if (json[end] == '\\') ++end;
+            ++end;
+        }
+        if (end >= json.size())
+            throw std::invalid_argument("unterminated JSON string");
+        quote = end;
+        if (depth != 1 || json.substr(start, end - start) != key) continue;
+        const auto colon = json.find_first_not_of(" \t\r\n", end + 1);
+        if (colon == std::string_view::npos || json[colon] != ':') continue;
+        const auto value = json.find_first_not_of(" \t\r\n", colon + 1);
+        if (value == std::string_view::npos)
+            throw std::invalid_argument("missing JSON value");
+        return value;
+    }
+    return std::string_view::npos;
 }
 
 std::optional<std::string> json_string(const std::string_view json,
@@ -895,6 +907,9 @@ std::optional<OperationEvent> parse_progress_jsonl(
                 returned.value_or(verified.value_or(0)));
             event.scan.exact_parts = static_cast<uint32_t>(
                 verified.value_or(event.scan.returned_parts));
+            if (returned)
+                event.scan.exact_parts = (std::min)(
+                    event.scan.exact_parts, event.scan.returned_parts);
             event.scan.duplicate_count = static_cast<uint32_t>(
                 duplicates.value_or(0));
             event.scan.conflict_count = static_cast<uint32_t>(
