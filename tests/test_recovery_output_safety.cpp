@@ -106,6 +106,14 @@ protected:
         return ms_decode(&options, nullptr);
     }
 
+    ms_status_t decode_stream(const fs::path &target) {
+        const auto in = video.string(), out = target.string();
+        ms_stream_decode_options_t options{};
+        options.stream_url = in.c_str();
+        options.output_path = out.c_str();
+        return ms_stream_decode(&options, nullptr);
+    }
+
     void no_partials() {
         for (const auto &entry : fs::directory_iterator(root)) {
             EXPECT_EQ(entry.path().filename().string().find(".vidstorex-part-"),
@@ -143,6 +151,36 @@ TEST_F(RecoveryOutputSafety, WrongPasswordDoesNotCreateNewTarget) {
     EXPECT_EQ(decode(output, "wrong-password"), MS_ERR_DECODE_FAILED);
     EXPECT_FALSE(fs::exists(output));
     EXPECT_EQ(digest(video), before);
+    no_partials();
+}
+
+TEST_F(RecoveryOutputSafety, MissingLastChunkDoesNotPublishOutput) {
+    const Encoder encoder(Encoder::FileId{});
+    const auto packets = encoder.encode_chunk(0, std::as_bytes(std::span(plain)), false).first;
+    {
+        VideoEncoder writer(video.string());
+        writer.encode_packets(packets);
+        writer.finalize();
+    }
+
+    put(output, sentinel);
+    EXPECT_EQ(decode(output), MS_ERR_INCOMPLETE);
+    EXPECT_EQ(get(output), sentinel);
+    EXPECT_EQ(decode_stream(output), MS_ERR_INCOMPLETE);
+    EXPECT_EQ(get(output), sentinel);
+
+    const auto new_output = root / "new-output.bin";
+    EXPECT_EQ(decode(new_output), MS_ERR_INCOMPLETE);
+    EXPECT_FALSE(fs::exists(new_output));
+    EXPECT_EQ(decode_stream(new_output), MS_ERR_INCOMPLETE);
+    EXPECT_FALSE(fs::exists(new_output));
+    no_partials();
+}
+
+TEST_F(RecoveryOutputSafety, CompleteStreamPublishesExactOutput) {
+    encode();
+    ASSERT_EQ(decode_stream(output), MS_OK);
+    EXPECT_EQ(get(output), plain);
     no_partials();
 }
 

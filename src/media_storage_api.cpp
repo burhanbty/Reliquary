@@ -902,9 +902,7 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) t
     uint64_t source_packets = 0;
     uint64_t repair_packets = 0;
     std::size_t decoded_chunks = 0;
-    uint32_t max_chunk_index = 0;
-    bool found_last_chunk = false;
-    uint32_t last_chunk_index = 0;
+    uint32_t expected_chunks = 0;
     int64_t total_frames_read = 0;
     bool high_capacity_decoded = false;
 
@@ -913,7 +911,7 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) t
         const int64_t total = video_decoder.total_frames();
 
         while (!video_decoder.is_eof()) {
-            if (found_last_chunk && decoded_chunks >= last_chunk_index + 1)
+            if (expected_chunks != 0 && decoded_chunks >= expected_chunks)
                 break;
 
             if (options->progress) {
@@ -928,34 +926,22 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) t
 
             for (auto &pkt_data : frame_packets) {
                 ++total_extracted;
-                classify_packet(std::span<const std::byte>(
-                                    pkt_data.data(), pkt_data.size()),
-                                source_packets, repair_packets);
+                const std::span<const std::byte> data(pkt_data);
+                classify_packet(data, source_packets, repair_packets);
 
                 {
                     ScopedTimer timer(
                         &profiler, PerformanceStage::FecChunkRecovery);
-                    if (pkt_data.size() >= HEADER_SIZE &&
-                        Decoder::validate_raw_packet_crc(
-                            std::span<const std::byte>(
-                                pkt_data.data(), pkt_data.size()))) {
-                        const auto flags = static_cast<uint8_t>(
-                            pkt_data[FLAGS_OFF]);
+                    if (data.size() >= HEADER_SIZE &&
+                        (static_cast<uint8_t>(data[FLAGS_OFF]) & LastChunk) &&
+                        Decoder::validate_raw_packet_crc(data)) {
                         uint32_t chunk_idx = 0;
                         std::memcpy(
-                            &chunk_idx, pkt_data.data() + CHUNK_INDEX_OFF,
+                            &chunk_idx, data.data() + CHUNK_INDEX_OFF,
                             sizeof(chunk_idx));
-                        if (chunk_idx > max_chunk_index) {
-                            max_chunk_index = chunk_idx;
-                        }
-                        if (flags & LastChunk) {
-                            found_last_chunk = true;
-                            last_chunk_index = chunk_idx;
-                        }
+                        expected_chunks = chunk_idx + 1;
                     }
 
-                    const std::span<const std::byte> data(
-                        pkt_data.data(), pkt_data.size());
                     if (auto res = decoder.process_packet(data, false);
                         res && res->success) {
                         ++decoded_chunks;
@@ -974,11 +960,7 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) t
         return MS_ERR_DECODE_FAILED;
     }
 
-    const uint32_t expected_chunks = found_last_chunk
-        ? last_chunk_index + 1
-        : max_chunk_index + 1;
-
-    if (decoded_chunks < expected_chunks) {
+    if (expected_chunks == 0 || decoded_chunks < expected_chunks) {
         return MS_ERR_INCOMPLETE;
     }
 
@@ -1222,9 +1204,7 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
     uint64_t source_packets = 0;
     uint64_t repair_packets = 0;
     std::size_t decoded_chunks = 0;
-    uint32_t max_chunk_index = 0;
-    bool found_last_chunk = false;
-    uint32_t last_chunk_index = 0;
+    uint32_t expected_chunks = 0;
     int64_t total_frames_read = 0;
 
     try {
@@ -1244,7 +1224,7 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
         const int64_t total = vdec->total_frames();
 
         while (!vdec->is_eof()) {
-            if (found_last_chunk && decoded_chunks >= last_chunk_index + 1)
+            if (expected_chunks != 0 && decoded_chunks >= expected_chunks)
                 break;
 
             if (options->progress) {
@@ -1259,34 +1239,22 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
 
             for (auto &pkt_data : frame_packets) {
                 ++total_extracted;
-                classify_packet(std::span<const std::byte>(
-                                    pkt_data.data(), pkt_data.size()),
-                                source_packets, repair_packets);
+                const std::span<const std::byte> data(pkt_data);
+                classify_packet(data, source_packets, repair_packets);
 
                 {
                     ScopedTimer timer(
                         &profiler, PerformanceStage::FecChunkRecovery);
-                    if (pkt_data.size() >= HEADER_SIZE &&
-                        Decoder::validate_raw_packet_crc(
-                            std::span<const std::byte>(
-                                pkt_data.data(), pkt_data.size()))) {
-                        const auto flags = static_cast<uint8_t>(
-                            pkt_data[FLAGS_OFF]);
+                    if (data.size() >= HEADER_SIZE &&
+                        (static_cast<uint8_t>(data[FLAGS_OFF]) & LastChunk) &&
+                        Decoder::validate_raw_packet_crc(data)) {
                         uint32_t chunk_idx = 0;
                         std::memcpy(
-                            &chunk_idx, pkt_data.data() + CHUNK_INDEX_OFF,
+                            &chunk_idx, data.data() + CHUNK_INDEX_OFF,
                             sizeof(chunk_idx));
-                        if (chunk_idx > max_chunk_index) {
-                            max_chunk_index = chunk_idx;
-                        }
-                        if (flags & LastChunk) {
-                            found_last_chunk = true;
-                            last_chunk_index = chunk_idx;
-                        }
+                        expected_chunks = chunk_idx + 1;
                     }
 
-                    const std::span<const std::byte> data(
-                        pkt_data.data(), pkt_data.size());
                     if (const auto res = decoder.process_packet(data, false);
                         res && res->success) {
                         ++decoded_chunks;
@@ -1308,11 +1276,7 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
         return MS_ERR_DECODE_FAILED;
     }
 
-    const uint32_t expected_chunks = found_last_chunk
-        ? last_chunk_index + 1
-        : max_chunk_index + 1;
-
-    if (decoded_chunks < expected_chunks) {
+    if (expected_chunks == 0 || decoded_chunks < expected_chunks) {
         return MS_ERR_INCOMPLETE;
     }
 
