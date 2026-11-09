@@ -39,8 +39,8 @@ protected:
             bool highlighted = false;
             for (const int cell : active)
                 if (cell == index) highlighted = true;
-            painter.setBrush(highlighted ? QColor(213, 138, 32, 170)
-                                         : QColor(93, 86, 75, 90));
+            painter.setBrush(highlighted ? QColor(100, 211, 220, 170)
+                                         : QColor(60, 84, 94, 90));
             painter.drawRect(index * (width + gap), 1, width, height() - 2);
         }
     }
@@ -66,10 +66,10 @@ BrandIntroOverlay::BrandIntroOverlay(const QString &definition, QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_DeleteOnClose, false);
     setStyleSheet(QStringLiteral(
-        "QWidget#brandIntroOverlay { background: #1A1A1A; }"
-        "QLabel#brandIntroName { color: #F4EFE6; font-size: 42px; "
+        "QWidget#brandIntroOverlay { background: #000000; }"
+        "QLabel#brandIntroName { color: #E6ECEE; font-size: 42px; "
         "font-weight: 600; letter-spacing: 5px; }"
-        "QLabel#brandIntroDefinition { color: #B8B1A7; font-size: 16px; }"));
+        "QLabel#brandIntroDefinition { color: #9BAEB5; font-size: 16px; }"));
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(48, 48, 48, 48);

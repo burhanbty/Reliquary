@@ -75,16 +75,16 @@ QString t(const char *source) {
 }
 
 struct Theme {
-    QColor background{"#171715"};
-    QColor surface{"#201F1C"};
-    QColor raised{"#292824"};
-    QColor text{"#F4EFE6"};
-    QColor secondary{"#C9C1B4"};
-    QColor muted{"#8F887D"};
-    QColor accent{"#D58A20"};
-    QColor success{"#55B78A"};
-    QColor border{"#403C34"};
-    QColor cell{"#35322C"};
+    QColor background{"#000000"};
+    QColor surface{"#0C171C"};
+    QColor raised{"#13232A"};
+    QColor text{"#E6ECEE"};
+    QColor secondary{"#BDCBD0"};
+    QColor muted{"#9BAEB5"};
+    QColor accent{"#64D3DC"};
+    QColor success{"#8AD7B0"};
+    QColor border{"#354E59"};
+    QColor cell{"#213B45"};
 };
 
 void rounded(QPainter &painter, const QRectF &rect, const qreal radius,
@@ -93,6 +93,11 @@ void rounded(QPainter &painter, const QRectF &rect, const qreal radius,
     QPainterPath path;
     path.addRoundedRect(rect, radius, radius);
     painter.fillPath(path, fill);
+    QLinearGradient glass(rect.topLeft(), rect.bottomRight());
+    glass.setColorAt(0, QColor(225, 250, 255, 15));
+    glass.setColorAt(.4, QColor(225, 250, 255, 0));
+    glass.setColorAt(1, QColor(100, 211, 220, 6));
+    painter.fillPath(path, glass);
     if (border.alpha() != 0) {
         painter.setPen(QPen(border, borderWidth));
         painter.drawPath(path);
@@ -192,7 +197,7 @@ void drawFlow(QPainter &painter, const QRectF &rect, const Model &model,
     if (model.partCount > 8) {
         const QRectF aggregate(flowEnd, y - 31, 94, 62);
         rounded(painter, aggregate, 10, theme.accent);
-        painter.setPen(QColor("#171715"));
+        painter.setPen(QColor("#062027"));
         painter.drawText(aggregate, Qt::AlignCenter,
                          QStringLiteral("×%1").arg(model.partCount));
         flowEnd += 112;
@@ -562,15 +567,15 @@ PreviewDialog::PreviewDialog(Model model, QWidget *parent)
     resize(dialogSize);
     setProperty("vsxSurface", "dialog");
     setStyleSheet(QStringLiteral(
-        "QDialog#resultCardPreviewDialog { background: #201F1C; color: #F4EFE6; }"
-        "QDialog#resultCardPreviewDialog QLabel { color: #F4EFE6; }"
+        "QDialog#resultCardPreviewDialog { background: #0C171C; color: #E6ECEE; }"
+        "QDialog#resultCardPreviewDialog QLabel { color: #E6ECEE; }"
         "QLabel#resultCardPreviewTitle { font-size: 20px; font-weight: 700; }"
-        "QLabel#resultCardPreviewImage { background: #171715; border: 1px solid #403C34; border-radius: 12px; }"
-        "QDialog#resultCardPreviewDialog QCheckBox { color: #C9C1B4; spacing: 7px; }"
-        "QDialog#resultCardPreviewDialog QPushButton { min-height: 34px; padding: 0 16px; border-radius: 6px; border: 1px solid #5A5449; background: #292824; color: #F4EFE6; }"
-        "QDialog#resultCardPreviewDialog QPushButton[vsxRole=\"primary\"] { background: #D58A20; border-color: #D58A20; color: #171715; font-weight: 700; }"
-        "QDialog#resultCardPreviewDialog QPushButton[vsxRole=\"ghost\"] { background: transparent; border-color: transparent; color: #C9C1B4; }"
-        "QLabel#resultCardExportStatus[vsxState=\"success\"] { color: #55B78A; }"
+        "QLabel#resultCardPreviewImage { background: #000000; border: 1px solid #354E59; border-radius: 14px; }"
+        "QDialog#resultCardPreviewDialog QCheckBox { color: #BDCBD0; spacing: 7px; }"
+        "QDialog#resultCardPreviewDialog QPushButton { min-height: 34px; padding: 0 16px; border-radius: 9px; border: 1px solid #526E7B; background: #13232A; color: #E6ECEE; }"
+        "QDialog#resultCardPreviewDialog QPushButton[vsxRole=\"primary\"] { background: #64D3DC; border-color: #64D3DC; color: #062027; font-weight: 700; }"
+        "QDialog#resultCardPreviewDialog QPushButton[vsxRole=\"ghost\"] { background: transparent; border-color: transparent; color: #BDCBD0; }"
+        "QLabel#resultCardExportStatus[vsxState=\"success\"] { color: #8AD7B0; }"
         "QLabel#resultCardExportStatus[vsxState=\"error\"] { color: #E07A67; }"));
 
     auto *root = new QVBoxLayout(this);

@@ -55,6 +55,7 @@
 #include <QDesktopServices>
 #include <QFormLayout>
 #include <QStyle>
+#include <QShowEvent>
 #include <QLocale>
 #include <QSignalBlocker>
 #include <QSet>
@@ -77,7 +78,35 @@
 #include <numeric>
 #include <vector>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <dwmapi.h>
+#endif
+
 namespace {
+
+void applyNativeTitleBar(QWidget *window) {
+#ifdef Q_OS_WIN
+    const auto handle = reinterpret_cast<HWND>(window->internalWinId());
+    if (!handle) return;
+    const auto theme = vidstorex_ui::themeTokens(window->palette());
+    const BOOL dark = theme.dark;
+    const COLORREF background = RGB(theme.surfaceRaised.red(),
+        theme.surfaceRaised.green(), theme.surfaceRaised.blue());
+    const COLORREF foreground = RGB(theme.textPrimary.red(),
+        theme.textPrimary.green(), theme.textPrimary.blue());
+    // Keep the native frame and controls. Older Windows versions simply
+    // retain their system colors when custom caption colors are unsupported.
+    DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                          &dark, sizeof(dark));
+    DwmSetWindowAttribute(handle, DWMWA_CAPTION_COLOR,
+                          &background, sizeof(background));
+    DwmSetWindowAttribute(handle, DWMWA_TEXT_COLOR,
+                          &foreground, sizeof(foreground));
+#else
+    Q_UNUSED(window);
+#endif
+}
 
 constexpr int kHomePage = 0;
 constexpr int kCreateSourcePage = 1;
@@ -639,7 +668,7 @@ DriveManagerUI::~DriveManagerUI() {
 }
 
 void DriveManagerUI::setupUI() {
-    centralWidget = new QWidget(this);
+    centralWidget = new VidStoreXAmbientCanvas(this);
     setCentralWidget(centralWidget);
 
     mainSplitter = new QSplitter(Qt::Horizontal, centralWidget);
@@ -1012,6 +1041,7 @@ void DriveManagerUI::setupUI() {
     mainTabs->addTab(mainSplitter, "Storage");
 
     videoSetPage = new QWidget();
+    videoSetPage->setObjectName("videoSetPage");
     auto *videoSetLayout = new QVBoxLayout(videoSetPage);
     videoSetIntroLabel = new QLabel(
         "<b>Video Set / Large Files</b><br>Splits one file into independently "
@@ -2124,7 +2154,7 @@ void DriveManagerUI::setupSettingsPage() {
     settingsDescriptionLabel->setWordWrap(true);
     layout->addWidget(settingsDescriptionLabel);
 
-    auto *card = new QFrame();
+    auto *card = new VidStoreXGlassFrame();
     card->setObjectName("settingsCard");
     card->setProperty("vsxSurface", "raised");
     auto *form = new QGridLayout(card);
@@ -2199,7 +2229,7 @@ void DriveManagerUI::setupSettingsPage() {
     form->addWidget(showAdvancedToolsCheckBox, 10, 0, 1, 3);
     layout->addWidget(card);
 
-    auto *aboutCard = new QFrame();
+    auto *aboutCard = new VidStoreXGlassFrame();
     aboutCard->setObjectName("settingsAboutCard");
     aboutCard->setProperty("vsxSurface", "raised");
     auto *aboutLayout = new QGridLayout(aboutCard);
@@ -2262,7 +2292,7 @@ void DriveManagerUI::setupSettingsPage() {
         "Experimental feature\n\nYouTube Sync requires a Google Cloud project and OAuth configuration. It is not required for normal Reliquary use. Most users should upload Video Set videos manually and use the playlist link for recovery.");
     youtubeLayout->addWidget(youtubeWarning);
 
-    auto *youtubeCard = new QFrame();
+    auto *youtubeCard = new VidStoreXGlassFrame();
     youtubeCard->setObjectName("experimentalYouTubeSyncSettingsCard");
     youtubeCard->setProperty("vsxSurface", "raised");
     auto *youtubeForm = new QGridLayout(youtubeCard);
@@ -2401,7 +2431,7 @@ void DriveManagerUI::setupSettingsPage() {
         const QString &objectPrefix, const QString &title,
         const QString &description, QWidget *target, const int row,
         const int column, const bool experimental = false) {
-        auto *frame = new QFrame();
+        auto *frame = new VidStoreXGlassFrame();
         frame->setObjectName(objectPrefix + "Card");
         frame->setProperty("vsxSurface", "raised");
         auto *cardLayout = new QVBoxLayout(frame);
@@ -2650,7 +2680,7 @@ void DriveManagerUI::setupOnboardingPage() {
 
     auto *centerRow = new QHBoxLayout();
     centerRow->addStretch(1);
-    auto *card = new QFrame();
+    auto *card = new VidStoreXGlassFrame();
     card->setObjectName("onboardingCard");
     card->setProperty("vsxSurface", "raised");
     card->setMaximumWidth(920);
@@ -2874,7 +2904,9 @@ void DriveManagerUI::completeOnboarding() {
 }
 
 void DriveManagerUI::setupApplicationNavigation() {
-    applicationHeader = new QFrame();
+    applicationHeader = new VidStoreXGlassFrame();
+    static_cast<VidStoreXGlassFrame *>(applicationHeader)->setSurface(
+        VidStoreXGlassFrame::Surface::Chrome);
     applicationHeader->setObjectName("applicationHeader");
     applicationHeader->setProperty("surface", true);
     applicationHeader->setSizePolicy(QSizePolicy::Expanding,
@@ -2920,16 +2952,14 @@ void DriveManagerUI::setupApplicationNavigation() {
     languageCombo->addItem(QStringLiteral("English"), QStringLiteral("en"));
     languageCombo->addItem(QString::fromUtf8("Türkçe"), QStringLiteral("tr"));
 
-    homeNavigationButton->setIcon(
-        style()->standardIcon(QStyle::SP_ComputerIcon));
-    createNavigationButton->setIcon(
-        style()->standardIcon(QStyle::SP_FileIcon));
-    recoverNavigationButton->setIcon(
-        style()->standardIcon(QStyle::SP_DialogOpenButton));
-    recentNavigationButton->setIcon(
-        style()->standardIcon(QStyle::SP_FileDialogDetailedView));
-    settingsNavigationButton->setIcon(
-        style()->standardIcon(QStyle::SP_FileDialogInfoView));
+    const auto navIcon = [this](const vidstorex_ui::NavigationSymbol symbol) {
+        return vidstorex_ui::navigationIcon(symbol, palette());
+    };
+    homeNavigationButton->setIcon(navIcon(vidstorex_ui::NavigationSymbol::Home));
+    createNavigationButton->setIcon(navIcon(vidstorex_ui::NavigationSymbol::Create));
+    recoverNavigationButton->setIcon(navIcon(vidstorex_ui::NavigationSymbol::Recover));
+    recentNavigationButton->setIcon(navIcon(vidstorex_ui::NavigationSymbol::Recent));
+    settingsNavigationButton->setIcon(navIcon(vidstorex_ui::NavigationSymbol::Settings));
 
     auto *advancedMenu = new QMenu(advancedNavigationButton);
     auto *advancedLandingAction = advancedMenu->addAction(
@@ -3044,6 +3074,9 @@ void DriveManagerUI::setupApplicationNavigation() {
     advancedNavigationButton->setProperty("nav", true);
     applySemanticVisualRoles();
     vidstorex_ui::applyTheme(centralWidget);
+    // Item heights are cached by QListWidget. Measure only after the theme
+    // supplies the final label fonts and badge padding, including on first run.
+    refreshRecentVideoSets();
     updateNavigationVisuals();
 
     const int languageIndex = languageCombo->findData(uiLanguage);
@@ -3106,6 +3139,7 @@ void DriveManagerUI::applySemanticVisualRoles() {
         role(button, "ghost");
     role(videoSetAssistantCancelButton, "danger");
     role(videoSetActivityRetryButton, "secondary");
+    role(videoSetWelcomeRecoverButton, "ghost");
     role(videoSetCreateCard, "actionCard");
     role(videoSetRecoverCard, "actionCard");
     role(videoSetResilientCard, "profileCard");
@@ -3361,9 +3395,14 @@ void DriveManagerUI::updateWorkflowScroll() {
     if (!videoSetAssistantScrollArea || !videoSetAssistantStack) return;
     auto *page = videoSetAssistantStack->currentWidget();
     if (!page || !page->layout()) return;
+    const int width = videoSetAssistantScrollArea->viewport()->width();
+    if (width <= 0) return;
+    // A vertical scrollbar reduces the viewport after a DPI/size change.
+    // Keep the stacked pages inside that viewport rather than the old task width.
+    videoSetAssistantStack->setFixedWidth(width);
+    if (videoSetAssistantStack->layout()) videoSetAssistantStack->layout()->activate();
     auto *layout = page->layout();
     layout->activate();
-    const int width = videoSetAssistantScrollArea->viewport()->width();
     const int requiredHeight = qMax(layout->totalMinimumSize().height(),
                                    layout->minimumHeightForWidth(width));
     videoSetAssistantStack->setMinimumHeight(requiredHeight);
@@ -3609,7 +3648,7 @@ void DriveManagerUI::retranslateUserInterface() {
         "<b>Tested with real YouTube processing</b><br>6/6 single-video exact recoveries and 4/4 Video Set parts with an exact full-file SHA-256. Results describe the tested configuration and are not a guarantee for every future upload."));
 
     const QStringList headings{
-        tr("Store your files safely in videos"),
+        tr("Your archive"),
         tr("Choose your file"),
         tr("Choose a mode"),
         tr("Review and create videos"),
@@ -3621,7 +3660,7 @@ void DriveManagerUI::retranslateUserInterface() {
         tr("Done"),
         tr("Recent")};
     const QStringList subtitles{
-        tr("Create a resilient Video Set or recover an exact original."),
+        tr("Create a video set or recover an existing file."),
         tr("Choose the file you want to turn into videos. Any file type is supported; the source is never moved, modified, or deleted."),
         tr("Choose how you want to balance reliability and video count."),
         tr("Reliquary calculates real packet, frame, repair, and capacity values before creating any video."),
@@ -3642,7 +3681,7 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetCreateCardTitle->setText(tr("Create a Video Set"));
     videoSetCreateCardDescription->setText(
         tr("Turn one file into one or more videos."));
-    videoSetWelcomeCreateButton->setText(tr("Start creating"));
+    videoSetWelcomeCreateButton->setText(tr("New archive"));
     videoSetWelcomeCreateButton->setAccessibleName(videoSetWelcomeCreateButton->text());
     videoSetWelcomeCreateButton->setAccessibleDescription(
         tr("Turn one file into one or more videos."));
@@ -3650,10 +3689,14 @@ void DriveManagerUI::retranslateUserInterface() {
     videoSetRecoverCardTitle->setText(tr("Recover a File"));
     videoSetRecoverCardDescription->setText(tr(
         "Rebuild the original file from downloaded Video Set videos."));
-    videoSetWelcomeRecoverButton->setText(tr("Start recovery"));
+    videoSetWelcomeRecoverButton->setText(tr("Recover file"));
     videoSetWelcomeRecoverButton->setAccessibleName(videoSetWelcomeRecoverButton->text());
     videoSetWelcomeRecoverButton->setAccessibleDescription(tr(
         "Rebuild the original file from downloaded Video Set videos."));
+    for (auto *button : {videoSetWelcomeCreateButton, videoSetWelcomeRecoverButton}) {
+        button->ensurePolished();
+        button->setMinimumWidth(button->minimumSizeHint().width());
+    }
     videoSetRecoverFlowLabel->setText(tr("VIDEO → FILE"));
     videoSetTrustLabel->setText(tr("✓ Real YouTube tested"));
     videoSetTrustDetailsButton->setText(tr("Details"));
@@ -3889,7 +3932,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetPrimaryMessage->setProperty("sectionTitle", true);
     root->addWidget(videoSetPrimaryMessage);
 
-    videoSetActivityPanel = new QFrame();
+    videoSetActivityPanel = new VidStoreXGlassFrame();
     videoSetActivityPanel->setObjectName("videoSetActivityPanel");
     videoSetActivityPanel->setFrameShape(QFrame::StyledPanel);
     videoSetActivityPanel->setMinimumHeight(0);
@@ -3989,10 +4032,13 @@ void DriveManagerUI::setupVideoSetAssistant(
     assistantScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     assistantScroll->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     assistantScroll->setWidget(videoSetAssistantStack);
+    assistantScroll->viewport()->installEventFilter(this);
     assistantScroll->setMinimumHeight(180);
     root->addWidget(assistantScroll, 1);
 
-    videoSetWizardActionBar = new QFrame();
+    videoSetWizardActionBar = new VidStoreXGlassFrame();
+    static_cast<VidStoreXGlassFrame *>(videoSetWizardActionBar)->setSurface(
+        VidStoreXGlassFrame::Surface::Chrome);
     videoSetWizardActionBar->setObjectName("videoSetWizardActionBar");
     videoSetWizardActionBar->setProperty("vsxRole", "wizardActionBar");
     videoSetWizardActionBar->setMinimumHeight(58);
@@ -4075,24 +4121,45 @@ void DriveManagerUI::setupVideoSetAssistant(
     welcome->setObjectName("videoSetAssistantWelcomePage");
     videoSetWelcomePage = welcome;
     auto *welcomeLayout = pageLayout(welcome);
+    auto *collectionLayout = new QBoxLayout(QBoxLayout::LeftToRight);
+    collectionLayout->setObjectName("videoSetHomeCollectionLayout");
+    auto *collectionDetail = new VidStoreXGlassFrame();
+    collectionDetail->setObjectName("videoSetCollectionDetail");
+    auto *collectionDetailLayout = new QVBoxLayout(collectionDetail);
+    collectionDetailLayout->setContentsMargins(20, 12, 20, 16);
+    collectionDetailLayout->setSpacing(8);
+    videoSetArchiveRelic = new VidStoreXArchiveRelic();
+    collectionDetailLayout->addWidget(videoSetArchiveRelic, 1);
+    videoSetArchiveName = new QLabel();
+    videoSetArchiveName->setObjectName("videoSetArchiveName");
+    videoSetArchiveName->setWordWrap(true);
+    videoSetArchiveName->setTextFormat(Qt::PlainText);
+    collectionDetailLayout->addWidget(videoSetArchiveName);
+    videoSetArchiveMetadata = new QLabel();
+    videoSetArchiveMetadata->setObjectName("videoSetArchiveMetadata");
+    videoSetArchiveMetadata->setWordWrap(true);
+    videoSetArchiveMetadata->setTextFormat(Qt::PlainText);
+    collectionDetailLayout->addWidget(videoSetArchiveMetadata);
+    videoSetArchiveStatus = new QLabel();
+    videoSetArchiveStatus->setObjectName("videoSetArchiveStatus");
+    videoSetArchiveStatus->setTextFormat(Qt::PlainText);
+    collectionDetailLayout->addWidget(videoSetArchiveStatus, 0, Qt::AlignLeft);
     auto *choiceLayout = new QHBoxLayout();
     choiceLayout->setObjectName("videoSetHomeChoiceLayout");
+    choiceLayout->setSpacing(4);
     videoSetCreateCard = new QFrame();
     videoSetCreateCard->setObjectName("videoSetCreateCard");
     videoSetCreateCard->setProperty("card", true);
     videoSetCreateCard->setSizePolicy(QSizePolicy::Expanding,
                                       QSizePolicy::Preferred);
     auto *createCardLayout = new QVBoxLayout(videoSetCreateCard);
-    createCardLayout->setContentsMargins(
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding);
-    createCardLayout->setSpacing(8);
+    createCardLayout->setContentsMargins(4, 4, 4, 4);
+    createCardLayout->setSpacing(0);
     auto *createGlyph = new VidStoreXDataGlyph(
         VidStoreXDataGlyph::Mode::FileToBlocks);
     createGlyph->setObjectName("videoSetCreateGlyph");
     createCardLayout->addWidget(createGlyph, 0, Qt::AlignLeft);
+    createGlyph->hide();
     videoSetCreateCardTitle = new QLabel("Create a Video Set");
     videoSetCreateCardTitle->setObjectName("videoSetCreateCardTitle");
     videoSetCreateCardTitle->setProperty("cardTitle", true);
@@ -4116,8 +4183,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetWelcomeCreateButton->setAccessibleDescription(
         "Turn one file into one or more videos.");
     videoSetWelcomeCreateButton->setProperty("primary", true);
-    videoSetWelcomeCreateButton->setIcon(
-        style()->standardIcon(QStyle::SP_FileIcon));
+    videoSetWelcomeCreateButton->setIcon({});
     createCardLayout->addWidget(videoSetWelcomeCreateButton);
 
     videoSetRecoverCard = new QFrame();
@@ -4126,16 +4192,13 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetRecoverCard->setSizePolicy(QSizePolicy::Expanding,
                                        QSizePolicy::Preferred);
     auto *recoverCardLayout = new QVBoxLayout(videoSetRecoverCard);
-    recoverCardLayout->setContentsMargins(
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding,
-        vidstorex_ui::Layout::HeroPadding);
-    recoverCardLayout->setSpacing(8);
+    recoverCardLayout->setContentsMargins(4, 4, 4, 4);
+    recoverCardLayout->setSpacing(0);
     auto *recoverGlyph = new VidStoreXDataGlyph(
         VidStoreXDataGlyph::Mode::BlocksToFile);
     recoverGlyph->setObjectName("videoSetRecoverGlyph");
     recoverCardLayout->addWidget(recoverGlyph, 0, Qt::AlignLeft);
+    recoverGlyph->hide();
     videoSetRecoverCardTitle = new QLabel("Recover a File");
     videoSetRecoverCardTitle->setObjectName("videoSetRecoverCardTitle");
     videoSetRecoverCardTitle->setProperty("cardTitle", true);
@@ -4160,11 +4223,26 @@ void DriveManagerUI::setupVideoSetAssistant(
         "Rebuild the original file from downloaded Video Set videos.");
     videoSetWelcomeRecoverButton->setProperty("primary", true);
     videoSetWelcomeRecoverButton->setIcon(
-        style()->standardIcon(QStyle::SP_DialogOpenButton));
+        vidstorex_ui::navigationIcon(vidstorex_ui::NavigationSymbol::Recover, palette()));
     recoverCardLayout->addWidget(videoSetWelcomeRecoverButton);
-    choiceLayout->addWidget(videoSetCreateCard);
     choiceLayout->addWidget(videoSetRecoverCard);
-    welcomeLayout->addLayout(choiceLayout);
+    choiceLayout->addWidget(videoSetCreateCard);
+    auto *homeDock = new VidStoreXGlassFrame();
+    homeDock->setObjectName("videoSetHomeActionDock");
+    homeDock->setSurface(VidStoreXGlassFrame::Surface::Chrome);
+    auto *homeDockLayout = new QVBoxLayout(homeDock);
+    homeDockLayout->setContentsMargins(6, 6, 6, 6);
+    homeDockLayout->setSizeConstraint(QLayout::SetFixedSize);
+    homeDockLayout->addLayout(choiceLayout);
+    homeDock->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    collectionDetailLayout->addWidget(homeDock, 0, Qt::AlignHCenter);
+    // The collection detail carries the explanation; the dock only carries actions.
+    for (auto *label : {videoSetCreateCardTitle, videoSetRecoverCardTitle,
+                        videoSetCreateCardDescription, videoSetRecoverCardDescription,
+                        videoSetCreateFlowLabel, videoSetRecoverFlowLabel})
+        label->hide();
+    createRail->hide();
+    recoverRail->hide();
     auto *trustStrip = new QFrame();
     trustStrip->setObjectName("videoSetTrustStrip");
     trustStrip->setProperty("vsxSurface", "raised");
@@ -4192,8 +4270,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     trustLayout->addWidget(videoSetTrustLabel);
     trustLayout->addStretch();
     trustLayout->addWidget(videoSetTrustDetailsButton);
-    welcomeLayout->addWidget(trustStrip);
-    videoSetRecentGroup = new QFrame();
+    videoSetRecentGroup = new VidStoreXGlassFrame();
     videoSetRecentGroup->setObjectName("videoSetRecentGroup");
     videoSetRecentGroup->setProperty("card", true);
     auto *recentLayout = new QVBoxLayout(videoSetRecentGroup);
@@ -4222,6 +4299,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetRecentEmptyLabel = new QLabel("No recent Video Sets yet.");
     videoSetRecentEmptyLabel->setObjectName("videoSetRecentEmptyLabel");
     videoSetRecentEmptyLabel->setProperty("muted", true);
+    videoSetRecentEmptyLabel->setWordWrap(true);
     emptyLayout->addWidget(videoSetRecentEmptyLabel);
     recentLayout->addWidget(videoSetRecentEmptyState);
     videoSetRecentContinueButton = new QPushButton("Continue");
@@ -4248,11 +4326,21 @@ void DriveManagerUI::setupVideoSetAssistant(
                          videoSetRecentRemoveButton})
         button->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     videoSetRecentRemoveButton->setFixedWidth(42);
-    recentHeader->addWidget(videoSetRecentContinueButton);
-    recentHeader->addWidget(videoSetRecentOpenFolderButton);
-    recentHeader->addWidget(videoSetRecentRemoveButton);
-    welcomeLayout->addWidget(videoSetRecentGroup);
+    recentLayout->addStretch();
+    auto *recentActions = new QHBoxLayout();
+    recentActions->setSpacing(6);
+    recentActions->addWidget(videoSetRecentContinueButton);
+    recentActions->addWidget(videoSetRecentOpenFolderButton);
+    recentActions->addStretch();
+    recentActions->addWidget(videoSetRecentRemoveButton);
+    recentLayout->addLayout(recentActions);
+    collectionLayout->addWidget(videoSetRecentGroup, 1);
+    collectionLayout->addWidget(collectionDetail, 2);
+    welcomeLayout->addLayout(collectionLayout);
+    welcomeLayout->addWidget(trustStrip);
     welcomeLayout->addStretch();
+    connect(videoSetRecentList, &QListWidget::currentRowChanged,
+            this, [this] { updateVideoSetArchivePreview(); });
 
     // 1: Source
     auto *source = makePage(
@@ -4517,7 +4605,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     upload->setObjectName("videoSetAssistantUploadPage");
     upload->setProperty("workflowPage", true);
     auto *uploadLayout = pageLayout(upload);
-    auto *instructions = new QFrame();
+    auto *instructions = new VidStoreXGlassFrame();
     instructions->setProperty("vsxSurface", "raised");
     auto *instructionList = new QGridLayout(instructions);
     instructionList->setColumnStretch(1, 1);
@@ -4633,7 +4721,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     scan->setObjectName("videoSetAssistantRecoverPage");
     scan->setProperty("workflowPage", true);
     auto *scanLayout = pageLayout(scan);
-    auto *instantCard = new QFrame();
+    auto *instantCard = new VidStoreXGlassFrame();
     instantCard->setObjectName("instantPlaylistRecoveryCard");
     instantCard->setProperty("vsxSurface", "raised");
     auto *instantLayout = new QGridLayout(instantCard);
@@ -4662,7 +4750,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     instantLayout->addWidget(videoSetInstantRecoverButton, 1, 2);
     instantLayout->addWidget(videoSetInstantRecoveryStatus, 2, 0, 1, 3);
     scanLayout->addWidget(instantCard);
-    auto *localCard = new QFrame();
+    auto *localCard = new VidStoreXGlassFrame();
     localCard->setProperty("vsxSurface", "raised");
     auto *scanForm = new QGridLayout(localCard);
     auto *localTitle = new QLabel(tr("Local videos"));
@@ -4706,7 +4794,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     outputForm->addWidget(videoSetAssistantRecoveryOutputEdit, 1);
     outputForm->addWidget(scanOutputBrowse);
     scanLayout->addLayout(outputForm);
-    videoSetScanOutcome = new QFrame();
+    videoSetScanOutcome = new VidStoreXGlassFrame();
     videoSetScanOutcome->setProperty("vsxSurface", "raised");
     auto *outcomeLayout = new QVBoxLayout(videoSetScanOutcome);
     videoSetScanSummaryLabel = new QLabel();
@@ -4812,7 +4900,7 @@ void DriveManagerUI::setupVideoSetAssistant(
         "videoSetSuccessDetailsText");
     videoSetSuccessDetailsLabel->setWordWrap(true);
     videoSetSuccessDetailsLabel->setTextFormat(Qt::PlainText);
-    auto *successDetailsCard = new QFrame();
+    auto *successDetailsCard = new VidStoreXGlassFrame();
     successDetailsCard->setObjectName("videoSetSuccessDetailsCard");
     successDetailsCard->setProperty("vsxSurface", "raised");
     auto *successDetailsLayout = new QVBoxLayout(successDetailsCard);
@@ -4848,7 +4936,7 @@ void DriveManagerUI::setupVideoSetAssistant(
     videoSetRecentPageDescription->setObjectName(
         "videoSetRecentPageDescription");
     auto *recentPageLayout = pageLayout(videoSetRecentPage);
-    auto *recentFullGroup = new QFrame();
+    auto *recentFullGroup = new VidStoreXGlassFrame();
     recentFullGroup->setObjectName("videoSetRecentFullGroup");
     recentFullGroup->setProperty("card", true);
     auto *recentFullLayout = new QVBoxLayout(recentFullGroup);
@@ -5697,15 +5785,14 @@ void DriveManagerUI::setupVideoSetAssistant(
         if (!dynamicTextObjects.contains(widget->objectName()))
             rememberUiText(widget);
 
-    refreshRecentVideoSets();
     videoSetAssistantStack->setCurrentIndex(kHomePage);
     videoSetWizardActionStack->setCurrentIndex(kHomePage);
     updateWizardActionBarVisibility();
     updateSource();
     updateProfileCardVisuals();
     updateVideoSetAssistant();
-    setTabOrder(videoSetWelcomeCreateButton, videoSetWelcomeRecoverButton);
-    setTabOrder(videoSetWelcomeRecoverButton, videoSetRecentList);
+    setTabOrder(videoSetWelcomeRecoverButton, videoSetWelcomeCreateButton);
+    setTabOrder(videoSetWelcomeCreateButton, videoSetRecentList);
     setTabOrder(videoSetAssistantInputEdit, videoSetAssistantInputBrowseButton);
     setTabOrder(videoSetAssistantInputBrowseButton, videoSetAssistantOutputEdit);
     setTabOrder(videoSetAssistantOutputEdit, videoSetAssistantOutputBrowseButton);
@@ -7544,6 +7631,25 @@ void DriveManagerUI::showRecoveryResultCard() {
     dialog.exec();
 }
 
+void DriveManagerUI::updateVideoSetArchivePreview() {
+    if (!videoSetArchiveName || !videoSetArchiveRelic) return;
+    const auto *item = videoSetRecentList->currentItem();
+    videoSetArchiveName->setText(item ? item->data(Qt::UserRole + 2).toString()
+                                    : tr("Create a Video Set"));
+    videoSetArchiveName->setToolTip(videoSetArchiveName->text());
+    videoSetArchiveMetadata->setText(item ? item->data(Qt::UserRole + 3).toString()
+        : tr("Turn one file into one or more videos."));
+    videoSetArchiveStatus->setText(item ? item->data(Qt::UserRole + 1).toString()
+                                      : QString());
+    videoSetArchiveStatus->setProperty("vsxState", item
+        ? item->data(Qt::UserRole + 4).toString() : QStringLiteral("info"));
+    videoSetArchiveStatus->setVisible(item != nullptr);
+    videoSetArchiveStatus->style()->unpolish(videoSetArchiveStatus);
+    videoSetArchiveStatus->style()->polish(videoSetArchiveStatus);
+    videoSetArchiveRelic->setArchive(item ? item->data(Qt::UserRole).toString() : QString(),
+                                   item ? item->data(Qt::UserRole + 5).toInt() : 0);
+}
+
 void DriveManagerUI::refreshRecentVideoSets() {
     if (!videoSetRecentList || !videoSetRecentFullList) return;
     videoSetRecentList->clear();
@@ -7569,6 +7675,8 @@ void DriveManagerUI::refreshRecentVideoSets() {
         QString metadata;
         QString status;
         QString state;
+        QString archiveMetadata;
+        int partCount = 0;
     };
     QVector<RecentPresentation> recent;
     if (recentEnabled) for (const auto &path : paths) {
@@ -7577,6 +7685,8 @@ void DriveManagerUI::refreshRecentVideoSets() {
         QString statusText;
         QString titleText;
         QString metadataText;
+        QString archiveMetadata;
+        int partCount = 0;
         const char *statusState = "info";
         if (!manifest.exists()) {
             statusText = tr("Location no longer exists");
@@ -7596,6 +7706,11 @@ void DriveManagerUI::refreshRecentVideoSets() {
                 statusText = friendlyStatus(plan.aggregate_state);
                 titleText = QString::fromStdString(plan.original_filename);
                 metadataText = tr("%1 parts").arg(plan.parts.size());
+                partCount = static_cast<int>(plan.parts.size());
+                archiveMetadata = QLocale().formattedDataSize(
+                    static_cast<qint64>(plan.original_file_size)) +
+                    QStringLiteral("  ·  ") + metadataText +
+                    QStringLiteral("  ·  ") + QString::fromStdString(plan.profile_name);
                 statusState = plan.aggregate_state == "Recovered exact"
                     ? "success" : plan.aggregate_state == "Incomplete"
                     ? "warning" : "info";
@@ -7623,7 +7738,8 @@ void DriveManagerUI::refreshRecentVideoSets() {
         display += "\n" + folder;
         recent.push_back({path, display, titleText,
             folder + "  ·  " + metadataText + "  ·  " + openedText, statusText,
-            QString::fromLatin1(statusState)});
+            QString::fromLatin1(statusState),
+            archiveMetadata.isEmpty() ? statusText : archiveMetadata, partCount});
     }
 
     const auto populate = [this, &recent](QListWidget *list,
@@ -7636,6 +7752,10 @@ void DriveManagerUI::refreshRecentVideoSets() {
             auto *item = new QListWidgetItem(list);
             item->setData(Qt::UserRole, model.path);
             item->setData(Qt::UserRole + 1, model.status);
+            item->setData(Qt::UserRole + 2, model.title);
+            item->setData(Qt::UserRole + 3, model.archiveMetadata);
+            item->setData(Qt::UserRole + 4, model.state);
+            item->setData(Qt::UserRole + 5, model.partCount);
             item->setData(Qt::AccessibleTextRole, model.accessibleText);
             item->setToolTip(QDir::toNativeSeparators(model.path));
             auto *entry = new VidStoreXRecentEntry(
@@ -7651,10 +7771,19 @@ void DriveManagerUI::refreshRecentVideoSets() {
                 QString("%1EntryStatus%2").arg(prefix).arg(index));
             entry->statusLabel()->setAccessibleName(
                 tr("Status: %1").arg(model.status));
-            entry->ensurePolished();
-            entry->layout()->activate();
-            item->setSizeHint(entry->sizeHint());
             list->setItemWidget(item, entry);
+            entry->ensurePolished();
+            for (auto *label : {entry->titleLabel(), entry->metadataLabel(),
+                                entry->statusLabel()})
+                label->ensurePolished();
+            entry->layout()->invalidate();
+            entry->layout()->activate();
+            // The item border and bottom margin sit outside the embedded
+            // widget. Match the Recent ::item box in applicationStyleSheet.
+            constexpr int itemBorder = 1;
+            constexpr int itemBottomMargin = 6;
+            item->setSizeHint(entry->sizeHint() + QSize(
+                2 * itemBorder, 2 * itemBorder + itemBottomMargin));
         }
     };
     populate(videoSetRecentList, 3, QStringLiteral("videoSetRecent"));
@@ -7699,6 +7828,7 @@ void DriveManagerUI::refreshRecentVideoSets() {
         videoSetRecentFullEmptyLabel->setText(tr(
             "No recent Video Sets yet.\nWhen you create or recover a Video Set, it will appear here."));
     }
+    updateVideoSetArchivePreview();
     updateWorkflowScroll();
 }
 
@@ -7774,6 +7904,9 @@ void DriveManagerUI::openRecentVideoSet(const QString &manifestPath) {
 }
 
 bool DriveManagerUI::eventFilter(QObject *object, QEvent *event) {
+    if (event->type() == QEvent::Resize && videoSetAssistantScrollArea &&
+        object == videoSetAssistantScrollArea->viewport())
+        updateWorkflowScroll();
     if (event->type() == QEvent::LayoutRequest && videoSetAssistantStack &&
         object == videoSetAssistantStack->currentWidget())
         updateWorkflowScroll();
@@ -7915,7 +8048,7 @@ void DriveManagerUI::updateResponsiveLayout(const QSize &viewport) {
 
     const QStringList paddedCards{
         "settingsCard", "settingsAboutCard", "onboardingCard",
-        "videoSetCreateCard", "videoSetRecoverCard", "videoSetRecentGroup",
+        "videoSetRecentGroup",
         "videoSetRecentFullGroup", "videoSetActivityPanel",
         "experimentalYouTubeSyncSettingsCard"};
     for (const auto &name : paddedCards) {
@@ -7956,12 +8089,15 @@ void DriveManagerUI::updateResponsiveLayout(const QSize &viewport) {
         auto *layout = videoSetPage
             ? videoSetPage->findChild<QBoxLayout *>(name) : nullptr;
         if (!layout) return;
-        layout->setDirection(videoSetAssistantStack &&
-                             videoSetAssistantStack->width() < breakpoint
+        // Child geometry is still provisional during the first window resize.
+        // Use the bounded task width so Home does not stay in its initial stack.
+        const int availableWidth = qMin(viewport.width(),
+            vidstorex_ui::Layout::WorkflowTaskMaxWidth) - 4 * density.pageMargin;
+        layout->setDirection(availableWidth < breakpoint
             ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
         layout->setSpacing(density.sectionGap);
     };
-    updateBoxDirection("videoSetHomeChoiceLayout", 900);
+    updateBoxDirection("videoSetHomeCollectionLayout", 1050);
     updateBoxDirection("videoSetProfileCardsLayout", 900);
 
     if (currentVideoSetPlanMatches())
@@ -8000,8 +8136,24 @@ void DriveManagerUI::changeEvent(QEvent *event) {
     if (event->type() == QEvent::LanguageChange && centralWidget)
         retranslateUserInterface();
     if ((event->type() == QEvent::PaletteChange ||
-         event->type() == QEvent::ApplicationPaletteChange) && centralWidget)
+         event->type() == QEvent::ApplicationPaletteChange) && centralWidget) {
         vidstorex_ui::applyTheme(centralWidget);
+        applyNativeTitleBar(this);
+        const QList<std::pair<QPushButton *, vidstorex_ui::NavigationSymbol>> icons{
+            {homeNavigationButton, vidstorex_ui::NavigationSymbol::Home},
+            {createNavigationButton, vidstorex_ui::NavigationSymbol::Create},
+            {recoverNavigationButton, vidstorex_ui::NavigationSymbol::Recover},
+            {recentNavigationButton, vidstorex_ui::NavigationSymbol::Recent},
+            {settingsNavigationButton, vidstorex_ui::NavigationSymbol::Settings},
+            {videoSetWelcomeRecoverButton, vidstorex_ui::NavigationSymbol::Recover}};
+        for (const auto &[button, symbol] : icons)
+            if (button) button->setIcon(vidstorex_ui::navigationIcon(symbol, palette()));
+    }
+}
+
+void DriveManagerUI::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+    applyNativeTitleBar(this);
 }
 
 void DriveManagerUI::resizeEvent(QResizeEvent *event) {

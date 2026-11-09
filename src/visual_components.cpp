@@ -8,6 +8,9 @@
 #include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
+#include <QLinearGradient>
+#include <QRadialGradient>
 #include <QResizeEvent>
 #include <QVBoxLayout>
 
@@ -82,6 +85,172 @@ void drawPartMarker(QPainter &p, const QRectF &rect,
     }
 }
 
+}
+
+VidStoreXAmbientCanvas::VidStoreXAmbientCanvas(QWidget *parent)
+    : QWidget(parent) {
+    setAutoFillBackground(false);
+}
+
+void VidStoreXAmbientCanvas::paintEvent(QPaintEvent *) {
+    const auto t = vidstorex_ui::themeTokens(palette());
+    QPainter p(this);
+    p.fillRect(rect(), t.surfaceBase);
+    const auto glow = [&](const QPointF center, const qreal radius,
+                           const int opacity) {
+        QRadialGradient gradient(center, qMax<qreal>(1, radius));
+        QColor color(t.accent);
+        color.setAlpha(opacity);
+        gradient.setColorAt(0, color);
+        color.setAlpha(0);
+        gradient.setColorAt(1, color);
+        p.fillRect(rect(), gradient);
+    };
+    glow({width() * 0.78, height() * 1.18}, width() * 0.65,
+         t.dark ? 38 : 17);
+    glow({width() * 1.02, height() * 0.18}, width() * 0.44,
+         t.dark ? 17 : 10);
+}
+
+VidStoreXGlassFrame::VidStoreXGlassFrame(QWidget *parent) : QFrame(parent) {
+    setProperty("glassSurface", true);
+    setAutoFillBackground(false);
+}
+
+void VidStoreXGlassFrame::setSurface(const Surface surface) {
+    surface_ = surface;
+    update();
+}
+
+void VidStoreXGlassFrame::paintEvent(QPaintEvent *) {
+    // QSS can replace a child's Window brush with its own surface color.
+    // The unstyled top-level window remains the authoritative appearance.
+    const auto t = vidstorex_ui::themeTokens(window()->palette());
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QRectF bounds = QRectF(rect()).adjusted(.75, .75, -.75, -.75);
+    if (bounds.isEmpty()) return;
+    const qreal radius = surface_ == Surface::Chrome ? 18.0 : 20.0;
+    QPainterPath path;
+    path.addRoundedRect(bounds, radius, radius);
+    QColor backing(t.surfaceRaised);
+    backing.setAlpha(t.dark ? (surface_ == Surface::Chrome ? 222 : 204) : 238);
+    p.fillPath(path, backing);
+    QLinearGradient sheen(bounds.topLeft(), bounds.bottomRight());
+    sheen.setColorAt(0, QColor(225, 250, 255, t.dark ? 17 : 120));
+    sheen.setColorAt(.42, QColor(225, 250, 255, 0));
+    QColor reflected(t.accent);
+    reflected.setAlpha(t.dark ? 11 : 7);
+    sheen.setColorAt(1, reflected);
+    p.fillPath(path, sheen);
+    QLinearGradient edge(bounds.topLeft(), bounds.bottomRight());
+    edge.setColorAt(0, t.dark ? QColor(213, 246, 255, 76) : t.border);
+    edge.setColorAt(.35, t.dark ? QColor(155, 204, 218, 24) : t.border);
+    edge.setColorAt(1, t.dark ? QColor(170, 225, 237, 46) : t.border);
+    p.setPen(QPen(edge, 1));
+    p.drawPath(path);
+    // Inner top highlight provides thickness without an expensive blur pass.
+    p.setClipPath(path);
+    p.setPen(QPen(QColor(234, 255, 255, t.dark ? 24 : 110), 1));
+    p.drawLine(QPointF(bounds.left() + radius, bounds.top() + 1.5),
+               QPointF(bounds.right() - radius, bounds.top() + 1.5));
+}
+
+VidStoreXArchiveRelic::VidStoreXArchiveRelic(QWidget *parent)
+    : QWidget(parent) {
+    setObjectName(QStringLiteral("videoSetArchiveRelic"));
+    setMouseTracking(true);
+    setFocusPolicy(Qt::NoFocus);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    setMinimumHeight(112);
+    setMaximumHeight(178);
+}
+
+QSize VidStoreXArchiveRelic::sizeHint() const { return {380, 164}; }
+
+void VidStoreXArchiveRelic::setArchive(const QString &identity,
+                                      const int partCount) {
+    seed_ = static_cast<uint>(qHash(identity));
+    partCount_ = qMax(0, partCount);
+    update();
+}
+
+void VidStoreXArchiveRelic::mouseMoveEvent(QMouseEvent *event) {
+    light_ = {qBound(0.0, event->position().x() / qMax(1, width()), 1.0),
+              qBound(0.0, event->position().y() / qMax(1, height()), 1.0)};
+    update();
+}
+
+void VidStoreXArchiveRelic::leaveEvent(QEvent *event) {
+    light_ = {.66, .22};
+    update();
+    QWidget::leaveEvent(event);
+}
+
+void VidStoreXArchiveRelic::paintEvent(QPaintEvent *) {
+    const auto t = vidstorex_ui::themeTokens(palette());
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const qreal scale = qMin(width() / 340.0, height() / 180.0);
+    if (scale <= 0) return;
+    p.translate((width() - 340 * scale) / 2, (height() - 180 * scale) / 2);
+    p.scale(scale, scale);
+    QRadialGradient ground(QPointF(175, 154), 115);
+    QColor glow(t.accent);
+    glow.setAlpha(t.dark ? 53 : 26);
+    ground.setColorAt(0, glow);
+    glow.setAlpha(0);
+    ground.setColorAt(1, glow);
+    p.save();
+    p.translate(0, 103);
+    p.scale(1, .34);
+    p.fillRect(QRectF(30, 0, 280, 180), ground);
+    p.restore();
+    const QPolygonF source{QPointF(0, 0), QPointF(118, 0),
+                            QPointF(118, 146), QPointF(0, 146)};
+    const QPolygonF target{QPointF(120, 32), QPointF(220, 14),
+                            QPointF(234, 142), QPointF(133, 163)};
+    QTransform projection;
+    if (!QTransform::quadToQuad(source, target, projection)) return;
+    for (int layer = 2; layer >= 0; --layer) {
+        p.save();
+        p.translate(-layer * 15, -layer * 5);
+        p.setTransform(projection, true);
+        QPainterPath pane;
+        pane.addRoundedRect(QRectF(0, 0, 118, 146), 10, 10);
+        QLinearGradient material(0, 0, 118, 146);
+        material.setColorAt(0, t.dark ? QColor("#28434C") : QColor("#D6EEF2"));
+        material.setColorAt(.42, t.dark ? QColor("#0B181E") : QColor("#F5FCFD"));
+        material.setColorAt(1, t.dark ? QColor("#15313A") : QColor("#CCE9EE"));
+        p.fillPath(pane, material);
+        QColor rim(t.accent);
+        rim.setAlpha(layer == 0 ? 180 : 95);
+        p.setPen(QPen(rim, 1));
+        p.drawPath(pane);
+        if (layer == 0) {
+            for (int row = 0; row < 9; ++row)
+                for (int column = 0; column < 9; ++column) {
+                    const uint bit = (row * 29 + column * 17 + seed_ % 83) % 23;
+                    QColor color(t.accent);
+                    color.setAlpha(bit < 13 ? 185 : 22);
+                    p.fillRect(QRectF(15 + column * 10, 15 + row * 10, 6.5, 6.5), color);
+                }
+            p.setPen(QPen(t.borderStrong, .5));
+            p.drawLine(QPointF(15, 117), QPointF(103, 117));
+            QFont codeFont(QStringLiteral("Consolas"));
+            codeFont.setPixelSize(8);
+            p.setFont(codeFont);
+            p.setPen(t.textSecondary);
+            p.drawText(QRectF(15, 122, 90, 15), Qt::AlignLeft,
+                partCount_ > 0 ? QStringLiteral("RQ / %1").arg(partCount_, 2, 10, QChar('0'))
+                               : QStringLiteral("RQ / ARCHIVE"));
+            QRadialGradient highlight(QPointF(light_.x() * 118, light_.y() * 146), 115);
+            highlight.setColorAt(0, QColor(225, 255, 255, 44));
+            highlight.setColorAt(1, QColor(225, 255, 255, 0));
+            p.fillPath(pane, highlight);
+        }
+        p.restore();
+    }
 }
 
 VidStoreXBlockProgress::VidStoreXBlockProgress(QWidget *parent)
@@ -649,7 +818,7 @@ VidStoreXRecentEntry::VidStoreXRecentEntry(
     const char *statusState, QWidget *parent)
     : QFrame(parent) {
     setAttribute(Qt::WA_TransparentForMouseEvents);
-    auto *layout = new QHBoxLayout(this);
+    auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 8, 10, 8);
     layout->setSpacing(12);
     auto *textLayout = new QVBoxLayout();
@@ -672,7 +841,7 @@ VidStoreXRecentEntry::VidStoreXRecentEntry(
     status_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     status_->setWordWrap(false);
     layout->addLayout(textLayout, 1);
-    layout->addWidget(status_, 0, Qt::AlignVCenter);
+    layout->addWidget(status_, 0, Qt::AlignLeft);
 }
 
 QSize VidStoreXRecentEntry::sizeHint() const {

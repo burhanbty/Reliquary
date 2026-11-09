@@ -220,8 +220,8 @@ TEST(ResultCardRenderer, BrandDarkIsIndependentOfApplicationLightPalette) {
     qApp->setPalette(original);
     const QImage restoredImage = result_card::Renderer::render(*model);
     EXPECT_EQ(lightAppImage.size(), QSize(1600, 900));
-    EXPECT_EQ(lightAppImage.pixelColor(0, 899), QColor("#171715"));
-    EXPECT_EQ(restoredImage.pixelColor(0, 899), QColor("#171715"));
+    EXPECT_EQ(lightAppImage.pixelColor(0, 899), QColor("#000000"));
+    EXPECT_EQ(restoredImage.pixelColor(0, 899), QColor("#000000"));
 }
 
 TEST(ResultCardRenderer, CreateAndLargePartCountsStayAtExactDimensions) {
@@ -334,7 +334,7 @@ TEST(ResultCardPreview, HasAccessiblePrivacyAndActionControls) {
     EXPECT_FALSE(fileName->accessibleName().isEmpty());
     EXPECT_FALSE(save->accessibleName().isEmpty());
     EXPECT_FALSE(copy->accessibleName().isEmpty());
-    EXPECT_TRUE(dialog.styleSheet().contains(QStringLiteral("#201F1C")));
+    EXPECT_TRUE(dialog.styleSheet().contains(QStringLiteral("#0C171C")));
     fileName->setChecked(false);
     QApplication::processEvents();
     EXPECT_EQ(dialog.renderedImage().size(), QSize(1600, 900));

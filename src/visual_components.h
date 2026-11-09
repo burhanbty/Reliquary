@@ -7,6 +7,42 @@
 
 class QBoxLayout;
 class QResizeEvent;
+class QMouseEvent;
+
+// Painted materials keep the native widgets, hit targets and keyboard behavior.
+// They only repaint on normal expose/resize events; there is no ambient timer.
+class VidStoreXAmbientCanvas final : public QWidget {
+public:
+    explicit VidStoreXAmbientCanvas(QWidget *parent = nullptr);
+protected:
+    void paintEvent(QPaintEvent *event) override;
+};
+
+class VidStoreXGlassFrame final : public QFrame {
+public:
+    enum class Surface { Panel, Chrome };
+    explicit VidStoreXGlassFrame(QWidget *parent = nullptr);
+    void setSurface(Surface surface);
+protected:
+    void paintEvent(QPaintEvent *event) override;
+private:
+    Surface surface_ = Surface::Panel;
+};
+
+class VidStoreXArchiveRelic final : public QWidget {
+public:
+    explicit VidStoreXArchiveRelic(QWidget *parent = nullptr);
+    void setArchive(const QString &identity, int partCount);
+    [[nodiscard]] QSize sizeHint() const override;
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
+private:
+    uint seed_ = 0;
+    int partCount_ = 0;
+    QPointF light_{0.66, 0.22};
+};
 
 enum class VidStoreXPartState {
     Pending,

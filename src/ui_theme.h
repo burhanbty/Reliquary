@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QIcon>
 #include <QPalette>
 #include <QString>
 
@@ -88,6 +89,9 @@ struct ThemeTokens final {
 };
 
 [[nodiscard]] ThemeTokens themeTokens(const QPalette &palette);
+[[nodiscard]] QPalette obsidianPalette(const QPalette &base);
+enum class NavigationSymbol { Home, Create, Recover, Recent, Settings };
+[[nodiscard]] QIcon navigationIcon(NavigationSymbol symbol, const QPalette &palette);
 [[nodiscard]] QString applicationStyleSheet(const QPalette &palette);
 void applyTheme(QWidget *root);
 

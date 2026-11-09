@@ -4,6 +4,22 @@
 <context>
     <name>DriveManagerUI</name>
     <message>
+        <source>New archive</source>
+        <translation>Yeni arşiv</translation>
+    </message>
+    <message>
+        <source>Recover file</source>
+        <translation>Dosya kurtar</translation>
+    </message>
+    <message>
+        <source>Your archive</source>
+        <translation>Arşiviniz</translation>
+    </message>
+    <message>
+        <source>Create a video set or recover an existing file.</source>
+        <translation>Video seti oluşturun veya mevcut bir dosyayı geri çıkarın.</translation>
+    </message>
+    <message>
         <source>Turn files into resilient videos and recover them later.</source>
         <translation type="vanished">Dosyalarınızı dayanıklı videolara dönüştürün ve daha sonra geri kurtarın.</translation>
     </message>

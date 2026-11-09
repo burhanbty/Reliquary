@@ -64,6 +64,7 @@ class VidStoreXStepper;
 class VidStoreXFlowIllustration;
 class VidStoreXOnboardingProgress;
 class VidStoreXBlockProgress;
+class VidStoreXArchiveRelic;
 class BrandIntroOverlay;
 class QAction;
 
@@ -171,6 +172,7 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void showEvent(QShowEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private
@@ -384,6 +386,7 @@ private:
     [[nodiscard]] QString findYtDlpExecutable() const;
 
     void refreshRecentVideoSets();
+    void updateVideoSetArchivePreview();
 
     void rememberRecentVideoSet(const QString &manifestPath);
 
@@ -625,6 +628,10 @@ private:
     QLabel *videoSetCreateFlowLabel = nullptr;
     QLabel *videoSetRecoverFlowLabel = nullptr;
     QLabel *videoSetTrustLabel = nullptr;
+    VidStoreXArchiveRelic *videoSetArchiveRelic = nullptr;
+    QLabel *videoSetArchiveName = nullptr;
+    QLabel *videoSetArchiveMetadata = nullptr;
+    QLabel *videoSetArchiveStatus = nullptr;
     QToolButton *videoSetTrustDetailsButton = nullptr;
     QFrame *videoSetRecentGroup = nullptr;
     QLabel *videoSetRecentTitle = nullptr;

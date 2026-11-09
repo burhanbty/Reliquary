@@ -45,6 +45,7 @@
 #include <QTextDocument>
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 
@@ -201,6 +202,7 @@ bool exerciseResultCardPreview(
 
 int main(int argc, char *argv[]) {
     bool smokeTest = false;
+    bool recentLayoutSmokeTest = false;
     bool closeDuringEstimate = false;
     QString preflightSmokeInput;
     QString preflightSmokeOutput;
@@ -217,6 +219,8 @@ int main(int argc, char *argv[]) {
         const QString argument = QString::fromLocal8Bit(argv[i]);
         if (argument == "--smoke-test") {
             smokeTest = true;
+        } else if (argument == "--recent-layout-smoke-test") {
+            recentLayoutSmokeTest = true;
         } else if (argument == "--close-during-estimate") {
             closeDuringEstimate = true;
         } else if (argument == "--preflight-smoke-input" &&
@@ -260,7 +264,7 @@ int main(int argc, char *argv[]) {
     const bool isolatedUiRun = !videoSetAssistantSmokeRoot.isEmpty() ||
         !instantRecoverySmokeRoot.isEmpty() || !youtubeSyncSmokeRoot.isEmpty() ||
         !onboardingSmokeRoot.isEmpty() ||
-        !settingsMigrationSmokeRoot.isEmpty() || smokeTest ||
+        !settingsMigrationSmokeRoot.isEmpty() || smokeTest || recentLayoutSmokeTest ||
         closeDuringEstimate;
     if (isolatedUiRun) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -277,9 +281,14 @@ int main(int argc, char *argv[]) {
                 : !youtubeSyncSmokeRoot.isEmpty()
                 ? QDir(youtubeSyncSmokeRoot).filePath("settings")
                 : QDir(QDir::tempPath()).filePath(
-                    "vidstorex-gui-smoke-settings"));
+                    recentLayoutSmokeTest ? "vidstorex-recent-layout-smoke-settings"
+                                          : "vidstorex-gui-smoke-settings"));
     }
     QApplication app(argc, argv);
+    QFont interfaceFont(QStringLiteral("Segoe UI"));
+    interfaceFont.setPointSize(10);
+    app.setFont(interfaceFont);
+    app.setPalette(vidstorex_ui::obsidianPalette(app.palette()));
 
 #ifdef Q_OS_WIN
     const auto platform = QGuiApplication::platformName();
@@ -346,9 +355,16 @@ int main(int argc, char *argv[]) {
         if (settingsMigrationSmokeRoot.isEmpty()) {
             settings.clear();
             settings.setValue("ui/language",
-                              onboardingSmokeRoot.isEmpty() ? "en" : "tr");
+                              onboardingSmokeRoot.isEmpty() && !recentLayoutSmokeTest
+                                  ? "en" : "tr");
             settings.setValue("ui/rememberRecentSets", true);
             settings.setValue("ui/showAdvancedTools", true);
+            if (recentLayoutSmokeTest) {
+                settings.setValue("videoSet/recentManifests", QStringList{
+                    "smoke-recent-one/set_manifest.json",
+                    "smoke-recent-two/set_manifest.json",
+                    "smoke-recent-three/set_manifest.json"});
+            }
             if (onboardingSmokeRoot.isEmpty()) {
                 settings.setValue("ui/onboardingVersion", 1);
                 settings.setValue("ui/brandIntroVersion", 1);
@@ -1230,13 +1246,12 @@ int main(int argc, char *argv[]) {
             !activityDetails->isHidden() ||
             technicalLog->document()->maximumBlockCount() != 5000 ||
             homeHeading->text() == QStringLiteral("Reliquary") ||
-            (!homeHeading->text().contains("safely") &&
-             !homeHeading->text().contains(QString::fromUtf8("güvenle"))) ||
+            (homeHeading->text() != QStringLiteral("Your archive") &&
+             homeHeading->text() != QString::fromUtf8("Arşiviniz")) ||
             !trustLabel->text().contains("YouTube") ||
             createRail->height() < 1 || recoverRail->height() < 1 ||
             createRail->width() > 100 || recoverRail->width() > 100 ||
-            createCardTitle->geometry().top() <= 0 ||
-            recoverCardTitle->geometry().top() <= 0 ||
+            createCardTitle->isVisible() || recoverCardTitle->isVisible() ||
             qAbs(createCard->height() - recoverCard->height()) > 1 ||
             !recentEmpty->isVisible() ||
             (advancedNavigation->text() != QStringLiteral("Advanced") &&
@@ -1257,8 +1272,8 @@ int main(int argc, char *argv[]) {
         }
         window.resize(1920, 1080);
         QApplication::processEvents();
-        const int heroContentWidth = recoverCard->geometry().right() -
-            createCard->geometry().left() + 1;
+        const int heroContentWidth = createCard->geometry()
+            .united(recoverCard->geometry()).width();
         if (assistantScroll->verticalScrollBar()->isVisible() ||
             !window.statusBar()->isHidden() || qApp->windowIcon().isNull() ||
             heroContentWidth > 1450) {
@@ -1282,9 +1297,10 @@ int main(int argc, char *argv[]) {
         for (auto *label : window.findChildren<QLabel *>())
             if (label->isVisible() && label->text() == QStringLiteral("Reliquary"))
                 ++visibleBrandLabels;
-        if (strongHomeActions != 2 || visibleBrandLabels != 1 ||
+        if (strongHomeActions != 1 || visibleBrandLabels != 1 ||
             createChoice->property("vsxRole").toString() !=
                 QStringLiteral("primary") ||
+            recoverChoice->property("vsxRole").toString() != QStringLiteral("ghost") ||
             !settingsNavigation->property("nav").toBool()) {
             qCritical() << "Visual hierarchy or single-brand invariant failed"
                         << strongHomeActions << visibleBrandLabels;
@@ -1714,12 +1730,11 @@ int main(int argc, char *argv[]) {
             if (label->isVisible() && label->text() == QStringLiteral("Reliquary"))
                 ++visibleBrands;
         if (window.property("uiLanguage").toString() != "tr" ||
-            homeHeading->text() != QString::fromUtf8(
-                "Dosyalarınızı videolarda güvenle saklayın") ||
+            homeHeading->text() != QString::fromUtf8("Arşiviniz") ||
             !trustLabel->text().contains(QStringLiteral("YouTube")) ||
             visibleBrands != 1 ||
             create->property("vsxRole").toString() != "primary" ||
-            recoverChoice->property("vsxRole").toString() != "primary" ||
+            recoverChoice->property("vsxRole").toString() != "ghost" ||
             advancedNavigation->text() != QString::fromUtf8("Gelişmiş") ||
             classicTools->title() != QString::fromUtf8(
                 "Klasik Video Set Araçları")) {
@@ -1745,6 +1760,15 @@ int main(int argc, char *argv[]) {
         for (const auto &[size, suffix] : homeSizes) {
             window.resize(size);
             QApplication::processEvents();
+            const auto *dock = window.findChild<QFrame *>("videoSetHomeActionDock");
+            if (!dock || !dock->rect().adjusted(6, 6, -6, -6).contains(
+                    QRect(create->mapTo(dock, QPoint()), create->size())) ||
+                !dock->rect().adjusted(6, 6, -6, -6).contains(
+                    QRect(recoverChoice->mapTo(dock, QPoint()), recoverChoice->size()))) {
+                qCritical() << "Archive actions exceed the glass dock at" << size;
+                window.grab().save(QDir(root).filePath("e2e-home-dock-failure.png"));
+                return 147;
+            }
             if (!window.grab().save(QDir(root).filePath(
                     "e2e-home-tr-light-" + suffix + ".png"))) {
                 qCritical() << "Could not save Turkish Home visual audit" << suffix;
@@ -1865,7 +1889,13 @@ int main(int argc, char *argv[]) {
                     << "workflowMain" << workflowMain->geometry()
                     << "gutters" << leftGutter << rightGutter
                     << "pinned" << actionIsPinnedAndVisible(sourceContinue)
+                    << "sourceBrowse" << sourceBrowse->size() << sourceBrowse->minimumSizeHint()
+                    << sourceBrowse->mapTo(assistantScroll->viewport(), QPoint())
+                    << "outputBrowse" << outputBrowse->size() << outputBrowse->minimumSizeHint()
+                    << outputBrowse->mapTo(assistantScroll->viewport(), QPoint())
+                    << "viewport" << assistantScroll->viewport()->rect()
                     << "windowMinHint" << window.minimumSizeHint();
+                window.grab().save(QDir(root).filePath("e2e-create-step1-failure.png"));
                 return 86;
             }
         }
@@ -2092,6 +2122,7 @@ int main(int argc, char *argv[]) {
                 QFile diagnostic(QDir(root).filePath("e2e-failure.txt"));
                 if (diagnostic.open(QIODevice::WriteOnly | QIODevice::Text))
                     diagnostic.write(message.toUtf8());
+                window.grab().save(QDir(root).filePath("e2e-failure.png"));
                 timer->stop();
                 app.exit(code);
             };
@@ -2804,6 +2835,15 @@ int main(int argc, char *argv[]) {
                 homeNavigation->click();
                 language->setCurrentIndex(language->findData("tr"));
                 QApplication::processEvents();
+                const auto *archiveName = window.findChild<QLabel *>("videoSetArchiveName");
+                const auto *archiveStatus = window.findChild<QLabel *>("videoSetArchiveStatus");
+                if (!archiveName || !archiveStatus ||
+                    archiveName->text() != QFileInfo(source).fileName() ||
+                    !recent->currentItem() || archiveStatus->text() !=
+                        recent->currentItem()->data(Qt::UserRole + 1).toString()) {
+                    fail(146, "Collection detail does not describe the selected archive");
+                    return;
+                }
                 auto *recentEntry = recent->itemWidget(recent->item(0));
                 auto *recentTitle = recentEntry
                     ? recentEntry->findChild<QLabel *>(
@@ -2892,7 +2932,7 @@ int main(int argc, char *argv[]) {
                     stack->currentIndex() != 0 ||
                     brandSubtitle->text() != QString::fromUtf8(
                         "DOSYA → VİDEO → DOSYA · DİJİTAL ARŞİV") ||
-                    create->text() != QString::fromUtf8("Oluşturmaya Başla") ||
+                    create->text() != QString::fromUtf8("Yeni arşiv") ||
                     activityTitle->text() != QCoreApplication::translate(
                         "DriveManagerUI", "Your file was recovered exactly.") ||
                     success->text() != QString::fromUtf8(
@@ -2956,7 +2996,14 @@ int main(int argc, char *argv[]) {
                     !issues->text().contains(QString::fromUtf8("Eksik parça numaraları")) ||
                     !fullyVisibleInWorkflow(nextAction) ||
                     !nextAction->text().contains(QString::fromUtf8("yeniden tarayın"))) {
-                    fail(144, "Missing part numbers or guidance are not visible in Turkish");
+                    fail(144, QString("Missing part guidance: issuesVisible=%1 issues=%2 "
+                        "actionVisible=%3 action=%4 size=%5x%6 minimum=%7x%8 scroll=%9")
+                        .arg(issues && issues->isVisible()).arg(issues ? issues->text() : QString())
+                        .arg(nextAction && nextAction->isVisible()).arg(nextAction ? nextAction->text() : QString())
+                        .arg(nextAction ? nextAction->width() : 0).arg(nextAction ? nextAction->height() : 0)
+                        .arg(nextAction ? nextAction->minimumSizeHint().width() : 0)
+                        .arg(nextAction ? nextAction->minimumSizeHint().height() : 0)
+                        .arg(assistantScroll->verticalScrollBar()->value()));
                     return;
                 }
                 if (!window.grab().save(QDir(root).filePath(
@@ -3042,9 +3089,49 @@ int main(int argc, char *argv[]) {
     }
 
     // Deterministic, non-interactive launch check used by CTest. This only
-    // exercises application/window construction and never touches files.
-    if (smokeTest) {
-        QTimer::singleShot(250, &app, [&app, &window]() {
+    // exercises cold-start layout with synthetic recent entries.
+    if (smokeTest || recentLayoutSmokeTest) {
+        QTimer::singleShot(250, &app, [&app, &window, recentLayoutSmokeTest]() {
+            if (!recentLayoutSmokeTest) {
+                window.close();
+                app.exit(0);
+                return;
+            }
+            const QString screenshot = qEnvironmentVariable(
+                "VIDSTOREX_GUI_SMOKE_SCREENSHOT");
+            if (!screenshot.isEmpty()) window.grab().save(screenshot);
+            auto *recent = window.findChild<QListWidget *>("videoSetRecentList");
+            if (!recent || recent->count() != 3) {
+                qCritical() << "Cold-start Recent fixture is missing";
+                app.exit(1);
+                return;
+            }
+            for (int row = 0; row < recent->count(); ++row) {
+                auto *entry = dynamic_cast<VidStoreXRecentEntry *>(
+                    recent->itemWidget(recent->item(row)));
+                if (!entry) {
+                    app.exit(1);
+                    return;
+                }
+                for (auto *label : {entry->titleLabel(), entry->metadataLabel(),
+                                    entry->statusLabel()}) {
+                    if (label->height() < label->sizeHint().height() ||
+                        !entry->rect().contains(label->geometry())) {
+                        std::fprintf(stderr,
+                            "Cold-start Recent row %d: %s height=%d hint=%d "
+                            "entry=%dx%d label=(%d,%d %dx%d)\n", row,
+                            qPrintable(label->objectName()), label->height(),
+                            label->sizeHint().height(), entry->width(), entry->height(),
+                            label->x(), label->y(), label->width(), label->height());
+                        qCritical() << "Cold-start Recent label is clipped" << row
+                                    << label->objectName() << label->geometry()
+                                    << label->sizeHint() << entry->size()
+                                    << entry->sizeHint();
+                        app.exit(1);
+                        return;
+                    }
+                }
+            }
             window.close();
             app.exit(0);
         });

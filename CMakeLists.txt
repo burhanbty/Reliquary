@@ -104,6 +104,9 @@ set_target_properties(media_storage_lib PROPERTIES
 
 target_link_libraries(media_storage PRIVATE media_storage_lib media_storage_core)
 if (BUILD_GUI)
+    # Video Set workflows launch the companion CLI from the GUI's directory.
+    # Building the GUI must not leave an older CLI with a different progress schema.
+    add_dependencies(media_storage_gui media_storage)
     target_link_libraries(media_storage_gui PRIVATE
             media_storage_lib
             media_storage_core
@@ -120,6 +123,9 @@ endif ()
 
 if (WIN32)
     target_link_libraries(media_storage_core PRIVATE Crypt32)
+    if (BUILD_GUI)
+        target_link_libraries(media_storage_gui PRIVATE Dwmapi)
+    endif ()
 endif ()
 
 if (MEDIA_STORAGE_STATIC_BINARIES)

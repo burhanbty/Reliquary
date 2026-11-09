@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QImage>
 #include <QLabel>
+#include <QMainWindow>
 #include <QPainter>
 #include <QPalette>
 #include <QKeyEvent>
@@ -140,6 +141,8 @@ TEST(UiVisualIdentity, LightPaletteHasReadablePrimaryAction) {
     EXPECT_GE(contrast(tokens.textMuted, tokens.surfacePage), 4.5);
     EXPECT_GE(contrast(tokens.textMuted, tokens.surfaceRaised), 4.5);
     EXPECT_GE(contrast(tokens.textMuted, tokens.surfaceSelected), 4.5);
+    palette.setColor(QPalette::Window, Qt::transparent);
+    EXPECT_FALSE(vidstorex_ui::themeTokens(palette).dark);
 }
 
 TEST(UiVisualIdentity, DarkPaletteHasReadablePrimaryAction) {
@@ -155,11 +158,33 @@ TEST(UiVisualIdentity, DarkPaletteHasReadablePrimaryAction) {
 
 TEST(UiVisualIdentity, StyleSheetUsesSemanticRolesAndStates) {
     const QString style = vidstorex_ui::applicationStyleSheet(QPalette());
+    EXPECT_FALSE(style.contains('%'));
     EXPECT_TRUE(style.contains("vsxRole=\"primary\""));
     EXPECT_TRUE(style.contains("vsxRole=\"secondary\""));
     EXPECT_TRUE(style.contains("vsxRole=\"ghost\""));
     EXPECT_TRUE(style.contains("vsxState=\"success\""));
     EXPECT_TRUE(style.contains(":disabled"));
+}
+
+TEST(UiVisualIdentity, GlassPanelsRemainReadableWhenTheWindowThemeChanges) {
+    QMainWindow window;
+    auto *canvas = new VidStoreXAmbientCanvas();
+    canvas->setObjectName("centralWidget");
+    window.setCentralWidget(canvas);
+    auto *glass = new VidStoreXGlassFrame(canvas);
+    glass->setObjectName("videoSetCollectionDetail");
+    glass->setGeometry(10, 10, 180, 90);
+    for (const bool dark : {true, false}) {
+        QPalette palette;
+        palette.setColor(QPalette::Window, dark ? QColor("#000000") : QColor("#F4F1EB"));
+        palette.setColor(QPalette::Base, dark ? QColor("#030708") : QColor("#FFFDF8"));
+        palette.setColor(QPalette::WindowText, dark ? QColor("#E6ECEE") : QColor("#24211D"));
+        window.setPalette(palette);
+        vidstorex_ui::applyTheme(canvas);
+        const QImage image = render(window, {240, 140});
+        const QColor background = image.pixelColor(80, 50);
+        EXPECT_GE(contrast(palette.color(QPalette::WindowText), background), 7.0);
+    }
 }
 
 TEST(UiVisualIdentity, SignalRailRendersRealPaletteAwareBlocks) {
@@ -518,7 +543,7 @@ TEST(UiVisualIdentity, GuiSourceDeclaresIdentityAndRecentPrivacyContract) {
                "/src/drive_manager_ui.cpp");
     ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
     const QString source = QString::fromUtf8(file.readAll());
-    EXPECT_TRUE(source.contains("Store your files safely in videos"));
+    EXPECT_TRUE(source.contains("Your archive"));
     EXPECT_TRUE(source.contains("videoSetSuccessSignalRail"));
     EXPECT_TRUE(source.contains("Advanced / Classic Video Set Tools"));
     EXPECT_TRUE(source.contains("Unavailable Video Set"));
@@ -586,11 +611,10 @@ TEST(UiVisualIdentity, OnboardingIsProductFocusedAndVersioned) {
             << forbidden.toStdString();
 }
 
-TEST(UiVisualIdentity, ThemeSourceAvoidsDisallowedVisualTrends) {
+TEST(UiVisualIdentity, NativeMaterialsAvoidContinuousAnimationAndBlurPasses) {
     QFile file(QStringLiteral(VIDSTOREX_SOURCE_DIR) + "/src/ui_theme.cpp");
     ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
     const QString source = QString::fromUtf8(file.readAll()).toLower();
-    EXPECT_FALSE(source.contains("gradient"));
     EXPECT_FALSE(source.contains("blur"));
     EXPECT_FALSE(source.contains("rgba("));
     EXPECT_FALSE(source.contains("animation"));

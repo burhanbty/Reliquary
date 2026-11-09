@@ -269,6 +269,10 @@ if (TARGET media_storage_gui)
     )
     set_tests_properties(GUI.LaunchSmoke PROPERTIES TIMEOUT 15)
 
+    add_test(NAME GUI.RecentColdStartLayout
+            COMMAND $<TARGET_FILE:media_storage_gui> --recent-layout-smoke-test)
+    set_tests_properties(GUI.RecentColdStartLayout PROPERTIES TIMEOUT 15)
+
     add_test(
             NAME GUI.CloseDuringEstimate
             COMMAND $<TARGET_FILE:media_storage_gui>
@@ -310,6 +314,7 @@ if (TARGET media_storage_gui)
     if (WIN32 AND TARGET Qt6::QWindowsIntegrationPlugin)
         set_tests_properties(
                 GUI.LaunchSmoke
+                GUI.RecentColdStartLayout
                 GUI.CloseDuringEstimate
                 GUI.VideoSetAssistantE2E
                 GUI.FirstRunOnboardingE2E

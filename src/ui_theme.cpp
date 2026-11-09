@@ -1,6 +1,8 @@
 #include "ui_theme.h"
 
 #include <QWidget>
+#include <QPainter>
+#include <QPainterPath>
 
 namespace {
 
@@ -60,44 +62,47 @@ QString responsiveModeName(const ResponsiveMode mode) {
 
 ThemeTokens themeTokens(const QPalette &palette) {
     ThemeTokens result;
-    result.dark = palette.color(QPalette::Window).lightness() < 128;
-    const QColor window = palette.color(QPalette::Window);
     const QColor base = palette.color(QPalette::Base);
+    // Qt stylesheets give transparent surfaces a transparent black Window brush.
+    // The opaque Base still identifies the inherited theme in that case.
+    const QColor window = palette.color(QPalette::Window).alpha() == 0
+        ? base : palette.color(QPalette::Window);
+    result.dark = window.lightness() < 128;
     const QColor text = palette.color(QPalette::WindowText);
     if (result.dark) {
-        result.surfaceBase = QColor("#1A1A1A");
-        result.surfacePage = QColor("#1F1F1F");
-        result.surfaceRaised = QColor("#242424");
-        result.surfaceRecent = QColor("#212121");
-        result.surfaceHover = QColor("#2B2923");
-        result.surfaceSelected = QColor("#332C1E");
-        result.textPrimary = QColor("#F2EEE6");
-        result.textSecondary = QColor("#CBC5BB");
-        result.textMuted = QColor("#ACA69C");
-        result.accent = QColor("#E3A72F");
-        result.accentHover = QColor("#F0B429");
-        result.accentPressed = QColor("#D4A017");
-        result.onAccent = QColor("#1B160C");
-        result.success = QColor("#62B989");
-        result.warning = result.accent;
-        result.error = QColor("#D97872");
+        result.surfaceBase = QColor("#000000");
+        result.surfacePage = QColor("#030708");
+        result.surfaceRaised = QColor("#10191D");
+        result.surfaceRecent = QColor("#080E11");
+        result.surfaceHover = QColor("#192B31");
+        result.surfaceSelected = QColor("#17333A");
+        result.textPrimary = QColor("#E6ECEE");
+        result.textSecondary = QColor("#BDCBD0");
+        result.textMuted = QColor("#9BAEB5");
+        result.accent = QColor("#64D3DC");
+        result.accentHover = QColor("#A8EDF1");
+        result.accentPressed = QColor("#49B7C1");
+        result.onAccent = QColor("#062027");
+        result.success = QColor("#8AD7B0");
+        result.warning = QColor("#E8BC75");
+        result.error = QColor("#F08D92");
         result.info = result.textSecondary;
-        result.surfaceTrust = QColor("#23251F");
-        result.border = QColor("#3A3936");
-        result.borderStrong = QColor("#777169");
+        result.surfaceTrust = QColor("#0C191C");
+        result.border = QColor("#293B43");
+        result.borderStrong = QColor("#667E88");
         return result;
     }
 
-    const QColor anchor("#A85E08");
+    const QColor anchor("#09636F");
     result.surfaceBase = mix(base, window, 0.09);
     result.surfacePage = mix(window, base, 0.34);
-    result.surfaceRaised = mix(base, QColor("#FFF8EA"), 0.22);
+    result.surfaceRaised = mix(base, QColor("#EDF8FA"), 0.22);
     result.surfaceRecent = mix(result.surfaceRaised, window, 0.28);
     result.surfaceHover = mix(result.surfaceRaised, anchor, 0.055);
     result.surfaceSelected = mix(result.surfaceRaised, anchor, 0.11);
     result.textPrimary = text;
     result.textSecondary = mix(text, window, 0.34);
-    result.textMuted = mix(text, window, 0.35);
+    result.textMuted = mix(text, window, 0.31);
     result.accent = anchor;
     result.accentHover = anchor.darker(108);
     result.accentPressed = anchor.darker(122);
@@ -112,11 +117,82 @@ ThemeTokens themeTokens(const QPalette &palette) {
     return result;
 }
 
+QPalette obsidianPalette(const QPalette &base) {
+    QPalette palette(base);
+    palette.setColor(QPalette::Window, QColor("#000000"));
+    palette.setColor(QPalette::Base, QColor("#030708"));
+    palette.setColor(QPalette::AlternateBase, QColor("#10191D"));
+    palette.setColor(QPalette::Button, QColor("#10191D"));
+    for (const auto role : {QPalette::WindowText, QPalette::Text,
+                            QPalette::ButtonText})
+        palette.setColor(role, QColor("#E6ECEE"));
+    palette.setColor(QPalette::Highlight, QColor("#17333A"));
+    palette.setColor(QPalette::HighlightedText, QColor("#E6ECEE"));
+    palette.setColor(QPalette::Link, QColor("#64D3DC"));
+    palette.setColor(QPalette::PlaceholderText, QColor("#9BAEB5"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#10191D"));
+    palette.setColor(QPalette::ToolTipText, QColor("#E6ECEE"));
+    for (const auto role : {QPalette::WindowText, QPalette::Text,
+                            QPalette::ButtonText})
+        palette.setColor(QPalette::Disabled, role, QColor("#80949D"));
+    return palette;
+}
+
+QIcon navigationIcon(const NavigationSymbol symbol, const QPalette &palette) {
+    QPixmap image(40, 40);
+    image.setDevicePixelRatio(2);
+    image.fill(Qt::transparent);
+    QPainter p(&image);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(themeTokens(palette).textSecondary, 1.35,
+                  Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.setBrush(Qt::NoBrush);
+    switch (symbol) {
+        case NavigationSymbol::Home: {
+            QPainterPath house;
+            house.moveTo(3, 9); house.lineTo(10, 3); house.lineTo(17, 9);
+            house.moveTo(5, 8); house.lineTo(5, 17); house.lineTo(15, 17);
+            house.lineTo(15, 8);
+            p.drawPath(house);
+            p.drawRect(QRectF(8.5, 12, 3, 5));
+            break;
+        }
+        case NavigationSymbol::Create:
+            p.drawRoundedRect(QRectF(4, 3, 12, 14), 2, 2);
+            p.drawLine(QPointF(10, 7), QPointF(10, 13));
+            p.drawLine(QPointF(7, 10), QPointF(13, 10));
+            break;
+        case NavigationSymbol::Recover: {
+            p.drawArc(QRectF(4, 4, 12, 12), 30 * 16, 295 * 16);
+            QPainterPath arrow;
+            arrow.moveTo(3, 3); arrow.lineTo(3, 8); arrow.lineTo(8, 8);
+            p.drawPath(arrow);
+            break;
+        }
+        case NavigationSymbol::Recent:
+            p.drawRoundedRect(QRectF(3, 4, 14, 12), 2, 2);
+            for (const int y : {7, 10, 13})
+                p.drawLine(QPointF(6, y), QPointF(14, y));
+            break;
+        case NavigationSymbol::Settings:
+            p.drawEllipse(QPointF(10, 10), 5, 5);
+            p.drawEllipse(QPointF(10, 10), 1.5, 1.5);
+            for (int angle = 0; angle < 360; angle += 45) {
+                p.save(); p.translate(10, 10); p.rotate(angle);
+                p.drawLine(QPointF(0, 5), QPointF(0, 7)); p.restore();
+            }
+            break;
+    }
+    p.end();
+    return QIcon(image);
+}
+
 QString applicationStyleSheet(const QPalette &palette) {
     const ThemeTokens t = themeTokens(palette);
     return QString(R"CSS(
         QWidget { font-size: 13px; }
-        QMainWindow, QWidget#centralWidget { background: %1; color: %5; }
+        QMainWindow { background: %1; color: %5; }
+        QWidget#centralWidget { background: transparent; color: %5; }
         QMenuBar, QMenu { background: %1; color: %5; }
         QMenuBar::item:selected, QMenu::item:selected { background: %4; color: %5; }
         QMenu::item:disabled { color: %7; }
@@ -140,17 +216,23 @@ QString applicationStyleSheet(const QPalette &palette) {
         QWidget#capacityLabContent,
         QWidget#advancedLandingContent,
         QWidget#experimentalYouTubeSyncContent {
-            background: %22;
+            background: transparent;
         }
         QTabWidget#applicationPages::pane { border: 0; margin: 0; }
-        QFrame#applicationHeader {
-            background: %1; border: 0; border-bottom: 1px solid %13;
+        QTabWidget#applicationPages > QStackedWidget,
+        QWidget#videoSetPage, QFrame#videoSetWorkflowArea,
+        QWidget#videoSetWorkflowMain, QStackedWidget#videoSetWizardActionStack {
+            background: transparent;
         }
-        QLabel[brand="true"] { font-size: 25px; font-weight: 750; color: %5; }
+        QFrame#applicationHeader {
+            background: transparent; border: 0; border-bottom: 1px solid %13;
+        }
+        QLabel { background: transparent; color: %5; }
+        QLabel[brand="true"] { font-size: 23px; font-weight: 600; color: %5; }
         QLabel[eyebrow="true"] {
             color: %8; font-size: 11px; font-weight: 700; letter-spacing: 1px;
         }
-        QLabel[pageTitle="true"] { font-size: 22px; font-weight: 730; color: %5; }
+        QLabel[pageTitle="true"] { font-size: 23px; font-weight: 600; color: %5; }
         QLabel[sectionTitle="true"] { font-size: 17px; font-weight: 700; color: %5; }
         QLabel[cardTitle="true"] { font-size: 16px; font-weight: 700; color: %5; }
         QWidget[workflowPage="true"] QLabel[pageTitle="true"] {
@@ -176,7 +258,9 @@ QString applicationStyleSheet(const QPalette &palette) {
         QFrame[vsxSurface="raised"], QGroupBox[vsxRole="section"],
         QFrame[vsxRole="actionCard"], QFrame[vsxRole="section"],
         QGroupBox[vsxRole="profileCard"] {
-            background: %2; border: 1px solid %13; border-radius: 10px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                stop:0 %2, stop:1 %22);
+            border: 1px solid %13; border-radius: 14px;
         }
         QFrame[vsxSurface="raised"] QLabel,
         QFrame[vsxSurface="raised"] QCheckBox { color: %5; }
@@ -204,12 +288,11 @@ QString applicationStyleSheet(const QPalette &palette) {
         QFrame#videoSetRecentGroup { background: %23; border-color: %14; }
         QFrame#videoSetRecentFullGroup { background: %23; border-color: %14; }
         QFrame#videoSetWizardActionBar {
-            background: %1; border: 0; border-top: 1px solid %13;
-            border-radius: 0;
+            background: transparent; border: 0;
+            border-radius: 18px;
         }
         QFrame#videoSetTrustStrip {
-            background: %24; border: 1px solid %13;
-            border-left: 3px solid %8;
+            background: transparent; border: 0;
         }
         QListWidget#videoSetRecentList,
         QListWidget#videoSetRecentFullList {
@@ -217,7 +300,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         }
         QListWidget#videoSetRecentList::item,
         QListWidget#videoSetRecentFullList::item {
-            background: %2; border: 1px solid %13; border-radius: 8px;
+            background: transparent; border: 1px solid transparent; border-radius: 10px;
             margin-bottom: 6px;
             padding: 0;
         }
@@ -225,11 +308,11 @@ QString applicationStyleSheet(const QPalette &palette) {
         QListWidget#videoSetRecentFullList::item:hover { background: %3; }
         QListWidget#videoSetRecentList::item:selected,
         QListWidget#videoSetRecentFullList::item:selected {
-            background: %4; color: %5;
+            background: %4; color: %5; border: 1px solid %13;
         }
         QListWidget#videoSetRecentList QFrame,
         QListWidget#videoSetRecentFullList QFrame {
-            background: transparent; border: 0; border-left: 3px solid %8;
+            background: transparent; border: 0;
         }
         QLabel[recentTitle="true"] { font-size: 14px; font-weight: 700; color: %5; }
         QLabel[recentMeta="true"] { font-size: 12px; color: %7; }
@@ -244,10 +327,10 @@ QString applicationStyleSheet(const QPalette &palette) {
             padding: 10px 12px; color: %6;
         }
         QWidget#videoSetAssistantStepper {
-            background: %1; border: 1px solid %13; border-radius: 5px;
+            background: transparent; border: 0;
         }
         QPushButton, QToolButton {
-            min-height: 30px; padding: 2px 12px; border-radius: 6px;
+            min-height: 30px; padding: 2px 12px; border-radius: 9px;
             border: 1px solid %13; background: %2; color: %5;
         }
         QPushButton:hover, QToolButton:hover { background: %3; border-color: %14; }
@@ -268,7 +351,8 @@ QString applicationStyleSheet(const QPalette &palette) {
             background: %1; border-color: %13;
         }
         QPushButton[vsxRole="primary"] {
-            min-height: 36px; padding: 2px 17px; background: %8;
+            min-height: 36px; padding: 2px 17px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %9, stop:1 %8);
             border: 1px solid %8; color: %11; font-weight: 700;
         }
         QPushButton[vsxRole="primary"]:hover { background: %9; border-color: %9; }
@@ -283,7 +367,7 @@ QString applicationStyleSheet(const QPalette &palette) {
         }
         QPushButton[nav="true"], QToolButton[nav="true"] {
             min-height: 34px; background: transparent; border: 0;
-            border-bottom: 3px solid transparent; border-radius: 0;
+            border-bottom: 1px solid transparent; border-radius: 8px;
             padding: 1px 11px; color: %6; font-weight: 600;
         }
         QToolButton#advancedNavigationButton::menu-indicator {
@@ -348,6 +432,20 @@ QString applicationStyleSheet(const QPalette &palette) {
         QMenu { background: %2; border: 1px solid %13; padding: 5px; }
         QMenu::item { padding: 7px 24px 7px 10px; border-radius: 4px; }
         QMenu::item:selected { background: %4; color: %5; }
+        QFrame[glassSurface="true"] { background: transparent; border: 0; }
+        QWidget#videoSetCollectionDetail { background: transparent; }
+        QLabel#videoSetArchiveName { font-size: 20px; font-weight: 600; color: %5; }
+        QLabel#videoSetArchiveMetadata { color: %7; font-size: 12px; }
+        QFrame#videoSetCreateCard, QFrame#videoSetRecoverCard {
+            background: transparent; border: 0;
+            border-radius: 0;
+        }
+        QFrame#videoSetCreateCard QLabel[cardTitle="true"],
+        QFrame#videoSetRecoverCard QLabel[cardTitle="true"] { font-size: 14px; font-weight: 600; }
+        QFrame#videoSetCreateCard QLabel[muted="true"],
+        QFrame#videoSetRecoverCard QLabel[muted="true"] { font-size: 12px; }
+        QFrame#videoSetRecentEmptyState { background: transparent; border: 0; }
+        QToolTip { background: %2; color: %5; border: 1px solid %14; padding: 6px; }
     )CSS")
         .arg(css(t.surfaceBase), css(t.surfaceRaised), css(t.surfaceHover),
              css(t.surfaceSelected), css(t.textPrimary), css(t.textSecondary),
@@ -359,7 +457,7 @@ QString applicationStyleSheet(const QPalette &palette) {
              css(mix(t.surfaceBase, t.warning, t.dark ? 0.13 : 0.08)),
              css(mix(t.surfaceBase, t.error, t.dark ? 0.13 : 0.08)),
              css(mix(t.surfaceBase, t.info, t.dark ? 0.13 : 0.08)),
-             css(t.surfacePage), css(t.surfaceRecent), css(t.surfaceTrust));
+             css(t.surfacePage), css(t.surfaceRecent));
 }
 
 void applyTheme(QWidget *root) {
