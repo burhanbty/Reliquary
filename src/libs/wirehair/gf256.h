@@ -65,7 +65,12 @@
     #define GF256_TARGET_MOBILE
 #endif // ANDROID
 
-#if defined(__AVX2__) && (!defined (_MSC_VER) || _MSC_VER >= 1900)
+// Reliquary: MSVC accepts AVX2 intrinsics without /arch:AVX2, so x86/x64
+// builds keep the AVX2 kernels and select them at run time (CpuHasAVX2)
+// while the rest of the binary targets the baseline ISA.
+#if (defined(__AVX2__) && (!defined (_MSC_VER) || _MSC_VER >= 1900)) || \
+    (defined(_MSC_VER) && _MSC_VER >= 1900 && !defined(GF256_TARGET_MOBILE) && \
+     (defined(_M_X64) || defined(_M_IX86)))
     #define GF256_TRY_AVX2 /* 256-bit */
     #include <immintrin.h>
     #define GF256_ALIGN_BYTES 32

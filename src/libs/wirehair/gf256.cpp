@@ -267,6 +267,25 @@ static void _cpuid(unsigned int cpu_info[4U], const unsigned int cpu_info_type)
 #endif
 }
 
+#ifdef GF256_TRY_AVX2
+#define CPUID_ECX_OSXSAVE 0x08000000
+
+// ecx_leaf1: ECX from CPUID leaf 1.
+static bool gf256_os_saves_ymm(const unsigned int ecx_leaf1)
+{
+    if ((ecx_leaf1 & CPUID_ECX_OSXSAVE) == 0)
+        return false;
+#if defined(_MSC_VER)
+    const unsigned long long xcr0 = _xgetbv(0);
+#else
+    unsigned int eax = 0, edx = 0;
+    __asm__ __volatile__ ("xgetbv" : "=a" (eax), "=d" (edx) : "c" (0U));
+    const unsigned long long xcr0 = (static_cast<unsigned long long>(edx) << 32) | eax;
+#endif
+    return (xcr0 & 0x6) == 0x6; // XMM and YMM state enabled
+}
+#endif // GF256_TRY_AVX2
+
 #else
 #if defined(LINUX_ARM)
 static void checkLinuxARMNeonCapabilities( bool& cpuHasNeon )
@@ -328,8 +347,16 @@ static void gf256_architecture_init()
     CpuHasSSSE3 = ((cpu_info[2] & CPUID_ECX_SSSE3) != 0);
 
 #if defined(GF256_TRY_AVX2)
-    _cpuid(cpu_info, 7);
-    CpuHasAVX2 = ((cpu_info[1] & CPUID_EBX_AVX2) != 0);
+    // Reliquary: the AVX2 kernels are now chosen at run time, so require
+    // that leaf 7 exists and that the OS saves YMM state (OSXSAVE + XCR0),
+    // not just the CPU feature bit.
+    unsigned int max_leaf[4];
+    _cpuid(max_leaf, 0);
+    if (max_leaf[0] >= 7 && gf256_os_saves_ymm(cpu_info[2]))
+    {
+        _cpuid(cpu_info, 7);
+        CpuHasAVX2 = ((cpu_info[1] & CPUID_EBX_AVX2) != 0);
+    }
 #endif // GF256_TRY_AVX2
 
     // When AVX2 and SSSE3 are unavailable, Siamese takes 4x longer to decode
