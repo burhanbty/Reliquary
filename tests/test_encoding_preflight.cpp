@@ -16,6 +16,7 @@
 #include <fstream>
 #include <future>
 #include <limits>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,9 +25,16 @@ namespace {
     class PreflightFiles {
     public:
         PreflightFiles() {
+            // ctest runs each test in its own process, so a per-process
+            // counter alone collides across parallel tests sharing %TEMP%;
+            // one test's cleanup would delete another's files.
+            static const uint64_t process_nonce =
+                (static_cast<uint64_t>(std::random_device{}()) << 32) |
+                std::random_device{}();
             static std::atomic<uint64_t> sequence{0};
             directory = std::filesystem::temp_directory_path() /
                         ("vidstorex-preflight-test-" +
+                         std::to_string(process_nonce) + "-" +
                          std::to_string(sequence.fetch_add(1)));
             std::filesystem::create_directories(directory);
             input = directory / "input.bin";

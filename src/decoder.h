@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <span>
@@ -84,6 +85,12 @@ public:
 
     [[nodiscard]] uint32_t chunk_index() const { return chunk_index_; }
 
+    [[nodiscard]] uint32_t chunk_size() const { return chunk_size_; }
+
+    [[nodiscard]] uint32_t source_symbol_count() const { return k_; }
+
+    [[nodiscard]] uint16_t symbol_size() const { return symbol_size_; }
+
     [[nodiscard]] uint32_t packets_received() const { return packets_received_; }
 
 private:
@@ -109,6 +116,11 @@ public:
 
     [[nodiscard]] static bool validate_raw_packet_crc(std::span<const std::byte> packet_data);
 
+    // Structural limits for header fields that the encoder can produce.
+    // A CRC only proves the packet was not damaged in transit; it does not
+    // prove the fields are safe to allocate from.
+    [[nodiscard]] static bool header_fields_in_bounds(const PacketHeader &header);
+
     [[nodiscard]] std::optional<ChunkDecodeResult> process_packet(std::span<const std::byte> packet_data, bool compute_sha256 = true);
 
     [[nodiscard]] std::optional<ChunkDecodeResult> process_packet(const DecodedPacket &packet, bool compute_sha256 = true);
@@ -125,6 +137,16 @@ public:
 
     [[nodiscard]] std::vector<uint32_t> completed_chunk_indices() const;
 
+    // Chunk count announced by LastChunk packets that belong to the locked
+    // file id. Empty when no last chunk was seen or when packets disagreed.
+    [[nodiscard]] std::optional<uint32_t> expected_chunk_count() const;
+
+    [[nodiscard]] bool last_chunk_conflict() const { return last_chunk_conflict_; }
+
+    // CRC-valid packets refused because they belong to another file, carry
+    // out-of-bounds header fields, or contradict an earlier packet.
+    [[nodiscard]] size_t rejected_packets() const { return rejected_packets_; }
+
     [[nodiscard]] std::optional<std::vector<std::byte> > assemble_file(uint32_t expected_chunks) const;
 
     [[nodiscard]] bool write_assembled_file(
@@ -140,12 +162,27 @@ public:
     [[nodiscard]] bool is_encrypted() const { return encrypted_; }
 
 private:
+    struct ActiveChunk {
+        ChunkDecoder decoder;
+        uint32_t original_size;
+    };
+
+    [[nodiscard]] std::optional<ChunkDecodeResult> accept_packet(
+        const PacketHeader &header, std::span<const std::byte> payload, bool compute_sha256);
+
+    [[nodiscard]] bool has_complete_contiguous_chunks(uint32_t expected_chunks) const;
+
     std::optional<FileId> id;
     bool encrypted_ = false;
     std::array<std::byte, 32> decrypt_key_{};
     bool decrypt_key_set_ = false;
-    std::vector<std::optional<ChunkDecoder> > active_decoders;
-    std::vector<std::optional<std::vector<std::byte> > > completed_chunks;
+    // Sparse storage: chunk indices come from packet headers, so they must
+    // never size a dense container.
+    std::map<uint32_t, ActiveChunk> active_decoders;
+    std::map<uint32_t, std::vector<std::byte> > completed_chunks;
+    std::optional<uint32_t> last_chunk_index_;
+    bool last_chunk_conflict_ = false;
     size_t completed_count_ = 0;
     size_t total_packets_ = 0;
+    size_t rejected_packets_ = 0;
 };
