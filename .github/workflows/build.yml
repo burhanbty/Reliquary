@@ -16,8 +16,20 @@ env:
 
 jobs:
   build:
-    name: windows-x64
+    name: ${{ matrix.name }}
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Distributed artifact. BUILD_TESTS also compiles test hooks
+          # (VIDSTOREX_ENABLE_TEST_HOOKS) into the production binaries, so the
+          # shipped build must stay test-free and keep compiling that way.
+          - name: windows-x64
+            build_tests: 'OFF'
+          # Same sources with the test suite enabled; gates every push and PR.
+          - name: windows-x64-tests
+            build_tests: 'ON'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -86,14 +98,43 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES="$MANIFEST_FEATURES" \
             -DMEDIA_STORAGE_STATIC_BINARIES=OFF \
             -DBUILD_GUI=ON \
-            -DBUILD_TESTS=OFF
+            -DBUILD_TESTS=${{ matrix.build_tests }}
 
       - name: Build
         shell: bash
         run: cmake --build build --parallel
 
+      # Core, codec, recovery-safety and CLI integration tests. QT_PLUGIN_PATH
+      # pins plugins to the Qt build that was just linked: a stale plugin
+      # next to the executable makes the GUI hang at startup.
+      - name: Test (unit and CLI)
+        if: matrix.build_tests == 'ON'
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          $env:QT_PLUGIN_PATH = "$PWD/build/vcpkg_installed/x64-windows/Qt6/plugins"
+          ctest --test-dir build --output-on-failure --no-tests=error -j 2 -E '^GUI\.'
+
+      # End-to-end GUI flows drive real windows, so they run serially.
+      - name: Test (GUI end-to-end)
+        if: matrix.build_tests == 'ON'
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          $env:QT_PLUGIN_PATH = "$PWD/build/vcpkg_installed/x64-windows/Qt6/plugins"
+          ctest --test-dir build --output-on-failure --no-tests=error -R '^GUI\.'
+
+      - name: Upload test logs
+        if: failure() && matrix.build_tests == 'ON'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-logs-windows-x64
+          path: build/Testing/Temporary/
+          if-no-files-found: ignore
+
       # Exercise the production x64 architecture without a desktop session.
       - name: Windows x64 GUI smoke
+        if: matrix.build_tests == 'OFF'
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -108,6 +149,7 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "GUI smoke failed: $($process.ExitCode)" }
 
       - name: Stage artifacts
+        if: matrix.build_tests == 'OFF'
         shell: bash
         run: |
           mkdir -p dist
@@ -118,6 +160,7 @@ jobs:
           ls -la dist/
 
       - name: Upload build artifact
+        if: matrix.build_tests == 'OFF'
         uses: actions/upload-artifact@v7
         with:
           name: Reliquary-windows-x64
