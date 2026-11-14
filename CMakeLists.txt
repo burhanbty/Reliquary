@@ -151,30 +151,55 @@ endif ()
 if (BUILD_GUI)
     set_target_properties(media_storage_gui PROPERTIES AUTOMOC ON AUTOUIC OFF)
 endif ()
+# Distributed binaries must start on any CPU of their architecture.
+# Wirehair's GF(256) kernels pick SSSE3/AVX2 at run time (CPUID), so the
+# baseline build keeps its fast paths. MEDIA_STORAGE_NATIVE_ARCH opts back
+# into host-specific code generation for local builds that never leave the
+# machine: /arch:AVX2 on MSVC x86/x64, -march=native elsewhere.
+option(MEDIA_STORAGE_NATIVE_ARCH
+        "Tune for the build machine's CPU (output is not portable)" OFF)
+
+set(_is_x86 FALSE)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|amd64|x86_64|X86|x86|i[3-6]86")
+    set(_is_x86 TRUE)
+endif ()
+
+set(_arch_targets media_storage_core)
+if (BUILD_GUI)
+    list(APPEND _arch_targets media_storage_gui)
+endif ()
+
 if (MSVC)
     set(_msvc_arch_flags "")
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|X86|x86|i[36]86")
+    if (MEDIA_STORAGE_NATIVE_ARCH AND _is_x86)
         set(_msvc_arch_flags "/arch:AVX2")
     endif ()
-    target_compile_options(media_storage_core PRIVATE
-            $<$<CONFIG:Release>:/O2>
-            ${_msvc_arch_flags}
-    )
-    if (BUILD_GUI)
-        target_compile_options(media_storage_gui PRIVATE
+    foreach (_target IN LISTS _arch_targets)
+        target_compile_options(${_target} PRIVATE
                 $<$<CONFIG:Release>:/O2>
                 ${_msvc_arch_flags}
         )
-    endif ()
+    endforeach ()
 else ()
-    target_compile_options(media_storage_core PRIVATE -march=native)
-    if (BUILD_GUI)
-        if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i386")
-            target_compile_options(media_storage_gui PRIVATE -O2 -mssse3)
-        else ()
-            target_compile_options(media_storage_gui PRIVATE -O2 -march=native)
-        endif ()
+    if (MEDIA_STORAGE_NATIVE_ARCH)
+        foreach (_target IN LISTS _arch_targets)
+            target_compile_options(${_target} PRIVATE -march=native)
+        endforeach ()
+    elseif (_is_x86)
+        # GCC/Clang only accept SSSE3 intrinsics with the matching target
+        # flag. Limit it to the GF(256) unit, which checks CPUID before use.
+        set_source_files_properties(
+                "${CMAKE_SOURCE_DIR}/src/libs/wirehair/gf256.cpp"
+                TARGET_DIRECTORY media_storage_core
+                PROPERTIES COMPILE_OPTIONS "-mssse3")
     endif ()
+    if (BUILD_GUI)
+        target_compile_options(media_storage_gui PRIVATE -O2)
+    endif ()
+endif ()
+
+if (MEDIA_STORAGE_NATIVE_ARCH)
+    message(STATUS "Reliquary: native CPU tuning enabled; binaries are not portable")
 endif ()
 
 if (BUILD_TESTS)

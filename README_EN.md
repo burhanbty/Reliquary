@@ -722,6 +722,13 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+Builds target the baseline instruction set of their architecture, so the
+resulting executables start on any x64 CPU. The FEC library still uses
+SSSE3/AVX2 when the running CPU supports them, selected at run time. For a
+build that will only ever run on the machine that compiled it, add
+`-DMEDIA_STORAGE_NATIVE_ARCH=ON` (`/arch:AVX2` on MSVC, `-march=native`
+elsewhere); do not distribute those binaries.
+
 Deploy the Qt runtime beside the GUI executable before distributing or
 running it outside the development environment:
 
