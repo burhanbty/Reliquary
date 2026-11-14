@@ -932,20 +932,14 @@ ms_status_t ms_decode(const ms_decode_options_t *options, ms_result_t *result) t
                 {
                     ScopedTimer timer(
                         &profiler, PerformanceStage::FecChunkRecovery);
-                    if (data.size() >= HEADER_SIZE &&
-                        (static_cast<uint8_t>(data[FLAGS_OFF]) & LastChunk) &&
-                        Decoder::validate_raw_packet_crc(data)) {
-                        uint32_t chunk_idx = 0;
-                        std::memcpy(
-                            &chunk_idx, data.data() + CHUNK_INDEX_OFF,
-                            sizeof(chunk_idx));
-                        expected_chunks = chunk_idx + 1;
-                    }
-
                     if (auto res = decoder.process_packet(data, false);
                         res && res->success) {
                         ++decoded_chunks;
                     }
+                    // Only LastChunk markers from packets the decoder accepted
+                    // (same file id, consistent geometry) define the end.
+                    expected_chunks =
+                        decoder.expected_chunk_count().value_or(0);
                 }
             }
         }
@@ -1245,20 +1239,14 @@ ms_status_t ms_stream_decode(const ms_stream_decode_options_t *options, ms_resul
                 {
                     ScopedTimer timer(
                         &profiler, PerformanceStage::FecChunkRecovery);
-                    if (data.size() >= HEADER_SIZE &&
-                        (static_cast<uint8_t>(data[FLAGS_OFF]) & LastChunk) &&
-                        Decoder::validate_raw_packet_crc(data)) {
-                        uint32_t chunk_idx = 0;
-                        std::memcpy(
-                            &chunk_idx, data.data() + CHUNK_INDEX_OFF,
-                            sizeof(chunk_idx));
-                        expected_chunks = chunk_idx + 1;
-                    }
-
                     if (const auto res = decoder.process_packet(data, false);
                         res && res->success) {
                         ++decoded_chunks;
                     }
+                    // Only LastChunk markers from packets the decoder accepted
+                    // (same file id, consistent geometry) define the end.
+                    expected_chunks =
+                        decoder.expected_chunk_count().value_or(0);
                 }
             }
         }
